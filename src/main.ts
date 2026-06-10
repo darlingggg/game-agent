@@ -1,9 +1,20 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+import { setupMonacoEditor } from './home/file/monacoSetup.ts'
 import router from './router'
+import './styles/index.css'
+
+setupMonacoEditor()
+
+// 设置rem
+function setRem() {
+  const deviceWidth = document.documentElement.clientWidth
+  const deviceHeight = document.documentElement.clientHeight
+  if (deviceWidth > deviceHeight) document.documentElement.style.fontSize = deviceWidth / 100 + 'px'
+  else document.documentElement.style.fontSize = deviceHeight / 100 + 'px'
+}
 
 const app = createApp(App)
-
 app.use(router)
-
+setRem()
 app.mount('#app')
