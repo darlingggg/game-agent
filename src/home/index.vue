@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, type ComponentPublicIn
 import ChatPanel from './chat/ChatPanel.vue'
 import FilePanel from './file/FilePanel.vue'
 import LogPanel from './log/LogPanel.vue'
+import PreviewPanel from './preview/PreviewPanel.vue'
 
 defineOptions({
   name: 'HomeIndex',
@@ -98,7 +99,9 @@ onUnmounted(() => {
         <LogPanel v-else class="main-content-panel" />
       </div>
     </main>
-    <section class="right"></section>
+    <section class="right">
+      <PreviewPanel />
+    </section>
   </div>
 </template>
 
@@ -173,7 +176,7 @@ onUnmounted(() => {
 .right {
   flex: 1.5;
   height: 100%;
-  background-color: #fcfcfd;
+  min-width: 0;
   border-left: 1px solid #e5e5e5;
 }
 </style>

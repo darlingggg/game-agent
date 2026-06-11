@@ -8,6 +8,7 @@ defineOptions({
 
 /** 终端日志行 */
 const logLines = ref<string[]>([...TERMINAL_HEADER_LINES, ...TERMINAL_SAMPLE_LOGS])
+const logContent = ref<string[]>([])
 
 /** 终端滚动容器 */
 const terminalRef = ref<HTMLElement | null>(null)
@@ -27,7 +28,7 @@ async function scrollToBottom() {
  * @param line 日志内容
  */
 function appendLog(line: string) {
-  logLines.value.push(line)
+  logContent.value.push(line)
   void scrollToBottom()
 }
 
@@ -45,10 +46,13 @@ defineExpose({
     <div v-for="(line, index) in logLines" :key="index" class="log-panel-line">
       {{ line }}
     </div>
-    <div class="log-panel-line log-panel-prompt">
-      <span>{{ TERMINAL_PROMPT }}</span>
-      <!-- <span class="log-panel-cursor" aria-hidden="true" /> -->
+    <div v-for="(line, index) in logContent" :key="index" class="log-panel-line">
+      <span>{{ TERMINAL_PROMPT }}</span> {{ line }}
     </div>
+    <!-- <div class="log-panel-line log-panel-prompt"> -->
+    <!-- <span>{{ TERMINAL_PROMPT }}</span> -->
+    <!-- <span class="log-panel-cursor" aria-hidden="true" /> -->
+    <!-- </div> -->
   </div>
 </template>
 
