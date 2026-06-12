@@ -1,7 +1,9 @@
 import type { FileSystemTree } from '@webcontainer/api'
-
-/** projectTemp 模板根目录在 glob 中的前缀 */
-const PROJECT_TEMP_PREFIX = '../../a_template/projectTemp/'
+import {
+  fetchProjectTempFileContent,
+  fetchProjectTempFileList,
+  normalizeRelativePath,
+} from '../file/projectTempFiles'
 
 /** 不挂载到 WebContainer 的文件或目录 */
 const EXCLUDED_PATHS = [
@@ -11,13 +13,6 @@ const EXCLUDED_PATHS = [
   'public/favicon.ico',
   'pnpm-lock.yaml',
 ]
-
-/** 预加载 projectTemp 下的文本文件 */
-const rawModules = import.meta.glob('../../a_template/projectTemp/**/*', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>
 
 /**
  * 将扁平路径写入 WebContainer 文件树
@@ -42,25 +37,28 @@ function setFileInTree(tree: FileSystemTree, relativePath: string, contents: str
   current[fileName] = {
     file: { contents },
   }
-
-  console.log('current', current)
 }
 
 /**
  * 构建 projectTemp 模板的 WebContainer 文件树
  */
-export function buildProjectTempFileTree(): FileSystemTree {
+export async function buildProjectTempFileTree(): Promise<FileSystemTree> {
   const tree: FileSystemTree = {}
+  const files = await fetchProjectTempFileList()
 
-  for (const [fullPath, contents] of Object.entries(rawModules)) {
-    if (!fullPath.startsWith(PROJECT_TEMP_PREFIX)) continue
-
-    const relativePath = fullPath.slice(PROJECT_TEMP_PREFIX.length)
+  for (const file of files) {
+    const relativePath = normalizeRelativePath(file.relativePath)
     if (!relativePath || EXCLUDED_PATHS.some((item) => relativePath.includes(item))) {
       continue
     }
 
-    setFileInTree(tree, relativePath, contents)
+    try {
+      const contents = await fetchProjectTempFileContent(relativePath)
+      setFileInTree(tree, relativePath, contents)
+    } catch (error) {
+      // 单个文件读取失败时跳过，避免阻断整个预览流程
+      console.warn(`跳过无法读取的文件: ${relativePath}`, error)
+    }
   }
 
   return tree

@@ -10,6 +10,18 @@ let bootPromise: Promise<WebContainer> | null = null
 /** projectTemp 预览地址缓存 */
 let cachedPreviewUrl: string | null = null
 
+/** 预览启动中的 Promise，避免重复安装依赖和启动 dev */
+let previewStartPromise: Promise<string> | null = null
+
+/** 不挂载到 WebContainer 的文件或目录，保存时无需同步预览 */
+const PREVIEW_EXCLUDED_PATHS = [
+  '.vscode/',
+  '.gitignore',
+  'README.md',
+  'public/favicon.ico',
+  'pnpm-lock.yaml',
+]
+
 /**
  * 获取 WebContainer 单例实例
  */
@@ -44,20 +56,45 @@ function pipeProcessOutput(process: WebContainerProcess, label: string) {
 }
 
 /**
+ * 从 WebContainer 中读取 package.json 并解析 dev 启动脚本
+ * @param instance WebContainer 实例
+ */
+async function resolveDevScript(instance: WebContainer): Promise<string> {
+  let packageJson = ''
+  try {
+    packageJson = await instance.fs.readFile('package.json', 'utf-8')
+  } catch {
+    throw new Error('未找到 package.json，无法启动预览')
+  }
+
+  let pkg: { scripts?: Record<string, string> }
+  try {
+    pkg = JSON.parse(packageJson) as { scripts?: Record<string, string> }
+  } catch {
+    throw new Error('package.json 格式无效，无法启动预览')
+  }
+
+  const devScript = pkg.scripts?.dev
+  if (!devScript) {
+    throw new Error('package.json 缺少 scripts.dev，无法启动开发服务器')
+  }
+
+  return devScript
+}
+
+/**
  * 在 WebContainer 中启动 projectTemp 开发服务器
  * @param onStatus 状态回调
  * @returns 预览地址
  */
-export async function startProjectTempPreview(onStatus?: (status: string) => void): Promise<string> {
-  if (cachedPreviewUrl) {
-    return cachedPreviewUrl
-  }
-
+async function bootProjectTempPreview(onStatus?: (status: string) => void): Promise<string> {
   onStatus?.('正在初始化预览环境...')
   const instance = await getWebContainerInstance()
 
   onStatus?.('正在挂载项目文件...')
-  await instance.mount(buildProjectTempFileTree())
+  await instance.mount(await buildProjectTempFileTree())
+
+  const devScript = await resolveDevScript(instance)
 
   onStatus?.('正在安装依赖...')
   const installProcess = await instance.spawn('pnpm', ['install'])
@@ -70,16 +107,82 @@ export async function startProjectTempPreview(onStatus?: (status: string) => voi
   onStatus?.('正在启动开发服务器...')
 
   return new Promise<string>((resolve, reject) => {
+    let settled = false
+
+    const finish = (handler: () => void) => {
+      if (settled) return
+      settled = true
+      handler()
+    }
+
     instance.on('server-ready', (_port, url) => {
-      cachedPreviewUrl = url
-      resolve(url)
+      finish(() => {
+        cachedPreviewUrl = url
+        resolve(url)
+      })
     })
 
     void instance
       .spawn('pnpm', ['run', 'dev'])
-      .then((devProcess) => {
+      .then(async (devProcess) => {
         pipeProcessOutput(devProcess, 'pnpm run dev')
+        const exitCode = await devProcess.exit
+        if (exitCode !== 0) {
+          finish(() => {
+            reject(
+              new Error(
+                `开发服务器启动失败（退出码 ${exitCode}），请检查 package.json 的 scripts.dev（当前: ${devScript}）`,
+              ),
+            )
+          })
+        }
       })
-      .catch(reject)
+      .catch((error: unknown) => {
+        finish(() => {
+          reject(error instanceof Error ? error : new Error('开发服务器启动失败'))
+        })
+      })
   })
+}
+
+/**
+ * 在 WebContainer 中启动 projectTemp 开发服务器
+ * @param onStatus 状态回调
+ * @returns 预览地址
+ */
+export async function startProjectTempPreview(onStatus?: (status: string) => void): Promise<string> {
+  if (cachedPreviewUrl) {
+    return cachedPreviewUrl
+  }
+
+  if (!previewStartPromise) {
+    previewStartPromise = bootProjectTempPreview(onStatus).catch((error) => {
+      previewStartPromise = null
+      throw error
+    })
+  }
+
+  return previewStartPromise
+}
+
+/**
+ * 判断文件是否需要同步到预览环境
+ * @param relativePath 相对 projectTemp 根目录的路径
+ */
+function shouldSyncPreviewFile(relativePath: string): boolean {
+  return !PREVIEW_EXCLUDED_PATHS.some((item) => relativePath.includes(item))
+}
+
+/**
+ * 将已保存的文件同步到 WebContainer，触发 Vite 热更新
+ * @param relativePath 相对 projectTemp 根目录的路径
+ * @param content 文件内容
+ */
+export async function syncPreviewFile(relativePath: string, content: string): Promise<void> {
+  if (!webcontainerInstance || !shouldSyncPreviewFile(relativePath)) {
+    return
+  }
+
+  const webPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`
+  await webcontainerInstance.fs.writeFile(webPath, content)
 }

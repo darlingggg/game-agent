@@ -1,5 +1,10 @@
-/** 项目模板根目录标识 */
-export const PROJECT_TEMP_ROOT = 'a_template/projectTemp'
+import axios from '@/ajax'
+
+/** projectTemp 项目根目录绝对路径 */
+export const PROJECT_TEMP_DIR = 'C:/pro_self/projectTemp'
+
+/** 文本预览最大字节数，超出则拒绝加载避免 Monaco 卡死 */
+const MAX_PREVIEW_BYTES = 512 * 1024
 
 /** 不支持文本预览的二进制文件后缀 */
 const BINARY_FILE_EXTENSIONS = new Set([
@@ -28,22 +33,22 @@ export interface FileTreeNode {
   children?: FileTreeNode[]
 }
 
-/** 通过 Vite 预加载 projectTemp 目录下的文本文件内容 */
-const rawFileModules = import.meta.glob('../../a_template/projectTemp/**/*', {
-  eager: true,
-  query: '?raw',
-  import: 'default',
-}) as Record<string, string>
+/** 接口返回的文件项 */
+export interface ProjectTempFileItem {
+  /** 文件绝对路径 */
+  path: string
+  /** 文件名 */
+  name: string
+  /** 相对 projectTemp 根目录的路径 */
+  relativePath: string
+}
 
 /**
- * 从 glob 路径中提取相对路径
- * @param modulePath Vite glob 返回的模块路径
+ * 将 Windows 路径分隔符统一为 /
+ * @param relativePath 相对路径
  */
-function toRelativePath(modulePath: string): string {
-  const marker = '../a_template/projectTemp/'
-  const index = modulePath.indexOf(marker)
-  if (index === -1) return modulePath
-  return modulePath.slice(index + marker.length)
+export function normalizeRelativePath(relativePath: string): string {
+  return relativePath.replace(/\\/g, '/')
 }
 
 /**
@@ -110,8 +115,61 @@ function sortTreeNodes(nodes: FileTreeNode[]) {
   })
 }
 
-/** projectTemp 文件树 */
-export const projectTempFileTree: FileTreeNode = (() => {
+/**
+ * 获取 projectTemp 文件列表
+ */
+export async function fetchProjectTempFileList(): Promise<ProjectTempFileItem[]> {
+  const list = (await axios.get('files', {
+    params: { dir: PROJECT_TEMP_DIR },
+  })) as ProjectTempFileItem[]
+  return list.map((item) => ({
+    ...item,
+    relativePath: normalizeRelativePath(item.relativePath),
+  }))
+}
+
+/**
+ * 获取指定文件内容
+ * @param relativePath 相对 projectTemp 根目录的路径
+ */
+export async function fetchProjectTempFileContent(relativePath: string): Promise<string> {
+  const content = (await axios.get('file/content', {
+    params: { dir: PROJECT_TEMP_DIR, path: relativePath },
+  })) as string
+
+  if (typeof content !== 'string') {
+    throw new Error('文件内容格式异常')
+  }
+
+  // 过大文件会导致 Monaco 阻塞主线程，直接拒绝预览
+  if (content.length > MAX_PREVIEW_BYTES) {
+    throw new Error('文件过大，暂不支持预览')
+  }
+
+  return content
+}
+
+/**
+ * 保存指定文件内容
+ * @param relativePath 相对 projectTemp 根目录的路径
+ * @param content 修改后的文件内容
+ */
+export async function saveProjectTempFileContent(
+  relativePath: string,
+  content: string,
+): Promise<void> {
+  await axios.post('file/write', {
+    dir: PROJECT_TEMP_DIR,
+    path: relativePath,
+    content,
+  })
+}
+
+/**
+ * 从文件列表构建文件树
+ * @param files 文件列表
+ */
+export function buildProjectTempFileTree(files: ProjectTempFileItem[]): FileTreeNode {
   const root: FileTreeNode = {
     name: 'projectTemp',
     path: '',
@@ -119,8 +177,8 @@ export const projectTempFileTree: FileTreeNode = (() => {
     children: [],
   }
 
-  Object.keys(rawFileModules).forEach((modulePath) => {
-    const relativePath = toRelativePath(modulePath)
+  files.forEach((file) => {
+    const relativePath = normalizeRelativePath(file.relativePath)
     const extension = relativePath.slice(relativePath.lastIndexOf('.')).toLowerCase()
     if (BINARY_FILE_EXTENSIONS.has(extension)) return
     insertPath(root, relativePath)
@@ -131,12 +189,12 @@ export const projectTempFileTree: FileTreeNode = (() => {
   }
 
   return root
-})()
+}
 
-/** 文件路径到内容的映射 */
-export const projectTempFileContents: Record<string, string> = Object.fromEntries(
-  Object.entries(rawFileModules).map(([modulePath, content]) => [
-    toRelativePath(modulePath),
-    content,
-  ]),
-)
+/**
+ * 加载 projectTemp 文件树
+ */
+export async function loadProjectTempFileTree(): Promise<FileTreeNode> {
+  const files = await fetchProjectTempFileList()
+  return buildProjectTempFileTree(files)
+}
