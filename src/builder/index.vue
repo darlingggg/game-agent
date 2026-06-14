@@ -9,6 +9,7 @@ import ConfigPanel from './config/ConfigPanel.vue'
 import FilePanel from './file/FilePanel.vue'
 import LogPanel from './log/LogPanel.vue'
 import PreviewPanel from './preview/PreviewPanel.vue'
+import SessionPanel from './session/SessionPanel.vue'
 
 defineOptions({
   name: 'BuilderIndex',
@@ -138,7 +139,9 @@ onUnmounted(() => {
   <div v-if="projectLoading" class="builder-status">正在加载项目...</div>
   <div v-else-if="projectError" class="builder-status builder-status--error">{{ projectError }}</div>
   <div v-else-if="projectReady" class="container">
-    <section class="left">left</section>
+    <section class="left">
+      <SessionPanel />
+    </section>
     <main class="main">
       <div class="main-tab">
         <div
@@ -191,7 +194,7 @@ onUnmounted(() => {
 .left {
   flex: 1;
   height: 100%;
-  background-color: #fbfcff;
+  min-width: 0;
   border-right: 1px solid #e5e5e5;
 }
 .main {

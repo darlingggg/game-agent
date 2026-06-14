@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import ChatMessageItem, { type ChatMessage } from './ChatMessageItem.vue'
+import ChatMessageItem from './ChatMessageItem.vue'
+import type { ChatMessage } from './types'
 import { mockChatSseStream } from './mockChatSse'
 
 defineOptions({

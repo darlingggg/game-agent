@@ -306,7 +306,7 @@ onUnmounted(() => {
 
         <div class="main-search">
           <el-input v-model="searchInput" class="main-search-input" placeholder="搜索项目" :prefix-icon="Search" clearable @input="handleSearchInput" />
-          <el-button type="warning" @click="handleResetSearch">重置</el-button>
+          <el-button type="warning" dashed @click="handleResetSearch">重置</el-button>
         </div>
 
         <div v-loading="listLoading" class="project-grid">
@@ -531,7 +531,7 @@ onUnmounted(() => {
   padding: 1.25rem;
   background-color: #fff;
   border: 1px solid #e8ebf0;
-  border-radius: 0.75rem;
+  border-radius: 0.35rem;
   box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1);
 }
 
