@@ -186,3 +186,18 @@ export async function syncPreviewFile(relativePath: string, content: string): Pr
   const webPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`
   await webcontainerInstance.fs.writeFile(webPath, content)
 }
+
+/**
+ * 刷新 WebContainer 预览：重新挂载 projectTemp 文件并等待 Vite 热更新
+ * @param onStatus 状态回调
+ */
+export async function refreshProjectTempPreview(onStatus?: (status: string) => void): Promise<void> {
+  if (!webcontainerInstance || !cachedPreviewUrl) {
+    await startProjectTempPreview(onStatus)
+    return
+  }
+
+  onStatus?.('正在刷新预览...')
+  await webcontainerInstance.mount(await buildProjectTempFileTree())
+  onStatus?.('')
+}

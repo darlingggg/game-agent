@@ -1,8 +1,7 @@
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
-
-/** 本地存储 token 的键名 */
-export const TOKEN_KEY = 'token'
+import { pinia } from '@/stores'
+import { TOKEN_KEY, useAuthStore } from '@/stores/auth'
 
 /** 接口成功状态码 */
 const SUCCESS_CODES = [0, 200]
@@ -31,7 +30,7 @@ export interface StatusApiResponse<T = unknown> {
  * 获取本地 token
  */
 export function getToken(): string {
-  return localStorage.getItem(TOKEN_KEY) ?? ''
+  return useAuthStore(pinia).token
 }
 
 /**
@@ -39,15 +38,17 @@ export function getToken(): string {
  * @param token 登录凭证
  */
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token)
+  useAuthStore(pinia).setToken(token)
 }
 
 /**
  * 清除本地 token
  */
 export function removeToken(): void {
-  localStorage.removeItem(TOKEN_KEY)
+  useAuthStore(pinia).clearToken()
 }
+
+export { TOKEN_KEY }
 
 /**
  * 判断是否为 code 格式的统一接口响应

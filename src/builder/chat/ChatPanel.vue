@@ -140,9 +140,10 @@ async function handleSend() {
  * @param event 键盘事件
  */
 function handleInputKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  event.preventDefault()
-  void handleSend()
+  if (event.key === 'Enter' && event.ctrlKey) {
+    event.preventDefault()
+    void handleSend()
+  }
 }
 
 /**
@@ -168,8 +169,8 @@ function handleActionClick() {
       <textarea
         v-model="inputText"
         class="chat-panel-input"
-        placeholder="输入消息，Enter 发送，Shift+Enter 换行"
-        rows="3"
+        placeholder="输入消息，Enter 换行， Ctrl+Enter 发送"
+        rows="5"
         :disabled="isStreaming"
         @keydown="handleInputKeydown"
       />
@@ -228,7 +229,7 @@ function handleActionClick() {
   flex-shrink: 0;
   border-top: 1px solid #e5e5e5;
   background-color: #fcfcfd;
-  padding: 0.75rem 1rem 1rem;
+  padding: 0.75rem 1rem;
 }
 
 .chat-panel-input {
@@ -244,6 +245,17 @@ function handleActionClick() {
   outline: none;
   transition: border-color 0.2s ease;
   font-family: auto;
+}
+
+.chat-panel-input {
+  overflow: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Chrome/Safari/Opera */
+.chat-panel-input::-webkit-scrollbar {
+  display: none;
 }
 
 .chat-panel-input:focus {

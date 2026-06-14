@@ -1,0 +1,20 @@
+:root {
+  /* Wiki 布局侧栏*/
+  --wiki-sidebar-bg: #001529;
+  --wiki-sidebar-active-bg: #1890ff;
+  --wiki-sidebar-text: rgba(255, 255, 255, 0.85);
+  --wiki-sidebar-subtitle: rgba(255, 255, 255, 0.65);
+
+  /* 主内容区浅灰底，与侧栏、白页头区分 */
+  --wiki-layout-main-bg: #f0f2f5;
+
+  /* 主色：炭黑 */
+  --el-color-primary: #1a1c1e;
+  --el-color-primary-rgb: 26, 28, 30;
+  --el-color-primary-light-3: #4a4d51;
+  --el-color-primary-light-5: #73767a;
+  --el-color-primary-light-7: #9c9fa2;
+  --el-color-primary-light-8: #b0b3b6;
+  --el-color-primary-light-9: #e8e9ea;
+  --el-color-primary-dark-2: #121416;
+}

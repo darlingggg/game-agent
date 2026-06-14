@@ -1,7 +1,12 @@
-import axios from '@/ajax'
+import {
+  getFileContent,
+  getFileList,
+  PROJECT_TEMP_DIR,
+  type ProjectTempFileItem,
+  writeFileContent,
+} from '@/http/file'
 
-/** projectTemp 项目根目录绝对路径 */
-export const PROJECT_TEMP_DIR = 'C:/pro_self/projectTemp'
+export { PROJECT_TEMP_DIR, type ProjectTempFileItem }
 
 /** 文本预览最大字节数，超出则拒绝加载避免 Monaco 卡死 */
 const MAX_PREVIEW_BYTES = 512 * 1024
@@ -31,16 +36,6 @@ export interface FileTreeNode {
   type: FileTreeNodeType
   /** 子节点，仅目录存在 */
   children?: FileTreeNode[]
-}
-
-/** 接口返回的文件项 */
-export interface ProjectTempFileItem {
-  /** 文件绝对路径 */
-  path: string
-  /** 文件名 */
-  name: string
-  /** 相对 projectTemp 根目录的路径 */
-  relativePath: string
 }
 
 /**
@@ -119,9 +114,7 @@ function sortTreeNodes(nodes: FileTreeNode[]) {
  * 获取 projectTemp 文件列表
  */
 export async function fetchProjectTempFileList(): Promise<ProjectTempFileItem[]> {
-  const list = (await axios.get('files', {
-    params: { dir: PROJECT_TEMP_DIR },
-  })) as ProjectTempFileItem[]
+  const list = await getFileList({ dir: PROJECT_TEMP_DIR })
   return list.map((item) => ({
     ...item,
     relativePath: normalizeRelativePath(item.relativePath),
@@ -133,9 +126,10 @@ export async function fetchProjectTempFileList(): Promise<ProjectTempFileItem[]>
  * @param relativePath 相对 projectTemp 根目录的路径
  */
 export async function fetchProjectTempFileContent(relativePath: string): Promise<string> {
-  const content = (await axios.get('file/content', {
-    params: { dir: PROJECT_TEMP_DIR, path: relativePath },
-  })) as string
+  const content = await getFileContent({
+    dir: PROJECT_TEMP_DIR,
+    path: relativePath,
+  })
 
   if (typeof content !== 'string') {
     throw new Error('文件内容格式异常')
@@ -158,7 +152,7 @@ export async function saveProjectTempFileContent(
   relativePath: string,
   content: string,
 ): Promise<void> {
-  await axios.post('file/write', {
+  await writeFileContent({
     dir: PROJECT_TEMP_DIR,
     path: relativePath,
     content,

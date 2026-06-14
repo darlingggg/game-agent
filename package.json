@@ -15,11 +15,14 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
     "@guolao/vue-monaco-editor": "^1.6.0",
     "@webcontainer/api": "^1.6.4",
     "axios": "^1.17.0",
     "element-plus": "^2.14.1",
     "monaco-editor": "^0.55.1",
+    "pinia": "^3.0.4",
+    "pinia-plugin-persistedstate": "^4.7.1",
     "vue": "^3.5.32",
     "vue-router": "^5.0.4"
   },
