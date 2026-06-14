@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { ElMessage } from 'element-plus'
 import { computed, nextTick, onMounted, onUnmounted, ref, type ComponentPublicInstance } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { getProjectList } from '@/http/project'
+import { useProjectStore } from '@/stores/project'
 import ChatPanel from './chat/ChatPanel.vue'
 import ConfigPanel from './config/ConfigPanel.vue'
 import FilePanel from './file/FilePanel.vue'
@@ -7,13 +11,17 @@ import LogPanel from './log/LogPanel.vue'
 import PreviewPanel from './preview/PreviewPanel.vue'
 
 defineOptions({
-  name: 'HomeIndex',
+  name: 'BuilderIndex',
 })
 
 interface TabItem {
   key: string
   label: string
 }
+
+const route = useRoute()
+const router = useRouter()
+const projectStore = useProjectStore()
 
 const tabs: TabItem[] = [
   { key: 'chat', label: '对话' },
@@ -33,6 +41,15 @@ const indicatorStyle = ref({
   width: '0px',
   transform: 'translateX(0px)',
 })
+
+/** 项目初始化中 */
+const projectLoading = ref(true)
+
+/** 项目初始化错误 */
+const projectError = ref('')
+
+/** 当前项目是否就绪 */
+const projectReady = computed(() => !projectLoading.value && !projectError.value && !!projectStore.currentProject)
 
 /**
  * 收集 Tab 元素引用
@@ -68,18 +85,59 @@ function switchTab(index: number) {
 /** 当前选中 Tab 的内容标识 */
 const activeTabKey = computed(() => tabs[activeTab.value]?.key ?? 'chat')
 
-onMounted(() => {
+/**
+ * 从地址栏 projectId 初始化当前项目
+ */
+async function initCurrentProject() {
+  const projectId = Number(route.query.projectId)
+  if (!projectId || Number.isNaN(projectId)) {
+    ElMessage.warning('缺少项目 ID')
+    await router.replace('/')
+    return
+  }
+
+  projectLoading.value = true
+  projectError.value = ''
+
+  try {
+    let project = projectStore.getProjectById(projectId)
+
+    if (!project) {
+      const list = await getProjectList()
+      projectStore.setProjectList(list)
+      project = projectStore.getProjectById(projectId)
+    }
+
+    if (!project) {
+      ElMessage.warning('项目不存在')
+      await router.replace('/')
+      return
+    }
+
+    projectStore.setCurrentProject(project)
+  } catch (error) {
+    projectError.value = error instanceof Error ? error.message : '项目信息加载失败'
+  } finally {
+    projectLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  await initCurrentProject()
   nextTick(updateIndicator)
   window.addEventListener('resize', updateIndicator)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateIndicator)
+  projectStore.setCurrentProject(null)
 })
 </script>
 
 <template>
-  <div class="container">
+  <div v-if="projectLoading" class="builder-status">正在加载项目...</div>
+  <div v-else-if="projectError" class="builder-status builder-status--error">{{ projectError }}</div>
+  <div v-else-if="projectReady" class="container">
     <section class="left">left</section>
     <main class="main">
       <div class="main-tab">
@@ -108,7 +166,21 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style>
+<style scoped>
+.builder-status {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  color: #73767a;
+}
+
+.builder-status--error {
+  color: #c0392b;
+}
+
 .container {
   width: 100%;
   height: 100vh;

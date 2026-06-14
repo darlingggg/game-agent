@@ -3,22 +3,18 @@ import { ElMessage } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useAppearanceStore } from '@/stores/appearance'
+import { useProjectStore } from '@/stores/project'
+import { saveProjectConfig } from '@/utils/projectConfig'
 import { syncPreviewFile } from '../preview/webcontainer'
-import {
-  fetchProjectTempFileContent,
-  saveProjectTempFileContent,
-} from '../file/projectTempFiles'
-import {
-  applyProjectHtmlConfig,
-  INDEX_HTML_PATH,
-  parseProjectHtmlConfig,
-} from './projectHtmlConfig'
+import { fetchProjectTempFileContent } from '../file/projectTempFiles'
+import { INDEX_HTML_PATH, parseProjectHtmlConfig } from './projectHtmlConfig'
 
 defineOptions({
   name: 'ConfigPanel',
 })
 
 const appearanceStore = useAppearanceStore()
+const projectStore = useProjectStore()
 const { theme, backgroundColor } = storeToRefs(appearanceStore)
 
 /** 项目信息表单 */
@@ -73,19 +69,30 @@ function clearBackgroundColor() {
 }
 
 /**
- * 保存项目信息到 index.html
+ * 保存项目信息：更新后端项目配置并同步 index.html
  */
 async function handleSaveProject() {
-  if (projectSaving.value) return
+  const project = projectStore.currentProject
+  if (!project || projectSaving.value) return
+
+  const title = projectForm.name.trim()
+  if (!title) {
+    ElMessage.warning('请输入项目名称')
+    return
+  }
 
   projectSaving.value = true
   try {
-    const html = await fetchProjectTempFileContent(INDEX_HTML_PATH)
-    const updatedHtml = applyProjectHtmlConfig(html, {
-      name: projectForm.name.trim(),
-      description: projectForm.description.trim(),
+    const updatedHtml = await saveProjectConfig({
+      id: project.id,
+      dirPath: project.dirPath,
+      title,
+      desc: projectForm.description,
     })
-    await saveProjectTempFileContent(INDEX_HTML_PATH, updatedHtml)
+    projectStore.patchProject(project.id, {
+      title,
+      desc: projectForm.description.trim(),
+    })
     await syncPreviewFile(INDEX_HTML_PATH, updatedHtml)
     ElMessage.success('项目信息保存成功')
   } catch (error) {
@@ -114,7 +121,7 @@ async function handleSaveProject() {
             v-model="projectForm.description"
             type="textarea"
             :rows="4"
-            placeholder="请输入项目描述"
+            placeholder="请输入项目描述（选填）"
             resize="none"
           />
         </el-form-item>

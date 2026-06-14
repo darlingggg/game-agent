@@ -1,12 +1,20 @@
 import {
   getFileContent,
   getFileList,
-  PROJECT_TEMP_DIR,
   type ProjectTempFileItem,
   writeFileContent,
 } from '@/http/file'
+import { pinia } from '@/stores'
+import { useProjectStore } from '@/stores/project'
 
-export { PROJECT_TEMP_DIR, type ProjectTempFileItem }
+export type { ProjectTempFileItem }
+
+/**
+ * 获取当前项目目录绝对路径
+ */
+function getProjectDirPath(): string {
+  return useProjectStore(pinia).requireProjectDirPath()
+}
 
 /** 文本预览最大字节数，超出则拒绝加载避免 Monaco 卡死 */
 const MAX_PREVIEW_BYTES = 512 * 1024
@@ -114,7 +122,7 @@ function sortTreeNodes(nodes: FileTreeNode[]) {
  * 获取 projectTemp 文件列表
  */
 export async function fetchProjectTempFileList(): Promise<ProjectTempFileItem[]> {
-  const list = await getFileList({ dir: PROJECT_TEMP_DIR })
+  const list = await getFileList({ dir: getProjectDirPath() })
   return list.map((item) => ({
     ...item,
     relativePath: normalizeRelativePath(item.relativePath),
@@ -127,7 +135,7 @@ export async function fetchProjectTempFileList(): Promise<ProjectTempFileItem[]>
  */
 export async function fetchProjectTempFileContent(relativePath: string): Promise<string> {
   const content = await getFileContent({
-    dir: PROJECT_TEMP_DIR,
+    dir: getProjectDirPath(),
     path: relativePath,
   })
 
@@ -153,7 +161,7 @@ export async function saveProjectTempFileContent(
   content: string,
 ): Promise<void> {
   await writeFileContent({
-    dir: PROJECT_TEMP_DIR,
+    dir: getProjectDirPath(),
     path: relativePath,
     content,
   })
@@ -163,9 +171,9 @@ export async function saveProjectTempFileContent(
  * 从文件列表构建文件树
  * @param files 文件列表
  */
-export function buildProjectTempFileTree(files: ProjectTempFileItem[]): FileTreeNode {
+export function buildProjectTempFileTree(files: ProjectTempFileItem[], rootName = 'project'): FileTreeNode {
   const root: FileTreeNode = {
-    name: 'projectTemp',
+    name: rootName,
     path: '',
     type: 'directory',
     children: [],
@@ -190,5 +198,6 @@ export function buildProjectTempFileTree(files: ProjectTempFileItem[]): FileTree
  */
 export async function loadProjectTempFileTree(): Promise<FileTreeNode> {
   const files = await fetchProjectTempFileList()
-  return buildProjectTempFileTree(files)
+  const rootName = useProjectStore(pinia).currentProject?.title ?? 'project'
+  return buildProjectTempFileTree(files, rootName)
 }

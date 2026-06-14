@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { onMounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { useProjectStore } from '@/stores/project'
 import { syncPreviewFile } from '../preview/webcontainer'
 import FileEditor from './FileEditor.vue'
 import FileTreeBranch from './FileTreeBranch.vue'
@@ -14,6 +16,9 @@ import {
 defineOptions({
   name: 'FilePanel',
 })
+
+const projectStore = useProjectStore()
+const { currentProject } = storeToRefs(projectStore)
 
 /** 目录展开状态，key 为目录相对路径 */
 const expandedDirs = ref<Record<string, boolean>>({
@@ -46,18 +51,6 @@ const contentError = ref('')
 
 /** 文件保存中 */
 const saving = ref(false)
-
-onMounted(async () => {
-  treeLoading.value = true
-  treeError.value = ''
-  try {
-    fileTree.value = await loadProjectTempFileTree()
-  } catch (error) {
-    treeError.value = error instanceof Error ? error.message : '文件列表加载失败'
-  } finally {
-    treeLoading.value = false
-  }
-})
 
 /** 切换文件时异步拉取文件内容，取消过期的请求结果 */
 watch(selectedFilePath, async (filePath, _, onCleanup) => {
@@ -124,12 +117,43 @@ async function handleSave() {
     saving.value = false
   }
 }
+
+/**
+ * 拦截 Ctrl+S / Cmd+S，调用保存而非浏览器原生保存
+ * @param event 键盘事件
+ */
+function handleSaveShortcut(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') {
+    return
+  }
+
+  event.preventDefault()
+  void handleSave()
+}
+
+onMounted(async () => {
+  window.addEventListener('keydown', handleSaveShortcut, true)
+
+  treeLoading.value = true
+  treeError.value = ''
+  try {
+    fileTree.value = await loadProjectTempFileTree()
+  } catch (error) {
+    treeError.value = error instanceof Error ? error.message : '文件列表加载失败'
+  } finally {
+    treeLoading.value = false
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleSaveShortcut, true)
+})
 </script>
 
 <template>
   <div class="file-panel">
     <aside class="file-panel-tree">
-      <div class="file-panel-tree-title">projectTemp</div>
+      <div class="file-panel-tree-title">{{ currentProject?.title ?? '项目文件' }}</div>
       <div v-if="treeLoading" class="file-panel-tree-status">正在加载文件列表...</div>
       <div
         v-else-if="treeError && !fileTree"
