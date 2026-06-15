@@ -18,18 +18,24 @@ const isUser = computed(() => props.message.role === 'user')
 
 /** 当前消息头像 SVG */
 const avatarSvg = computed(() => (isUser.value ? USER_AVATAR_SVG : AI_AVATAR_SVG))
+
+/** 悬浮时展示的时间文案 */
+const displayTime = computed(() => {
+  if (!props.message.createdAt) return ''
+  const date = new Date(props.message.createdAt)
+  if (Number.isNaN(date.getTime())) return props.message.createdAt
+  return date.toLocaleString('zh-CN', { hour12: false })
+})
 </script>
 
 <template>
-  <div
-    class="chat-message"
-    :class="{ 'chat-message--user': isUser, 'chat-message--assistant': !isUser }"
-  >
+  <div class="chat-message" :class="{ 'chat-message--user': isUser, 'chat-message--assistant': !isUser }">
     <div v-if="!isUser" class="chat-message-avatar" v-html="avatarSvg" />
     <div class="chat-message-body">
       <div class="chat-message-bubble">
         <span>{{ message.content }}</span>
         <span v-if="message.streaming && message.content" class="chat-message-cursor" />
+        <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime }}</span>
       </div>
     </div>
     <div v-if="isUser" class="chat-message-avatar" v-html="avatarSvg" />
@@ -83,6 +89,7 @@ const avatarSvg = computed(() => (isUser.value ? USER_AVATAR_SVG : AI_AVATAR_SVG
 }
 
 .chat-message-bubble {
+  position: relative;
   padding: 0.625rem 0.875rem;
   border-radius: 0.75rem;
   font-size: 0.875rem;
@@ -92,15 +99,35 @@ const avatarSvg = computed(() => (isUser.value ? USER_AVATAR_SVG : AI_AVATAR_SVG
 }
 
 .chat-message--user .chat-message-bubble {
-  background-color: #2463dc;
-  color: #fff;
+  background-color: #f5f5f5;
+  color: #000000e6;
   border-top-right-radius: 0.25rem;
 }
 
 .chat-message--assistant .chat-message-bubble {
-  background-color: #f3f4f6;
-  color: #111827;
+  color: #000000e6;
+  border: 1px solid #e5e7eb;
   border-top-left-radius: 0.25rem;
+}
+
+.chat-message-time {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  transform: translateY(100%);
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  color: #575757;
+  font-size: 0.6rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.chat-message-bubble:hover .chat-message-time {
+  opacity: 1;
 }
 
 .chat-message-cursor {

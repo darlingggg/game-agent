@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { nextTick, ref, watch } from 'vue'
+import { createSession, getSessionList, type sessionItem } from '@/http/session'
+import { useProjectStore } from '@/stores/project'
+import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
 import type { ChatMessage } from './types'
 import { mockChatSseStream } from './mockChatSse'
@@ -8,8 +12,14 @@ defineOptions({
   name: 'ChatPanel',
 })
 
+const projectStore = useProjectStore()
+const sessionContext = useSessionContext()
+
 /** 消息列表 */
 const messages = ref<ChatMessage[]>([])
+
+/** 消息加载中 */
+const messagesLoading = ref(false)
 
 /** 输入框内容 */
 const inputText = ref('')
@@ -26,15 +36,127 @@ let abortController: AbortController | null = null
 /** 当前流式回复中的 AI 消息 id */
 let streamingAssistantId: string | null = null
 
-/** 消息 id 自增计数 */
+/** 消息 id 自增计数（本地临时消息） */
 let messageIdSeed = 0
+
+/** 当前项目 ID */
+const projectId = () => projectStore.currentProject?.id ?? 0
+
+/**
+ * 获取会话去重键（与 SessionPanel 保持一致）
+ * @param item 会话项
+ */
+function getSessionKey(item: sessionItem) {
+  return item.title.trim() || item.content?.trim() || String(item.id)
+}
+
+/**
+ * 将接口数据转为聊天消息
+ * @param item 会话项
+ */
+function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
+  const content = item.content?.trim()
+  if (!content) return null
+
+  return {
+    id: String(item.messageId ?? `${item.id}-${item.createdAt}`),
+    role: item.role === 'user' ? 'user' : 'assistant',
+    content,
+    createdAt: item.createdAt,
+  }
+}
+
+/**
+ * 从列表中筛选当前会话的消息
+ * @param list 接口返回列表
+ * @param sessionId 当前会话 id
+ */
+function pickSessionMessages(list: sessionItem[], sessionId: number) {
+  const target = list.find((item) => item.id === sessionId)
+  if (!target) return []
+
+  const sessionKey = getSessionKey(target)
+  return list.filter((item) => getSessionKey(item) === sessionKey || item.id === sessionId)
+}
+
+/**
+ * 加载当前会话的历史消息
+ */
+async function loadSessionMessages() {
+  if (sessionContext.isPendingNewSession.value) {
+    stopStreaming()
+    messages.value = []
+    inputText.value = ''
+    return
+  }
+
+  const sessionId = sessionContext.activeSessionId.value
+  if (!sessionId || sessionId === PENDING_SESSION_ID) {
+    stopStreaming()
+    messages.value = []
+    return
+  }
+
+  const currentProjectId = projectId()
+  if (!currentProjectId) return
+
+  messagesLoading.value = true
+  try {
+    const list = await getSessionList({ projectId: currentProjectId })
+    const sessionMessages = pickSessionMessages(list, sessionId)
+      .map(mapSessionItemToMessage)
+      .filter((item): item is ChatMessage => !!item)
+      .sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime())
+
+    messages.value = sessionMessages
+    await scrollToBottom()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '消息加载失败')
+  } finally {
+    messagesLoading.value = false
+  }
+}
+
+/** 切换会话时加载历史消息 */
+watch(
+  () => [sessionContext.activeSessionId.value, sessionContext.isPendingNewSession.value] as const,
+  () => {
+    void loadSessionMessages()
+  },
+  { immediate: true },
+)
+
+/**
+ * 首条消息时创建会话（不传 title）
+ * @param text 用户首条消息
+ */
+async function createSessionOnFirstMessage(text: string) {
+  const currentProjectId = projectId()
+  if (!currentProjectId) {
+    throw new Error('项目未就绪')
+  }
+
+  const result = await createSession({
+    projectId: currentProjectId,
+    role: 'user',
+    content: text,
+  })
+
+  sessionContext.isPendingNewSession.value = false
+  sessionContext.activeSessionId.value = result.id
+  sessionContext.lastCreatedSession.value = {
+    id: result.id,
+    content: result.content,
+    firstMessage: text,
+  }
+}
 
 /**
  * 生成唯一消息 id
  */
 function createMessageId(): string {
   messageIdSeed += 1
-  return `msg-${messageIdSeed}`
+  return `local-${messageIdSeed}`
 }
 
 /**
@@ -87,11 +209,25 @@ async function handleSend() {
   const text = inputText.value.trim()
   if (!text || isStreaming.value) return
 
-  messages.value.push({
-    id: createMessageId(),
-    role: 'user',
-    content: text,
-  })
+  const isPending = sessionContext.isPendingNewSession.value
+
+  try {
+    if (isPending) {
+      await createSessionOnFirstMessage(text)
+      await loadSessionMessages()
+    } else {
+      messages.value.push({
+        id: createMessageId(),
+        role: 'user',
+        content: text,
+        createdAt: new Date().toISOString(),
+      })
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '会话创建失败')
+    return
+  }
+
   inputText.value = ''
   await scrollToBottom()
 
@@ -101,6 +237,7 @@ async function handleSend() {
     role: 'assistant',
     content: '',
     streaming: true,
+    createdAt: new Date().toISOString(),
   })
   streamingAssistantId = assistantId
   await scrollToBottom()
@@ -161,27 +298,14 @@ function handleActionClick() {
 
 <template>
   <div class="chat-panel">
-    <div ref="messagesRef" class="chat-panel-messages">
-      <div v-if="messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
+    <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages">
+      <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
       <ChatMessageItem v-for="message in messages" :key="message.id" :message="message" />
     </div>
 
     <div class="chat-panel-input-area">
-      <textarea
-        v-model="inputText"
-        class="chat-panel-input"
-        placeholder="输入消息，Enter 换行， Ctrl+Enter 发送"
-        rows="5"
-        :disabled="isStreaming"
-        @keydown="handleInputKeydown"
-      />
-      <button
-        type="button"
-        class="chat-panel-action-btn"
-        :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-        :title="isStreaming ? '终止' : '发送'"
-        @click="handleActionClick"
-      >
+      <textarea v-model="inputText" class="chat-panel-input" placeholder="输入消息，Enter 换行， Ctrl+Enter 发送" rows="5" :disabled="isStreaming" @keydown="handleInputKeydown" />
+      <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }" :title="isStreaming ? '终止' : '发送'" @click="handleActionClick">
         <!-- 发送图标 -->
         <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />

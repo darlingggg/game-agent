@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, nextTick, onMounted, onUnmounted, ref, type ComponentPublicInstance } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, type ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getProjectList } from '@/http/project'
 import { useProjectStore } from '@/stores/project'
@@ -10,6 +10,7 @@ import FilePanel from './file/FilePanel.vue'
 import LogPanel from './log/LogPanel.vue'
 import PreviewPanel from './preview/PreviewPanel.vue'
 import SessionPanel from './session/SessionPanel.vue'
+import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
 
 defineOptions({
   name: 'BuilderIndex',
@@ -23,6 +24,50 @@ interface TabItem {
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
+
+/** 当前激活会话 id */
+const activeSessionId = ref<number | null>(null)
+
+/** 是否处于待创建新会话状态 */
+const isPendingNewSession = ref(false)
+
+/** 聊天区重置信号 */
+const chatResetSignal = ref(0)
+
+/** 首条消息创建会话完成通知 */
+const lastCreatedSession = ref<CreatedSessionPayload | null>(null)
+
+/**
+ * 开始新建会话，等待用户发送首条消息后再调用接口
+ */
+function startNewSession() {
+  if (isPendingNewSession.value) return
+  isPendingNewSession.value = true
+  activeSessionId.value = PENDING_SESSION_ID
+  chatResetSignal.value++
+}
+
+/**
+ * 切换会话
+ * @param sessionId 会话 id
+ * @param resetChat 是否重置聊天区
+ */
+function selectSession(sessionId: number, resetChat = true) {
+  isPendingNewSession.value = false
+  activeSessionId.value = sessionId
+  if (resetChat) {
+    chatResetSignal.value++
+  }
+}
+
+provide(sessionContextKey, {
+  activeSessionId,
+  isPendingNewSession,
+  chatResetSignal,
+  lastCreatedSession,
+  startNewSession,
+  selectSession,
+})
 
 const tabs: TabItem[] = [
   { key: 'chat', label: '对话' },
@@ -189,7 +234,6 @@ onUnmounted(() => {
   height: 100vh;
   overflow: hidden;
   display: flex;
-  padding: 0 1rem;
 }
 .left {
   flex: 1;

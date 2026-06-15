@@ -100,13 +100,7 @@ async function handleRefresh() {
           aria-label="刷新预览"
           @click="handleRefresh"
         >
-          <svg
-            class="preview-toolbar-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
+          <svg class="preview-toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path
               d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 9.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"
               fill="currentColor"
@@ -123,12 +117,7 @@ async function handleRefresh() {
             <header class="preview-app-header">
               <h3 class="preview-app-title">{{ projectTitle }}</h3>
             </header>
-            <iframe
-              :key="iframeKey"
-              class="preview-iframe"
-              :src="previewUrl"
-              title="项目预览"
-            />
+            <iframe :key="iframeKey" class="preview-iframe" :src="previewUrl" title="项目预览" />
           </template>
           <div v-else-if="errorText" class="preview-placeholder preview-placeholder--error">
             {{ errorText }}
@@ -227,8 +216,7 @@ async function handleRefresh() {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 1.5rem 0;
-  padding-left: 1rem;
+  padding: 1.5rem 1rem;
 }
 
 .phone-frame {

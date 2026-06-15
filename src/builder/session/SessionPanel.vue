@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { MoreFilled, Search, Sort } from '@element-plus/icons-vue'
-import { computed, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Delete, Edit, Search, Sort } from '@element-plus/icons-vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { deleteSession, getSessionList, updateSession, type sessionItem } from '@/http/session'
+import { getUserInfo } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
-import { MOCK_NICKNAME, MOCK_SESSION_LIST, SESSION_EMPTY_PREVIEW, type SessionListItem } from './mockSessions'
+import { SESSION_EMPTY_PREVIEW } from './constants'
+import { useSessionContext } from './sessionContext'
 
 defineOptions({
   name: 'SessionPanel',
@@ -11,18 +15,37 @@ defineOptions({
 
 const router = useRouter()
 const projectStore = useProjectStore()
+const sessionContext = useSessionContext()
 
-/** 静态用户昵称 */
-const nickName = MOCK_NICKNAME
+/** 用户昵称 */
+const nickName = ref('')
 
-/** 静态会话列表 */
-const sessions = ref<SessionListItem[]>([...MOCK_SESSION_LIST])
+/** 会话列表 */
+const sessions = ref<sessionItem[]>([])
 
-/** 当前选中的会话 id */
-const activeSessionId = ref(MOCK_SESSION_LIST[0]?.id ?? '')
+/** 搜索框输入值 */
+const searchInput = ref('')
 
-/** 会话搜索关键词 */
+/** 防抖后的搜索关键词 */
 const searchKeyword = ref('')
+
+/** 搜索防抖定时器 */
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 搜索防抖延迟（毫秒） */
+const SEARCH_DEBOUNCE_MS = 300
+
+/** 列表加载中 */
+const listLoading = ref(false)
+
+/** 当前项目 ID */
+const projectId = computed(() => projectStore.currentProject?.id ?? 0)
+
+/** 当前激活会话 id */
+const activeSessionId = computed(() => sessionContext.activeSessionId.value)
+
+/** 是否处于待创建新会话状态 */
+const isPendingNewSession = computed(() => sessionContext.isPendingNewSession.value)
 
 /** 当前项目标题 */
 const projectTitle = computed(() => projectStore.currentProject?.title ?? '项目名称')
@@ -33,46 +56,265 @@ const projectDesc = computed(() => {
   return desc || '暂无描述'
 })
 
-/** 搜索过滤后的会话列表 */
-const filteredSessions = computed(() => {
-  const keyword = searchKeyword.value.trim().toLowerCase()
-  if (!keyword) return sessions.value
-
-  return sessions.value.filter((session) => {
-    const title = getSessionTitle(session).toLowerCase()
-    const preview = getSessionPreview(session).toLowerCase()
-    return title.includes(keyword) || preview.includes(keyword)
-  })
-})
-
 /**
  * 获取会话标题
  * @param session 会话项
  */
-function getSessionTitle(session: SessionListItem) {
-  return session.firstMessage.trim() || '新会话'
+function getSessionTitle(session: sessionItem) {
+  return session.title.trim() || session.content?.trim() || '新会话'
 }
 
 /**
  * 获取会话预览
  * @param session 会话项
  */
-function getSessionPreview(session: SessionListItem) {
-  return session.lastMessage.trim() || SESSION_EMPTY_PREVIEW
+function getSessionPreview(session: sessionItem) {
+  return session.content?.trim() || SESSION_EMPTY_PREVIEW
 }
 
 /**
- * 切换会话（静态：仅更新选中态）
+ * 格式化会话时间（HH:mm）
+ * @param value 接口返回的时间字符串
+ */
+function formatSessionTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+/**
+ * 搜索输入防抖处理
+ */
+function handleSearchInput() {
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer)
+  }
+
+  searchDebounceTimer = setTimeout(() => {
+    searchKeyword.value = searchInput.value
+  }, SEARCH_DEBOUNCE_MS)
+}
+
+/**
+ * 获取 filterMap 去重键
+ * @param session 会话项
+ */
+function getFilterMapKey(session: sessionItem) {
+  return session.title.trim() || session.content?.trim() || String(session.id)
+}
+
+/**
+ * 加载会话列表
+ */
+const filterMap = new Map<string, number>()
+async function fetchSessionList() {
+  if (!projectId.value) return
+  listLoading.value = true
+  try {
+    const title = searchKeyword.value.trim()
+    const list = await getSessionList({
+      projectId: projectId.value,
+      title: title || undefined,
+    })
+    for (const item of list) {
+      const mapKey = getFilterMapKey(item)
+      if (filterMap.has(mapKey)) continue
+      filterMap.set(mapKey, item.id)
+      sessions.value.push(item)
+    }
+
+    if (list.length === 0 && !isPendingNewSession.value) {
+      sessionContext.activeSessionId.value = null
+      return
+    }
+
+    const activeExists = list.some((item) => item.id === activeSessionId.value)
+    if (!activeExists && !isPendingNewSession.value && list.length > 0) {
+      sessionContext.selectSession(list[0]!.id, false)
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '会话列表加载失败')
+  } finally {
+    listLoading.value = false
+  }
+}
+
+/**
+ * 将首条消息创建成功的会话加入列表
+ * @param payload 创建结果
+ */
+function addCreatedSession(payload: { id: number; content: string; firstMessage: string }) {
+  const newSession: sessionItem = {
+    id: payload.id,
+    projectId: projectId.value,
+    title: '',
+    account: nickName.value,
+    role: 'user',
+    content: payload.firstMessage,
+    createdAt: new Date().toISOString(),
+  }
+
+  const mapKey = getFilterMapKey(newSession)
+  if (!filterMap.has(mapKey)) {
+    filterMap.set(mapKey, payload.id)
+    sessions.value.unshift(newSession)
+  }
+}
+
+/**
+ * 新建会话：进入待创建状态，等用户发送首条消息后再调接口
+ */
+function handleCreateSession() {
+  if (!projectId.value || isPendingNewSession.value) return
+  sessionContext.startNewSession()
+}
+
+/**
+ * 切换会话
  * @param sessionId 会话 ID
  */
-function handleSelectSession(sessionId: string) {
-  activeSessionId.value = sessionId
+function handleSelectSession(sessionId: number) {
+  sessionContext.selectSession(sessionId)
+}
+
+/**
+ * 从 filterMap 中移除指定标题
+ * @param title 会话标题
+ */
+function removeFromFilterMap(title: string) {
+  filterMap.delete(title.trim())
+}
+
+/**
+ * 从本地列表移除会话并更新选中态
+ * @param sessionId 会话 ID
+ */
+function removeSessionLocally(sessionId: number) {
+  sessions.value = sessions.value.filter((item) => item.id !== sessionId)
+
+  if (activeSessionId.value === sessionId) {
+    const nextId = sessions.value[0]?.id ?? null
+    if (nextId) {
+      sessionContext.selectSession(nextId)
+    } else {
+      sessionContext.isPendingNewSession.value = false
+      sessionContext.activeSessionId.value = null
+      sessionContext.chatResetSignal.value++
+    }
+  }
+}
+
+/**
+ * 删除会话
+ * @param session 会话项
+ */
+async function handleDeleteSession(session: sessionItem) {
+  if (!projectId.value) return
+
+  try {
+    await ElMessageBox.confirm('确定要删除该会话吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+
+    await deleteSession({
+      projectId: projectId.value,
+      title: session.title,
+    })
+
+    removeFromFilterMap(session.title)
+    removeSessionLocally(session.id)
+    ElMessage.success('会话删除成功')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error instanceof Error ? error.message : '会话删除失败')
+  }
+}
+
+/**
+ * 修改会话标题
+ * @param session 会话项
+ */
+async function handleRenameSession(session: sessionItem) {
+  if (!projectId.value) return
+
+  try {
+    const { value } = await ElMessageBox.prompt('请输入会话标题', '修改标题', {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputValue: session.title,
+      inputPlaceholder: '请输入会话标题',
+      inputValidator: (val) => !!val.trim() || '标题不能为空',
+    })
+
+    const newTitle = value.trim()
+    if (newTitle === session.title) return
+
+    await updateSession({
+      oldTitle: session.title,
+      title: newTitle,
+      projectId: String(projectId.value),
+    })
+
+    removeFromFilterMap(session.title)
+    filterMap.set(newTitle, session.id)
+
+    const target = sessions.value.find((item) => item.id === session.id)
+    if (target) {
+      target.title = newTitle
+    }
+
+    ElMessage.success('标题修改成功')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error instanceof Error ? error.message : '标题修改失败')
+  }
 }
 
 /** 返回首页切换项目 */
 function handleSwitchProject() {
   router.push('/')
 }
+
+watch(searchKeyword, () => {
+  void fetchSessionList()
+})
+
+watch(
+  () => sessionContext.lastCreatedSession.value,
+  (payload) => {
+    if (!payload) return
+    addCreatedSession(payload)
+    sessionContext.lastCreatedSession.value = null
+  },
+)
+
+watch(projectId, (id) => {
+  if (id) {
+    void fetchSessionList()
+  }
+})
+
+onMounted(async () => {
+  try {
+    const res = await getUserInfo()
+    nickName.value = res.nickname
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '用户信息加载失败')
+  }
+
+  if (projectId.value) {
+    await fetchSessionList()
+  }
+})
+
+onUnmounted(() => {
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer)
+  }
+  filterMap.clear()
+})
 </script>
 
 <template>
@@ -92,14 +334,23 @@ function handleSwitchProject() {
     <section class="session-section">
       <div class="session-section-header">
         <span class="session-section-label">会话</span>
-        <button type="button" class="session-create-btn" disabled>+ 新建会话</button>
+        <button type="button" class="session-create-btn" :disabled="isPendingNewSession || !projectId" @click="handleCreateSession">+ 新建会话</button>
       </div>
 
-      <el-input v-model="searchKeyword" class="session-search" placeholder="搜索会话" :prefix-icon="Search" clearable />
+      <el-input v-model="searchInput" class="session-search" placeholder="搜索会话" :prefix-icon="Search" clearable @input="handleSearchInput" />
 
-      <div class="session-list">
+      <div v-loading="listLoading" class="session-list">
+        <div v-if="isPendingNewSession" class="session-item session-item--active" @click="handleCreateSession">
+          <div class="session-item-row">
+            <span class="session-item-title">新会话</span>
+          </div>
+          <div class="session-item-row session-item-row--bottom">
+            <span class="session-item-preview">{{ SESSION_EMPTY_PREVIEW }}</span>
+          </div>
+        </div>
+
         <div
-          v-for="session in filteredSessions"
+          v-for="session in sessions"
           :key="session.id"
           class="session-item"
           :class="{ 'session-item--active': session.id === activeSessionId }"
@@ -107,15 +358,22 @@ function handleSwitchProject() {
         >
           <div class="session-item-row">
             <span class="session-item-title">{{ getSessionTitle(session) }}</span>
-            <span class="session-item-time">{{ session.time }}</span>
+            <span class="session-item-time">{{ formatSessionTime(session.createdAt) }}</span>
           </div>
           <div class="session-item-row session-item-row--bottom">
             <span class="session-item-preview">{{ getSessionPreview(session) }}</span>
-            <button type="button" class="session-item-more" @click.stop>
-              <el-icon><MoreFilled /></el-icon>
-            </button>
+            <div class="session-item-actions" @click.stop>
+              <button type="button" class="session-item-action" title="修改标题" @click.stop="handleRenameSession(session)">
+                <el-icon><Edit /></el-icon>
+              </button>
+              <button type="button" class="session-item-action session-item-action--delete" title="删除会话" @click.stop="handleDeleteSession(session)">
+                <el-icon><Delete /></el-icon>
+              </button>
+            </div>
           </div>
         </div>
+
+        <div v-if="!listLoading && !isPendingNewSession && sessions.length === 0" class="session-empty">暂无会话</div>
       </div>
     </section>
 
@@ -256,6 +514,16 @@ function handleSwitchProject() {
   gap: 0.375rem;
 }
 
+.session-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 4rem;
+  font-size: 0.8125rem;
+  color: #9ca3af;
+}
+
 .session-item {
   padding: 0.625rem 0.75rem;
   border-radius: 0.5rem;
@@ -315,8 +583,14 @@ function handleSwitchProject() {
   text-overflow: ellipsis;
 }
 
-.session-item-more {
+.session-item-actions {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.session-item-action {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -327,7 +601,19 @@ function handleSwitchProject() {
   border-radius: 0.25rem;
   background: none;
   color: #9ca3af;
-  cursor: default;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.session-item-action:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #2463dc;
+}
+
+.session-item-action--delete:hover {
+  color: #f11212;
 }
 
 .session-panel-footer {
@@ -431,12 +717,5 @@ function handleSwitchProject() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.user-bar-arrow {
-  width: 1rem;
-  height: 1rem;
-  color: #9ca3af;
-  flex-shrink: 0;
 }
 </style>

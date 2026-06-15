@@ -11,4 +11,6 @@ export interface ChatMessage {
   content: string
   /** 是否正在流式输出 */
   streaming?: boolean
+  /** 消息创建时间 */
+  createdAt?: string
 }

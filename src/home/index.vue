@@ -518,6 +518,7 @@ onUnmounted(() => {
 .card-edit:hover {
   color: #000;
 }
+
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
