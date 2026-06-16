@@ -6,7 +6,7 @@ import { useProjectStore } from '@/stores/project'
 import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
 import type { ChatMessage } from './types'
-import { mockChatSseStream } from './mockChatSse'
+import { chatWithAI } from '@/http/chat'
 
 defineOptions({
   name: 'ChatPanel',
@@ -42,6 +42,9 @@ let messageIdSeed = 0
 /** 当前项目 ID */
 const projectId = () => projectStore.currentProject?.id ?? 0
 
+/** 当前会话标题（同一会话下的消息共用，与后端 title 字段对应） */
+const sessionTitle = ref('')
+
 /**
  * 获取会话去重键（与 SessionPanel 保持一致）
  * @param item 会话项
@@ -55,15 +58,42 @@ function getSessionKey(item: sessionItem) {
  * @param item 会话项
  */
 function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
-  const content = item.content?.trim()
-  if (!content) return null
+  const role = item.role === 'user' ? 'user' : 'assistant'
 
-  return {
-    id: String(item.messageId ?? `${item.id}-${item.createdAt}`),
-    role: item.role === 'user' ? 'user' : 'assistant',
-    content,
-    createdAt: item.createdAt,
+  if (role === 'user') {
+    const content = item.content?.trim()
+    if (!content) return null
+
+    return {
+      id: String(item.id),
+      role: 'user',
+      content,
+      createdAt: item.createdAt,
+    }
   }
+
+  const content = item.content?.trim() ?? ''
+  if (content) {
+    return {
+      id: String(item.id),
+      role: 'assistant',
+      content,
+      createdAt: item.createdAt,
+    }
+  }
+
+  // assistant 正文存在 messages 表，列表里 content 为空，通过 messageId 懒加载
+  if (item.messageId) {
+    return {
+      id: String(item.id),
+      role: 'assistant',
+      content: '',
+      messageId: item.messageId,
+      createdAt: item.createdAt,
+    }
+  }
+
+  return null
 }
 
 /**
@@ -87,6 +117,7 @@ async function loadSessionMessages() {
     stopStreaming()
     messages.value = []
     inputText.value = ''
+    sessionTitle.value = ''
     return
   }
 
@@ -94,6 +125,7 @@ async function loadSessionMessages() {
   if (!sessionId || sessionId === PENDING_SESSION_ID) {
     stopStreaming()
     messages.value = []
+    sessionTitle.value = ''
     return
   }
 
@@ -103,6 +135,11 @@ async function loadSessionMessages() {
   messagesLoading.value = true
   try {
     const list = await getSessionList({ projectId: currentProjectId })
+    const target = list.find((item) => item.id === sessionId)
+    if (target) {
+      sessionTitle.value = getSessionKey(target)
+    }
+
     const sessionMessages = pickSessionMessages(list, sessionId)
       .map(mapSessionItemToMessage)
       .filter((item): item is ChatMessage => !!item)
@@ -127,7 +164,7 @@ watch(
 )
 
 /**
- * 首条消息时创建会话（不传 title）
+ * 首条消息时创建会话（不传 title，后端取 content 前 30 字作为 title）
  * @param text 用户首条消息
  */
 async function createSessionOnFirstMessage(text: string) {
@@ -135,6 +172,8 @@ async function createSessionOnFirstMessage(text: string) {
   if (!currentProjectId) {
     throw new Error('项目未就绪')
   }
+
+  sessionTitle.value = text.slice(0, 30)
 
   const result = await createSession({
     projectId: currentProjectId,
@@ -203,7 +242,61 @@ function stopStreaming() {
 }
 
 /**
- * 发送用户消息并模拟 SSE 回显
+ * 确保已解析当前会话 title
+ */
+async function ensureSessionTitle() {
+  if (sessionTitle.value) return sessionTitle.value
+
+  const sessionId = sessionContext.activeSessionId.value
+  const currentProjectId = projectId()
+  if (!sessionId || !currentProjectId) return ''
+
+  const list = await getSessionList({ projectId: currentProjectId })
+  const target = list.find((item) => item.id === sessionId)
+  if (target) {
+    sessionTitle.value = getSessionKey(target)
+  }
+  return sessionTitle.value
+}
+
+/**
+ * 上传消息到会话
+ * @param role 消息角色
+ * @param content 消息内容
+ */
+async function saveMessageToSession(role: 'user' | 'assistant', content: string) {
+  const currentProjectId = projectId()
+  const trimmed = content.trim()
+  if (!currentProjectId || !trimmed) return
+
+  const title = await ensureSessionTitle()
+  if (!title) return
+
+  await createSession({
+    projectId: currentProjectId,
+    role,
+    content: trimmed,
+    title,
+  })
+}
+
+/**
+ * 将 SSE 事件追加到 AI 消息
+ * @param assistantId AI 消息 id
+ * @param event SSE 事件
+ */
+function appendSseToMessage(assistantId: string, event: { event: string; data: string | null }) {
+  if (!event.data) return
+  if (event.event !== 'text' && event.event !== 'tool_start' && event.event !== 'tool_end') return
+
+  const assistantMessage = findMessageById(assistantId)
+  if (!assistantMessage) return
+  assistantMessage.content += event.data
+  void scrollToBottom()
+}
+
+/**
+ * 发送用户消息
  */
 async function handleSend() {
   const text = inputText.value.trim()
@@ -216,6 +309,7 @@ async function handleSend() {
       await createSessionOnFirstMessage(text)
       await loadSessionMessages()
     } else {
+      await saveMessageToSession('user', text)
       messages.value.push({
         id: createMessageId(),
         role: 'user',
@@ -240,20 +334,20 @@ async function handleSend() {
     createdAt: new Date().toISOString(),
   })
   streamingAssistantId = assistantId
-  await scrollToBottom()
-
   isStreaming.value = true
   abortController = new AbortController()
+  await scrollToBottom()
 
   try {
-    await mockChatSseStream({
-      text,
+    await chatWithAI({
+      prompt: text,
+      projectId: projectId(),
       signal: abortController.signal,
-      onChunk: (chunk) => {
-        const assistantMessage = findMessageById(assistantId)
-        if (!assistantMessage) return
-        assistantMessage.content += chunk
-        void scrollToBottom()
+      onEvent: (event) => {
+        if (event.event === 'error') {
+          throw new Error(event.data ?? 'AI 回复失败')
+        }
+        appendSseToMessage(assistantId, event)
       },
     })
   } catch (error) {
@@ -264,8 +358,17 @@ async function handleSend() {
     if (assistantMessage && !assistantMessage.content) {
       assistantMessage.content = '回复失败，请重试'
     }
+    ElMessage.error(error instanceof Error ? error.message : 'AI 回复失败')
   } finally {
     finishAssistantStreaming(assistantId)
+    const assistantMessage = findMessageById(assistantId)
+    if (assistantMessage?.content.trim() && assistantMessage.content !== '回复失败，请重试') {
+      try {
+        await saveMessageToSession('assistant', assistantMessage.content)
+      } catch (error) {
+        ElMessage.error(error instanceof Error ? error.message : 'AI 消息保存失败')
+      }
+    }
     streamingAssistantId = null
     abortController = null
     isStreaming.value = false

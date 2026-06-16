@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import { computed, ref } from 'vue'
+import { getAiReply } from '@/http/session'
 import { AI_AVATAR_SVG, USER_AVATAR_SVG } from './chatAvatars'
 import type { ChatMessage } from './types'
 
@@ -26,6 +28,43 @@ const displayTime = computed(() => {
   if (Number.isNaN(date.getTime())) return props.message.createdAt
   return date.toLocaleString('zh-CN', { hour12: false })
 })
+
+/** 流式输出中且尚无内容时展示 loading */
+const showLoading = computed(() => props.message.streaming && !props.message.content)
+
+/** 是否需要点击后懒加载 AI 回复 */
+const needsLazyLoad = computed(() => !isUser.value && !props.message.streaming && !props.message.content && !!props.message.messageId)
+
+/** Agent 回复折叠面板是否展开 */
+const replyExpanded = ref(false)
+
+/** 懒加载的 AI 回复正文 */
+const replyContent = ref('')
+
+/** 懒加载中 */
+const replyLoading = ref(false)
+
+/**
+ * 切换 Agent 回复折叠面板
+ */
+async function toggleReply() {
+  replyExpanded.value = !replyExpanded.value
+
+  if (!replyExpanded.value || replyContent.value || replyLoading.value || !props.message.messageId) {
+    return
+  }
+
+  replyLoading.value = true
+  try {
+    const result = await getAiReply({ id: props.message.messageId })
+    replyContent.value = result.content
+  } catch (error) {
+    replyExpanded.value = false
+    ElMessage.error(error instanceof Error ? error.message : 'AI 回复加载失败')
+  } finally {
+    replyLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -33,8 +72,23 @@ const displayTime = computed(() => {
     <div v-if="!isUser" class="chat-message-avatar" v-html="avatarSvg" />
     <div class="chat-message-body">
       <div class="chat-message-bubble">
-        <span>{{ message.content }}</span>
-        <span v-if="message.streaming && message.content" class="chat-message-cursor" />
+        <span v-if="showLoading" class="chat-message-loading" aria-label="加载中" />
+        <template v-else-if="needsLazyLoad">
+          <button type="button" class="chat-message-reply-toggle" @click="toggleReply">
+            <span>Agent 回复</span>
+            <svg class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <div v-show="replyExpanded" class="chat-message-reply-panel">
+            <span v-if="replyLoading" class="chat-message-loading" aria-label="加载中" />
+            <span v-else>{{ replyContent }}</span>
+          </div>
+        </template>
+        <template v-else>
+          <span>{{ message.content }}</span>
+          <span v-if="message.streaming && message.content" class="chat-message-cursor" />
+        </template>
         <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime }}</span>
       </div>
     </div>
@@ -108,6 +162,40 @@ const displayTime = computed(() => {
   color: #000000e6;
   border: 1px solid #e5e7eb;
   border-top-left-radius: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.chat-message-reply-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2463dc;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.chat-message-reply-arrow {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.chat-message-reply-arrow--expanded {
+  transform: rotate(180deg);
+}
+
+.chat-message-reply-panel {
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e5e7eb;
+  color: #000000e6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .chat-message-time {
@@ -138,6 +226,22 @@ const displayTime = computed(() => {
   vertical-align: text-bottom;
   background-color: currentColor;
   animation: chat-cursor-blink 1s step-end infinite;
+}
+
+.chat-message-loading {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #e5e7eb;
+  border-top-color: #2463dc;
+  border-radius: 50%;
+  animation: chat-message-spin 0.8s linear infinite;
+}
+
+@keyframes chat-message-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes chat-cursor-blink {
