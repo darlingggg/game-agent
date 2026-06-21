@@ -29,7 +29,6 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ThemeToggle: typeof import('./src/components/ThemeToggle.vue')['default']
-    UserAvatar: typeof import('./src/components/UserAvatar.vue')['default']
     UserMenu: typeof import('./src/components/UserMenu.vue')['default']
   }
   export interface GlobalDirectives {
@@ -56,6 +55,5 @@ declare global {
   const RouterLink: typeof import('vue-router')['RouterLink']
   const RouterView: typeof import('vue-router')['RouterView']
   const ThemeToggle: typeof import('./src/components/ThemeToggle.vue')['default']
-  const UserAvatar: typeof import('./src/components/UserAvatar.vue')['default']
   const UserMenu: typeof import('./src/components/UserMenu.vue')['default']
 }

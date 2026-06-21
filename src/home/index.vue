@@ -283,7 +283,7 @@ onUnmounted(() => {
             </svg>
           </div>
           <div class="title">
-            <span>GameAgent</span>
+            <span>AI Agent</span>
           </div>
         </div>
         <div class="header-actions">

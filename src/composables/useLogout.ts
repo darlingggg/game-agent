@@ -9,7 +9,7 @@ export function useLogout() {
   const router = useRouter()
 
   /**
-   * 执行退出登录：清除 token 并跳转登录页
+   * 执行退出登录：删除 token 并跳转登录页
    */
   async function logout() {
     removeToken()

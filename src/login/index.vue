@@ -62,7 +62,7 @@ const rules = computed<FormRules>(() => {
 
 /** 页面副标题 */
 const pageSubtitle = computed(() =>
-  isRegisterMode.value ? '创建账号，开始创作你的游戏' : '登录后开始创作你的游戏',
+  isRegisterMode.value ? '创建账号，开始创作你的应用' : '登录后开始创作你的应用',
 )
 
 /** 提交按钮文案 */
@@ -97,10 +97,10 @@ async function handleSubmit() {
 
     const result = isRegisterMode.value
       ? await registerUser({
-          account,
-          password,
-          nickname: form.nickname.trim(),
-        })
+        account,
+        password,
+        nickname: form.nickname.trim(),
+      })
       : await loginUser({ account, password })
 
     setToken(result.token)
@@ -108,10 +108,8 @@ async function handleSubmit() {
 
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     await router.replace(redirect)
-  } catch (error) {
-    ElMessage.error(
-      error instanceof Error ? error.message : isRegisterMode.value ? '注册失败' : '登录失败',
-    )
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     loading.value = false
   }
@@ -131,40 +129,23 @@ function handleSwitchMode() {
 <template>
   <div class="auth-page">
     <div class="auth-card">
-      <h1 class="auth-title">GameAgent</h1>
+      <h1 class="auth-title">AI Agent</h1>
       <p class="auth-subtitle">{{ pageSubtitle }}</p>
 
-      <el-form
-        ref="formRef"
-        class="auth-form"
-        :model="form"
-        :rules="rules"
-        label-position="top"
-        @submit.prevent="handleSubmit"
-      >
+      <el-form ref="formRef" class="auth-form" :model="form" :rules="rules" label-position="top"
+        @submit.prevent="handleSubmit">
         <el-form-item label="账号" prop="account">
           <el-input v-model="form.account" placeholder="请输入账号" autocomplete="username" />
         </el-form-item>
 
         <el-form-item label="密码" prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="请输入密码"
-            show-password
-            :autocomplete="isRegisterMode ? 'new-password' : 'current-password'"
-          />
+          <el-input v-model="form.password" type="password" placeholder="请输入密码" show-password
+            :autocomplete="isRegisterMode ? 'new-password' : 'current-password'" />
         </el-form-item>
 
         <el-form-item v-if="isRegisterMode" label="确认密码" prop="confirmPassword">
-          <el-input
-            v-model="form.confirmPassword"
-            type="password"
-            placeholder="请再次输入密码"
-            show-password
-            autocomplete="new-password"
-            @keyup.enter="handleSubmit"
-          />
+          <el-input v-model="form.confirmPassword" type="password" placeholder="请再次输入密码" show-password
+            autocomplete="new-password" @keyup.enter="handleSubmit" />
         </el-form-item>
 
         <el-form-item v-if="isRegisterMode" label="昵称（选填）" prop="nickname">

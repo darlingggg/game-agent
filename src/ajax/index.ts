@@ -22,8 +22,8 @@ export interface StatusApiResponse<T = unknown> {
   status: number
   /** 提示信息 */
   message: string
-  /** 响应数据 */
-  data: T
+  /** 响应数据（失败时可能不存在） */
+  data?: T
 }
 
 /**
@@ -42,10 +42,11 @@ export function setToken(token: string): void {
 }
 
 /**
- * 清除本地 token
+ * 删除本地 token
  */
 export function removeToken(): void {
   useAuthStore(pinia).clearToken()
+  localStorage.removeItem(TOKEN_KEY)
 }
 
 export { TOKEN_KEY }
@@ -61,11 +62,11 @@ function isApiResponse(payload: unknown): payload is ApiResponse {
  * 判断是否为 status 格式的业务响应
  */
 function isStatusApiResponse(payload: unknown): payload is StatusApiResponse {
-  return typeof payload === 'object' && payload !== null && 'status' in payload && 'data' in payload
+  return typeof payload === 'object' && payload !== null && 'status' in payload && 'message' in payload
 }
 
 const instance = axios.create({
-  baseURL: 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_API_URL,
   timeout: 10000,
 })
 
@@ -91,7 +92,7 @@ instance.interceptors.response.use(
       if (SUCCESS_CODES.includes(payload.code)) {
         const data = payload.data
 
-        // 兼容 { code, data: { status, message, data } } 双层结构
+        // 兼容 { code, data: { status, message, data? } } 双层结构
         if (isStatusApiResponse(data)) {
           if (SUCCESS_CODES.includes(data.status)) {
             return data.data
@@ -103,14 +104,16 @@ instance.interceptors.response.use(
         return data
       }
 
+      ElMessage.error(payload.message || '请求失败')
       return Promise.reject(new Error(payload.message || '请求失败'))
     }
 
-    // 直接 status 格式：{ status, message, data }
+    // 直接 status 格式：{ status, message, data? }
     if (isStatusApiResponse(payload)) {
       if (SUCCESS_CODES.includes(payload.status)) {
         return payload.data
       }
+      ElMessage.error(payload.message || '请求失败')
       return Promise.reject(new Error(payload.message || '请求失败'))
     }
 
@@ -121,11 +124,12 @@ instance.interceptors.response.use(
     const status = error.response?.status
     const message = error.response?.data?.message || error.message || '网络异常，请稍后重试'
 
-    // 登录失效时清除本地 token
+    // 登录失效时删除本地 token
     if (status === 401) {
       removeToken()
     }
 
+    ElMessage.error(message)
     return Promise.reject(new Error(message))
   },
 )
