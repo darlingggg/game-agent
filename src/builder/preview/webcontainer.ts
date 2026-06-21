@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { WebContainer, type WebContainerProcess } from '@webcontainer/api'
+import { assertCrossOriginIsolated } from '@/utils/crossOriginIsolation'
 import { buildProjectTempFileTree } from './projectTempFiles'
 
 /** WebContainer 单例实例 */
@@ -46,6 +47,7 @@ async function getWebContainerInstance(): Promise<WebContainer> {
   }
 
   if (!bootPromise) {
+    assertCrossOriginIsolated()
     bootPromise = WebContainer.boot().then((instance) => {
       webcontainerInstance = instance
       return instance
