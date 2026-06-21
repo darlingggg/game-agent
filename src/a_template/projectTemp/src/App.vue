@@ -1,4 +1,4 @@
-<script setup lang="ts"></script>
+<script setup></script>
 
 <template>
   <div class="app">🤖游戏构建器🤖</div>

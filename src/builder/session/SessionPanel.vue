@@ -321,11 +321,11 @@ onUnmounted(() => {
   <aside class="session-panel">
     <header class="session-panel-header" @click="handleSwitchProject">
       <div class="session-panel-logo">
-        <svg class="session-panel-logo-svg" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <svg class="session-panel-logo-svg" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true">
           <path
             d="M128 448a96 96 0 0 1 28.032 187.84v63.232l0.256 4.288a32 32 0 0 0 15.68 23.424l324.032 187.072 3.84 1.856a32.128 32.128 0 0 0 28.16-1.92l323.968-187.008 3.52-2.368a32 32 0 0 0 12.416-25.344v-11.072a32 32 0 0 1 64 0v11.072a96 96 0 0 1-37.376 76.096l-10.56 7.04-323.968 187.072a96.128 96.128 0 0 1-84.544 5.632l-11.456-5.632-324.032-187.072a96 96 0 0 1-47.104-70.4l-0.896-12.736V632.96A96 96 0 0 1 128 448z m338.56-96c22.08 0 41.792 14.144 48.96 35.2l84.352 248.448a27.52 27.52 0 1 1-52.288 17.216L526.72 587.136H404.608l-21.76 66.432a26.752 26.752 0 1 1-50.752-16.96l85.376-249.6A51.84 51.84 0 0 1 466.56 352z m209.92 0a27.52 27.52 0 0 1 27.52 27.584v264.896a27.584 27.584 0 0 1-55.104 0V379.52a27.52 27.52 0 0 1 27.52-27.52zM128 512a32 32 0 1 0 0 64 32 32 0 0 0 0-64zM475.456 49.152A96 96 0 0 1 560 54.784l323.968 187.072 10.56 7.04a96 96 0 0 1 37.44 76.096v65.92a96 96 0 1 1-64-2.752v-63.168a32 32 0 0 0-12.48-25.344l-3.584-2.368L528 110.208a32 32 0 0 0-28.16-1.92l-3.84 1.92-324.032 187.072a32 32 0 0 0-16 27.712v11.008a32 32 0 0 1-64 0v-11.008a96 96 0 0 1 48-83.2L464 54.848l11.456-5.632z m-54.4 487.296h89.28l-41.728-130.496h-5.056l-42.496 130.56zM896 448a32 32 0 1 0 0 64 32 32 0 0 0 0-64z"
-            fill="#2463dc"
-          />
+            fill="#2463dc" />
         </svg>
       </div>
       <div class="session-panel-title">GameAgent</div>
@@ -334,10 +334,12 @@ onUnmounted(() => {
     <section class="session-section">
       <div class="session-section-header">
         <span class="session-section-label">会话</span>
-        <button type="button" class="session-create-btn" :disabled="isPendingNewSession || !projectId" @click="handleCreateSession">+ 新建会话</button>
+        <button type="button" class="session-create-btn" :disabled="isPendingNewSession || !projectId"
+          @click="handleCreateSession">+ 新建会话</button>
       </div>
 
-      <el-input v-model="searchInput" class="session-search" placeholder="搜索会话" :prefix-icon="Search" clearable @input="handleSearchInput" />
+      <el-input v-model="searchInput" class="session-search" placeholder="搜索会话" :prefix-icon="Search" clearable
+        @input="handleSearchInput" />
 
       <div v-loading="listLoading" class="session-list">
         <div v-if="isPendingNewSession" class="session-item session-item--active" @click="handleCreateSession">
@@ -349,13 +351,8 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div
-          v-for="session in sessions"
-          :key="session.id"
-          class="session-item"
-          :class="{ 'session-item--active': session.id === activeSessionId }"
-          @click="handleSelectSession(session.id)"
-        >
+        <div v-for="session in sessions" :key="session.id" class="session-item"
+          :class="{ 'session-item--active': session.id === activeSessionId }" @click="handleSelectSession(session.id)">
           <div class="session-item-row">
             <span class="session-item-title">{{ getSessionTitle(session) }}</span>
             <span class="session-item-time">{{ formatSessionTime(session.createdAt) }}</span>
@@ -364,10 +361,15 @@ onUnmounted(() => {
             <span class="session-item-preview">{{ getSessionPreview(session) }}</span>
             <div class="session-item-actions" @click.stop>
               <button type="button" class="session-item-action" title="修改标题" @click.stop="handleRenameSession(session)">
-                <el-icon><Edit /></el-icon>
+                <el-icon>
+                  <Edit />
+                </el-icon>
               </button>
-              <button type="button" class="session-item-action session-item-action--delete" title="删除会话" @click.stop="handleDeleteSession(session)">
-                <el-icon><Delete /></el-icon>
+              <button type="button" class="session-item-action session-item-action--delete" title="删除会话"
+                @click.stop="handleDeleteSession(session)">
+                <el-icon>
+                  <Delete />
+                </el-icon>
               </button>
             </div>
           </div>
@@ -385,7 +387,9 @@ onUnmounted(() => {
           <div class="project-card-desc">{{ projectDesc }}</div>
         </div>
         <button type="button" class="project-card-switch" title="切换项目" @click="handleSwitchProject">
-          <el-icon><Sort /></el-icon>
+          <el-icon>
+            <Sort />
+          </el-icon>
         </button>
       </div>
 
@@ -394,12 +398,10 @@ onUnmounted(() => {
           <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path
               d="M746.666667 657.066667c-29.866667-29.866667-64-51.2-102.4-68.266667 29.866667-34.133333 51.2-76.8 51.2-128 0-102.4-81.066667-183.466667-183.466667-183.466667s-183.466667 81.066667-183.466667 183.466667c0 51.2 21.333333 93.866667 51.2 128-38.4 17.066667-72.533333 38.4-102.4 68.266667-17.066667 17.066667-17.066667 42.666667 0 59.733333 8.533333 8.533333 21.333333 12.8 29.866667 12.8 12.8 0 21.333333-4.266667 29.866667-12.8 46.933333-46.933333 106.666667-72.533333 174.933333-72.533333 64 0 128 25.6 174.933333 72.533333 17.066667 17.066667 42.666667 17.066667 59.733334 0 17.066667-17.066667 17.066667-42.666667 0-59.733333z m-332.8-196.266667c0-55.466667 42.666667-98.133333 98.133333-98.133333 55.466667 0 98.133333 42.666667 98.133333 98.133333 0 55.466667-42.666667 98.133333-98.133333 98.133333-55.466667 0-98.133333-42.666667-98.133333-98.133333z"
-              fill="currentColor"
-            />
+              fill="currentColor" />
             <path
               d="M512 85.333333C276.352 85.333333 85.333333 276.352 85.333333 512s191.018667 426.666667 426.666667 426.666667 426.666667-191.018667 426.666667-426.666667S747.648 85.333333 512 85.333333zM170.666667 512a341.333333 341.333333 0 1 1 682.666666 0 341.333333 341.333333 0 0 1-682.666666 0z"
-              fill="currentColor"
-            />
+              fill="currentColor" />
           </svg>
         </div>
         <span class="user-bar-name">{{ nickName }}</span>

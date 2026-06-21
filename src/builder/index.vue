@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, nextTick, onMounted, onUnmounted, provide, ref, type ComponentPublicInstance } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getProjectList } from '@/http/project'
 import { useProjectStore } from '@/stores/project'
@@ -10,6 +10,7 @@ import FilePanel from './file/FilePanel.vue'
 import LogPanel from './log/LogPanel.vue'
 import PreviewPanel from './preview/PreviewPanel.vue'
 import SessionPanel from './session/SessionPanel.vue'
+import { createLogContext, logContextKey } from './log/logContext'
 import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
 
 defineOptions({
@@ -68,6 +69,10 @@ provide(sessionContextKey, {
   startNewSession,
   selectSession,
 })
+
+/** 日志上下文，供聊天面板写入、日志面板展示 */
+const logContext = createLogContext()
+provide(logContextKey, logContext)
 
 const tabs: TabItem[] = [
   { key: 'chat', label: '对话' },
@@ -168,11 +173,19 @@ async function initCurrentProject() {
   }
 }
 
-onMounted(async () => {
-  await initCurrentProject()
+onMounted(() => {
   nextTick(updateIndicator)
   window.addEventListener('resize', updateIndicator)
 })
+
+/** 地址栏 projectId 变化时重新加载项目 */
+watch(
+  () => route.query.projectId,
+  () => {
+    void initCurrentProject()
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateIndicator)
@@ -202,10 +215,12 @@ onUnmounted(() => {
         <div class="main-tab-indicator" :style="indicatorStyle" />
       </div>
       <div class="main-content">
-        <ChatPanel v-if="activeTabKey === 'chat'" class="main-content-panel" />
-        <FilePanel v-else-if="activeTabKey === 'file'" class="main-content-panel" />
-        <ConfigPanel v-else-if="activeTabKey === 'config'" class="main-content-panel" />
-        <LogPanel v-else class="main-content-panel" />
+        <KeepAlive include="ChatPanel">
+          <ChatPanel v-if="activeTabKey === 'chat'" class="main-content-panel" />
+        </KeepAlive>
+        <FilePanel v-if="activeTabKey === 'file'" class="main-content-panel" />
+        <ConfigPanel v-if="activeTabKey === 'config'" class="main-content-panel" />
+        <LogPanel v-show="activeTabKey === 'log'" class="main-content-panel" />
       </div>
     </main>
     <section class="right">

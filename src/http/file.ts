@@ -1,8 +1,5 @@
 import axios from '@/ajax'
 
-/** projectTemp 项目根目录绝对路径 */
-export const PROJECT_TEMP_DIR = 'C:/pro_self/projectTemp'
-
 /** 文件列表查询参数 */
 interface FileListParams {
   /** 目标目录绝对路径 */

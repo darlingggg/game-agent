@@ -11,7 +11,6 @@ const EXCLUDED_PATHS = [
   '.gitignore',
   'README.md',
   'public/favicon.ico',
-  'pnpm-lock.yaml',
 ]
 
 /**

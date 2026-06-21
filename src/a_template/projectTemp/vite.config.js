@@ -18,4 +18,8 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // WebContainer 需要监听所有地址，才能触发 server-ready 事件
+  server: {
+    host: true,
+  },
 })

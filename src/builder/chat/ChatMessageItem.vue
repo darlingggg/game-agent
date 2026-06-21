@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { computed, ref } from 'vue'
 import { getAiReply } from '@/http/session'
 import { AI_AVATAR_SVG, USER_AVATAR_SVG } from './chatAvatars'
+import MarkdownContent from './MarkdownContent.vue'
 import type { ChatMessage } from './types'
 
 defineOptions({
@@ -76,20 +77,26 @@ async function toggleReply() {
         <template v-else-if="needsLazyLoad">
           <button type="button" class="chat-message-reply-toggle" @click="toggleReply">
             <span>Agent 回复</span>
-            <svg class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <svg class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }"
+              viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
             </svg>
           </button>
           <div v-show="replyExpanded" class="chat-message-reply-panel">
             <span v-if="replyLoading" class="chat-message-loading" aria-label="加载中" />
-            <span v-else>{{ replyContent }}</span>
+            <MarkdownContent v-else :content="replyContent" />
           </div>
         </template>
-        <template v-else>
+        <template v-else-if="isUser">
           <span>{{ message.content }}</span>
+        </template>
+        <template v-else>
+          <MarkdownContent :content="message.content" />
           <span v-if="message.streaming && message.content" class="chat-message-cursor" />
         </template>
-        <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime }}</span>
+        <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime
+          }}</span>
       </div>
     </div>
     <div v-if="isUser" class="chat-message-avatar" v-html="avatarSvg" />
@@ -162,7 +169,8 @@ async function toggleReply() {
   color: #000000e6;
   border: 1px solid #e5e7eb;
   border-top-left-radius: 0.25rem;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  white-space: normal;
 }
 
 .chat-message-reply-toggle {
@@ -189,12 +197,11 @@ async function toggleReply() {
 }
 
 .chat-message-reply-panel {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid #e5e7eb;
   color: #000000e6;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -245,10 +252,12 @@ async function toggleReply() {
 }
 
 @keyframes chat-cursor-blink {
+
   0%,
   100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0;
   }

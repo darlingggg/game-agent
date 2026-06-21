@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
+import { useProjectStore } from '@/stores/project'
 import { INDEX_HTML_PATH, parseProjectHtmlConfig } from '../config/projectHtmlConfig'
 import { fetchProjectTempFileContent } from '../file/projectTempFiles'
-import { refreshProjectTempPreview, startProjectTempPreview } from './webcontainer'
+import { refreshProjectTempPreview, resetProjectTempPreview, startProjectTempPreview } from './webcontainer'
 
 defineOptions({
   name: 'PreviewPanel',
 })
+
+const projectStore = useProjectStore()
 
 /** iframe 预览地址 */
 const previewUrl = ref('')
@@ -26,6 +29,9 @@ const errorText = ref('')
 /** 刷新进行中 */
 const refreshing = ref(false)
 
+/** 预览加载令牌，用于忽略过期请求的结果 */
+let previewLoadToken = 0
+
 /**
  * 加载项目标题
  */
@@ -38,18 +44,52 @@ async function loadProjectTitle() {
   }
 }
 
-onMounted(async () => {
-  void loadProjectTitle()
+/**
+ * 启动预览：先销毁旧 WebContainer，再重新加载当前项目
+ */
+async function loadPreview() {
+  const loadToken = ++previewLoadToken
+
+  previewUrl.value = ''
+  errorText.value = ''
+  statusText.value = '正在准备预览...'
+  iframeKey.value += 1
+
+  resetProjectTempPreview()
 
   try {
-    previewUrl.value = await startProjectTempPreview((status) => {
-      statusText.value = status
+    const url = await startProjectTempPreview((status) => {
+      if (loadToken === previewLoadToken) {
+        statusText.value = status
+      }
     })
+
+    if (loadToken !== previewLoadToken) return
+
+    previewUrl.value = url
     statusText.value = ''
   } catch (error) {
+    if (loadToken !== previewLoadToken) return
+    if (error instanceof Error && error.message === '预览已取消') return
+
     statusText.value = ''
     errorText.value = error instanceof Error ? error.message : '预览启动失败'
   }
+}
+
+watch(
+  () => projectStore.currentProject?.id,
+  (projectId) => {
+    if (!projectId) return
+    void loadProjectTitle()
+    void loadPreview()
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  previewLoadToken++
+  resetProjectTempPreview()
 })
 
 /**
@@ -91,20 +131,13 @@ async function handleRefresh() {
     <header class="preview-toolbar">
       <h2 class="preview-toolbar-title">实时预览</h2>
       <div class="preview-toolbar-actions">
-        <button
-          type="button"
-          class="preview-toolbar-btn"
-          :class="{ 'preview-toolbar-btn--loading': refreshing }"
-          :disabled="refreshing"
-          title="刷新预览"
-          aria-label="刷新预览"
-          @click="handleRefresh"
-        >
-          <svg class="preview-toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <button type="button" class="preview-toolbar-btn" :class="{ 'preview-toolbar-btn--loading': refreshing }"
+          :disabled="refreshing" title="刷新预览" aria-label="刷新预览" @click="handleRefresh">
+          <svg class="preview-toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true">
             <path
               d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 9.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"
-              fill="currentColor"
-            />
+              fill="currentColor" />
           </svg>
         </button>
       </div>
@@ -206,6 +239,7 @@ async function handleRefresh() {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -221,7 +255,9 @@ async function handleRefresh() {
 
 .phone-frame {
   height: 100%;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  aspect-ratio: 8 / 16;
   display: flex;
   flex-direction: column;
   background-color: #fff;

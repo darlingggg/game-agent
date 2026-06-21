@@ -11,5 +11,4 @@ export const TERMINAL_PROMPT = 'C:\\pro_self\\gameAgent\\src\\a_template>'
 /** 终端示例日志行 */
 export const TERMINAL_SAMPLE_LOGS: string[] = [
   '[info] GameAgent 日志服务已就绪',
-  '[info] 等待任务输出...',
 ]

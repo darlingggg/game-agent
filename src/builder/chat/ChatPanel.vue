@@ -7,6 +7,9 @@ import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/session
 import ChatMessageItem from './ChatMessageItem.vue'
 import type { ChatMessage } from './types'
 import { chatWithAI } from '@/http/chat'
+import { useLogContext } from '@/builder/log/logContext'
+import { buildChatPrompt, getChatAppearanceContext } from '@/builder/config/appearanceConfig'
+import { useAppearanceStore } from '@/stores/appearance'
 
 defineOptions({
   name: 'ChatPanel',
@@ -14,6 +17,8 @@ defineOptions({
 
 const projectStore = useProjectStore()
 const sessionContext = useSessionContext()
+const logContext = useLogContext()
+const appearanceStore = useAppearanceStore()
 
 /** 消息列表 */
 const messages = ref<ChatMessage[]>([])
@@ -27,6 +32,9 @@ const inputText = ref('')
 /** 是否正在流式回复 */
 const isStreaming = ref(false)
 
+/** 是否由用户主动中断 AI 回复 */
+const userAborted = ref(false)
+
 /** 消息列表容器，用于滚动到底部 */
 const messagesRef = ref<HTMLElement | null>(null)
 
@@ -39,11 +47,17 @@ let streamingAssistantId: string | null = null
 /** 消息 id 自增计数（本地临时消息） */
 let messageIdSeed = 0
 
+/** 是否调用 AI 对话接口，确认 prompt 参数后改为 true */
+const CHAT_API_ENABLED = true
+
 /** 当前项目 ID */
 const projectId = () => projectStore.currentProject?.id ?? 0
 
 /** 当前会话标题（同一会话下的消息共用，与后端 title 字段对应） */
 const sessionTitle = ref('')
+
+/** 当前会话后端 title 字段，用于 chat/stream 等接口 */
+const backendSessionTitle = ref('')
 
 /**
  * 获取会话去重键（与 SessionPanel 保持一致）
@@ -118,6 +132,7 @@ async function loadSessionMessages() {
     messages.value = []
     inputText.value = ''
     sessionTitle.value = ''
+    backendSessionTitle.value = ''
     return
   }
 
@@ -126,6 +141,7 @@ async function loadSessionMessages() {
     stopStreaming()
     messages.value = []
     sessionTitle.value = ''
+    backendSessionTitle.value = ''
     return
   }
 
@@ -138,6 +154,7 @@ async function loadSessionMessages() {
     const target = list.find((item) => item.id === sessionId)
     if (target) {
       sessionTitle.value = getSessionKey(target)
+      backendSessionTitle.value = target.title.trim()
     }
 
     const sessionMessages = pickSessionMessages(list, sessionId)
@@ -231,6 +248,10 @@ function finishAssistantStreaming(assistantId: string) {
  * 停止当前 AI 流式回复
  */
 function stopStreaming() {
+  if (isStreaming.value) {
+    userAborted.value = true
+  }
+
   abortController?.abort()
   abortController = null
   isStreaming.value = false
@@ -255,6 +276,7 @@ async function ensureSessionTitle() {
   const target = list.find((item) => item.id === sessionId)
   if (target) {
     sessionTitle.value = getSessionKey(target)
+    backendSessionTitle.value = target.title.trim()
   }
   return sessionTitle.value
 }
@@ -281,18 +303,41 @@ async function saveMessageToSession(role: 'user' | 'assistant', content: string)
 }
 
 /**
- * 将 SSE 事件追加到 AI 消息
+ * 将 AI 文本片段追加到消息气泡
+ * @param assistantId AI 消息 id
+ * @param text 文本片段
+ */
+function appendTextToMessage(assistantId: string, text: string) {
+  const assistantMessage = findMessageById(assistantId)
+  if (!assistantMessage) return
+  assistantMessage.content += text
+  void scrollToBottom()
+}
+
+/**
+ * 处理 SSE 事件：对话区展示文本，日志区记录 AI/工具输出
  * @param assistantId AI 消息 id
  * @param event SSE 事件
  */
-function appendSseToMessage(assistantId: string, event: { event: string; data: string | null }) {
+function handleSseEvent(assistantId: string, event: { event: string; data: string | null }) {
   if (!event.data) return
-  if (event.event !== 'text' && event.event !== 'tool_start' && event.event !== 'tool_end') return
 
-  const assistantMessage = findMessageById(assistantId)
-  if (!assistantMessage) return
-  assistantMessage.content += event.data
-  void scrollToBottom()
+  const currentProjectId = projectId()
+
+  if (event.event === 'text') {
+    appendTextToMessage(assistantId, event.data)
+    logContext.appendAiText(event.data, currentProjectId)
+    return
+  }
+
+  if (event.event === 'tool_start') {
+    logContext.handleToolStart(event.data, currentProjectId)
+    return
+  }
+
+  if (event.event === 'tool_end') {
+    void logContext.handleToolEnd(event.data, currentProjectId)
+  }
 }
 
 /**
@@ -303,9 +348,11 @@ async function handleSend() {
   if (!text || isStreaming.value) return
 
   const isPending = sessionContext.isPendingNewSession.value
+  const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
+  const needsCreateSession = isPending || hasNoSession
 
   try {
-    if (isPending) {
+    if (needsCreateSession) {
       await createSessionOnFirstMessage(text)
       await loadSessionMessages()
     } else {
@@ -335,19 +382,44 @@ async function handleSend() {
   })
   streamingAssistantId = assistantId
   isStreaming.value = true
+  userAborted.value = false
   abortController = new AbortController()
   await scrollToBottom()
 
+  const currentProjectId = projectId()
+  const chatTitle = backendSessionTitle.value.trim() || undefined
+  const appearanceConfig = appearanceStore.config
+  const appearanceContext = getChatAppearanceContext(appearanceConfig)
+  const finalPrompt = buildChatPrompt(text, appearanceConfig)
+
+  console.log('[ChatPrompt]', {
+    userInput: text,
+    appearanceContext,
+    finalPrompt,
+    projectId: currentProjectId,
+    title: chatTitle,
+  })
+
+  if (!CHAT_API_ENABLED) {
+    finishAssistantStreaming(assistantId)
+    messages.value = messages.value.filter((item) => item.id !== assistantId)
+    streamingAssistantId = null
+    abortController = null
+    isStreaming.value = false
+    return
+  }
+
   try {
     await chatWithAI({
-      prompt: text,
-      projectId: projectId(),
+      prompt: finalPrompt,
+      projectId: currentProjectId,
+      title: chatTitle,
       signal: abortController.signal,
       onEvent: (event) => {
         if (event.event === 'error') {
           throw new Error(event.data ?? 'AI 回复失败')
         }
-        appendSseToMessage(assistantId, event)
+        handleSseEvent(assistantId, event)
       },
     })
   } catch (error) {
@@ -361,6 +433,14 @@ async function handleSend() {
     ElMessage.error(error instanceof Error ? error.message : 'AI 回复失败')
   } finally {
     finishAssistantStreaming(assistantId)
+
+    if (userAborted.value) {
+      await logContext.handleAiAbort(currentProjectId)
+      userAborted.value = false
+    } else {
+      await logContext.finalizeAiStream(currentProjectId)
+    }
+
     const assistantMessage = findMessageById(assistantId)
     if (assistantMessage?.content.trim() && assistantMessage.content !== '回复失败，请重试') {
       try {
@@ -407,8 +487,10 @@ function handleActionClick() {
     </div>
 
     <div class="chat-panel-input-area">
-      <textarea v-model="inputText" class="chat-panel-input" placeholder="输入消息，Enter 换行， Ctrl+Enter 发送" rows="5" :disabled="isStreaming" @keydown="handleInputKeydown" />
-      <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }" :title="isStreaming ? '终止' : '发送'" @click="handleActionClick">
+      <textarea v-model="inputText" class="chat-panel-input" placeholder="输入消息，Enter 换行， Ctrl+Enter 发送" rows="5"
+        :disabled="isStreaming" @keydown="handleInputKeydown" />
+      <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+        :title="isStreaming ? '终止' : '发送'" @click="handleActionClick">
         <!-- 发送图标 -->
         <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
@@ -477,8 +559,10 @@ function handleActionClick() {
 
 .chat-panel-input {
   overflow: auto;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE/Edge */
 }
 
 /* Chrome/Safari/Opera */
