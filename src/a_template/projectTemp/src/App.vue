@@ -1,7 +1,7 @@
 <script setup></script>
 
 <template>
-  <div class="app">🤖游戏构建器🤖</div>
+  <div class="app">👾AI项目构建器👾</div>
 </template>
 
 <style scoped>

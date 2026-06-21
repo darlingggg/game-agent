@@ -96,7 +96,7 @@ async function toggleReply() {
           <span v-if="message.streaming && message.content" class="chat-message-cursor" />
         </template>
         <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime
-          }}</span>
+        }}</span>
       </div>
     </div>
     <div v-if="isUser" class="chat-message-avatar" v-html="avatarSvg" />
@@ -130,12 +130,12 @@ async function toggleReply() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f3f4f6;
+  background-color: var(--app-bg-subtle);
 }
 
 .chat-message--user .chat-message-avatar {
   background-color: transparent;
-  border: 2px solid #2463dc;
+  border: 2px solid var(--app-accent);
 }
 
 .chat-message-avatar :deep(svg) {
@@ -160,14 +160,14 @@ async function toggleReply() {
 }
 
 .chat-message--user .chat-message-bubble {
-  background-color: #f5f5f5;
-  color: #000000e6;
+  background-color: var(--app-bg-subtle);
+  color: var(--app-text-primary);
   border-top-right-radius: 0.25rem;
 }
 
 .chat-message--assistant .chat-message-bubble {
-  color: #000000e6;
-  border: 1px solid #e5e7eb;
+  color: var(--app-text-primary);
+  border: 1px solid var(--app-border);
   border-top-left-radius: 0.25rem;
   font-size: 0.8125rem;
   white-space: normal;
@@ -181,7 +181,7 @@ async function toggleReply() {
   padding: 0;
   border: none;
   background: none;
-  color: #2463dc;
+  color: var(--app-accent);
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -200,8 +200,8 @@ async function toggleReply() {
   font-size: 0.8125rem;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px solid #e5e7eb;
-  color: #000000e6;
+  border-top: 1px solid var(--app-border);
+  color: var(--app-text-primary);
   word-break: break-word;
 }
 
@@ -212,7 +212,7 @@ async function toggleReply() {
   transform: translateY(100%);
   padding: 0.125rem 0.5rem;
   border-radius: 0.25rem;
-  color: #575757;
+  color: var(--app-text-secondary);
   font-size: 0.6rem;
   line-height: 1.4;
   white-space: nowrap;

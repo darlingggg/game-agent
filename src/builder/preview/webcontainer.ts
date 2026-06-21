@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import { WebContainer, type WebContainerProcess } from '@webcontainer/api'
 import { buildProjectTempFileTree } from './projectTempFiles'
 
@@ -23,6 +24,18 @@ const PREVIEW_EXCLUDED_PATHS = [
   'README.md',
   'public/favicon.ico',
 ]
+
+/** Tailwind CSS 入口文件路径 */
+const PREVIEW_CSS_ENTRY = 'styles/index.css'
+
+/** 会触发 Tailwind 重新扫描 content 的文件类型 */
+const TAILWIND_CONTENT_FILE = /\.(vue|html|jsx|tsx|js|ts)$/i
+
+/** 预览 iframe 重载信号（写入文件后通知 PreviewPanel 刷新 iframe） */
+export const previewIframeReloadSignal = ref(0)
+
+/** iframe 重载防抖定时器 */
+let iframeReloadTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
  * 获取 WebContainer 单例实例
@@ -211,6 +224,44 @@ export async function startProjectTempPreview(onStatus?: (status: string) => voi
 }
 
 /**
+ * 判断同步的文件是否会影响 Tailwind 样式生成
+ * @param relativePath 相对 projectTemp 根目录的路径
+ */
+function isTailwindContentFile(relativePath: string): boolean {
+  return TAILWIND_CONTENT_FILE.test(relativePath) || relativePath.includes('tailwind.config')
+}
+
+/**
+ * 触发 Tailwind CSS 重新编译
+ * WebContainer 内 writeFile 更新 .vue 时，Vite 只会 HMR 组件，PostCSS 不会重新扫描 class
+ */
+async function invalidateTailwindPreview(): Promise<void> {
+  if (!webcontainerInstance) return
+
+  try {
+    const cssPath = `/${PREVIEW_CSS_ENTRY}`
+    const content = await webcontainerInstance.fs.readFile(cssPath, 'utf-8')
+    const cleaned = content.replace(/\/\* preview-sync:\d+ \*\/\n?/g, '')
+    await webcontainerInstance.fs.writeFile(cssPath, `/* preview-sync:${Date.now()} */\n${cleaned}`)
+  } catch (error) {
+    console.warn('[Preview] Tailwind CSS 刷新失败', error)
+  }
+}
+
+/**
+ * 防抖触发预览 iframe 重载，避免 AI 连续写多个文件时频繁刷新
+ * @param delay 防抖延迟（毫秒）
+ */
+export function requestPreviewIframeReloadDebounced(delay = 400): void {
+  if (iframeReloadTimer) {
+    clearTimeout(iframeReloadTimer)
+  }
+  iframeReloadTimer = setTimeout(() => {
+    iframeReloadTimer = null
+    previewIframeReloadSignal.value += 1
+  }, delay)
+}
+/**
  * 判断文件是否需要同步到预览环境
  * @param relativePath 相对 projectTemp 根目录的路径
  */
@@ -230,6 +281,11 @@ export async function syncPreviewFile(relativePath: string, content: string): Pr
 
   const webPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`
   await webcontainerInstance.fs.writeFile(webPath, content)
+
+  if (isTailwindContentFile(relativePath)) {
+    await invalidateTailwindPreview()
+    requestPreviewIframeReloadDebounced()
+  }
 }
 
 /**

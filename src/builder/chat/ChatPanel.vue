@@ -511,10 +511,10 @@ function handleActionClick() {
   width: 100%;
   height: 100%;
   min-height: 0;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   overflow: hidden;
-  background-color: #fff;
+  background-color: var(--app-surface);
 }
 
 .chat-panel-messages {
@@ -529,7 +529,7 @@ function handleActionClick() {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #000;
+  color: var(--app-text-primary);
   font-size: 1rem;
   font-weight: 700;
 }
@@ -537,21 +537,21 @@ function handleActionClick() {
 .chat-panel-input-area {
   position: relative;
   flex-shrink: 0;
-  border-top: 1px solid #e5e5e5;
-  background-color: #fcfcfd;
+  border-top: 1px solid var(--app-border);
+  background-color: var(--app-bg-muted);
   padding: 0.75rem 1rem;
 }
 
 .chat-panel-input {
   width: 100%;
   resize: none;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   padding: 0.75rem 3rem 0.75rem 0.875rem;
   font-size: 0.875rem;
   line-height: 1.5;
-  color: #111827;
-  background-color: #fff;
+  color: var(--app-text-primary);
+  background-color: var(--app-surface);
   outline: none;
   transition: border-color 0.2s ease;
   font-family: auto;
@@ -571,12 +571,12 @@ function handleActionClick() {
 }
 
 .chat-panel-input:focus {
-  border-color: #2463dc;
+  border-color: var(--app-accent);
 }
 
 .chat-panel-input:disabled {
-  background-color: #f9fafb;
-  color: #6b7280;
+  background-color: var(--app-bg-subtle);
+  color: var(--app-text-secondary);
   cursor: not-allowed;
 }
 
@@ -591,7 +591,7 @@ function handleActionClick() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #2463dc;
+  background-color: var(--app-accent);
   color: #fff;
   cursor: pointer;
   transform: rotate(-90deg);

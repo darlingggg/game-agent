@@ -211,7 +211,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   min-height: 0;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--app-border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -219,8 +219,8 @@ onUnmounted(() => {
 .file-panel-tree {
   width: 260px;
   flex-shrink: 0;
-  border-right: 1px solid #e5e5e5;
-  background-color: #fbfcff;
+  border-right: 1px solid var(--app-border);
+  background-color: var(--app-bg-muted);
   overflow: auto;
 }
 
@@ -228,18 +228,18 @@ onUnmounted(() => {
   padding: 0.75rem 1rem;
   font-size: 0.875rem;
   font-weight: 700;
-  color: #2463dc;
-  border-bottom: 1px solid #e5e5e5;
+  color: var(--app-accent);
+  border-bottom: 1px solid var(--app-border);
 }
 
 .file-panel-tree-status {
   padding: 1rem;
   font-size: 0.8125rem;
-  color: #999;
+  color: var(--app-text-muted);
 }
 
 .file-panel-tree-status--error {
-  color: #c0392b;
+  color: var(--app-error);
 }
 
 .file-tree {
@@ -263,9 +263,9 @@ onUnmounted(() => {
   gap: 1rem;
   padding: 0.375rem 1rem;
   font-size: 0.875rem;
-  color: #666;
-  border-bottom: 1px solid #e5e5e5;
-  background-color: #fcfcfd;
+  color: var(--app-text-secondary);
+  border-bottom: 1px solid var(--app-border);
+  background-color: var(--app-surface);
 }
 
 .file-panel-content-path {
@@ -273,15 +273,16 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--app-text-primary);
 }
 
 .file-panel-save-btn {
   flex-shrink: 0;
   width: 4.5rem;
   padding: 0.375rem 0;
-  border: 1px solid #2463dc;
+  border: 1px solid var(--app-accent);
   border-radius: 4px;
-  background-color: #2463dc;
+  background-color: var(--app-accent);
   color: #fff;
   font-size: 0.8125rem;
   text-align: center;
@@ -314,7 +315,7 @@ onUnmounted(() => {
 }
 
 .file-panel-save-btn:hover:not(:disabled) {
-  background-color: #1d4fb8;
+  filter: brightness(0.9);
 }
 
 .file-panel-save-btn:disabled {
@@ -325,7 +326,7 @@ onUnmounted(() => {
 .file-panel-editor {
   flex: 1;
   min-height: 0;
-  color: #999;
+  color: var(--app-text-muted);
 }
 
 .file-panel-content-empty {
@@ -334,9 +335,10 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  color: #999;
+  color: var(--app-text-muted);
   font-size: 0.875rem;
   text-align: center;
+  background-color: #1e1e1e;
 }
 
 .file-panel-content-empty--error {

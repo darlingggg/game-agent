@@ -25,8 +25,12 @@ declare module 'vue' {
     ElInput: typeof import('element-plus/es')['ElInput']
     ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
+    ElTooltip: typeof import('element-plus/es')['ElTooltip']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ThemeToggle: typeof import('./src/components/ThemeToggle.vue')['default']
+    UserAvatar: typeof import('./src/components/UserAvatar.vue')['default']
+    UserMenu: typeof import('./src/components/UserMenu.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']
@@ -48,6 +52,10 @@ declare global {
   const ElInput: typeof import('element-plus/es')['ElInput']
   const ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
   const ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
+  const ElTooltip: typeof import('element-plus/es')['ElTooltip']
   const RouterLink: typeof import('vue-router')['RouterLink']
   const RouterView: typeof import('vue-router')['RouterView']
+  const ThemeToggle: typeof import('./src/components/ThemeToggle.vue')['default']
+  const UserAvatar: typeof import('./src/components/UserAvatar.vue')['default']
+  const UserMenu: typeof import('./src/components/UserMenu.vue')['default']
 }

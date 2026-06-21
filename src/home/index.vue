@@ -8,6 +8,8 @@ import { getUserInfo } from '@/http/user'
 import { Delete, Edit, Search } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 import { saveProjectConfig } from '@/utils/projectConfig'
+import UserMenu from '@/components/UserMenu.vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 
 const projectStore = useProjectStore()
 
@@ -276,7 +278,7 @@ onUnmounted(() => {
               <path
                 d="M128 448a96 96 0 0 1 28.032 187.84v63.232l0.256 4.288a32 32 0 0 0 15.68 23.424l324.032 187.072 3.84 1.856a32.128 32.128 0 0 0 28.16-1.92l323.968-187.008 3.52-2.368a32 32 0 0 0 12.416-25.344v-11.072a32 32 0 0 1 64 0v11.072a96 96 0 0 1-37.376 76.096l-10.56 7.04-323.968 187.072a96.128 96.128 0 0 1-84.544 5.632l-11.456-5.632-324.032-187.072a96 96 0 0 1-47.104-70.4l-0.896-12.736V632.96A96 96 0 0 1 128 448z m338.56-96c22.08 0 41.792 14.144 48.96 35.2l84.352 248.448a27.52 27.52 0 1 1-52.288 17.216L526.72 587.136H404.608l-21.76 66.432a26.752 26.752 0 1 1-50.752-16.96l85.376-249.6A51.84 51.84 0 0 1 466.56 352z m209.92 0a27.52 27.52 0 0 1 27.52 27.584v264.896a27.584 27.584 0 0 1-55.104 0V379.52a27.52 27.52 0 0 1 27.52-27.52zM128 512a32 32 0 1 0 0 64 32 32 0 0 0 0-64zM475.456 49.152A96 96 0 0 1 560 54.784l323.968 187.072 10.56 7.04a96 96 0 0 1 37.44 76.096v65.92a96 96 0 1 1-64-2.752v-63.168a32 32 0 0 0-12.48-25.344l-3.584-2.368L528 110.208a32 32 0 0 0-28.16-1.92l-3.84 1.92-324.032 187.072a32 32 0 0 0-16 27.712v11.008a32 32 0 0 1-64 0v-11.008a96 96 0 0 1 48-83.2L464 54.848l11.456-5.632z m-54.4 487.296h89.28l-41.728-130.496h-5.056l-42.496 130.56zM896 448a32 32 0 1 0 0 64 32 32 0 0 0 0-64z"
                 p-id="5717"
-                fill="#2c2c2c"
+                fill="var(--app-icon-fill)"
               ></path>
             </svg>
           </div>
@@ -284,18 +286,9 @@ onUnmounted(() => {
             <span>GameAgent</span>
           </div>
         </div>
-        <div class="header-user">
-          <svg t="1781413498286" class="icon-user" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="11247" width="200" height="200">
-            <path
-              d="M746.666667 657.066667c-29.866667-29.866667-64-51.2-102.4-68.266667 29.866667-34.133333 51.2-76.8 51.2-128 0-102.4-81.066667-183.466667-183.466667-183.466667s-183.466667 81.066667-183.466667 183.466667c0 51.2 21.333333 93.866667 51.2 128-38.4 17.066667-72.533333 38.4-102.4 68.266667-17.066667 17.066667-17.066667 42.666667 0 59.733333 8.533333 8.533333 21.333333 12.8 29.866667 12.8 12.8 0 21.333333-4.266667 29.866667-12.8 46.933333-46.933333 106.666667-72.533333 174.933333-72.533333 64 0 128 25.6 174.933333 72.533333 17.066667 17.066667 42.666667 17.066667 59.733334 0 17.066667-17.066667 17.066667-42.666667 0-59.733333z m-332.8-196.266667c0-55.466667 42.666667-98.133333 98.133333-98.133333 55.466667 0 98.133333 42.666667 98.133333 98.133333 0 55.466667-42.666667 98.133333-98.133333 98.133333-55.466667 0-98.133333-42.666667-98.133333-98.133333z"
-              p-id="11248"
-            ></path>
-            <path
-              d="M512 85.333333C276.352 85.333333 85.333333 276.352 85.333333 512s191.018667 426.666667 426.666667 426.666667 426.666667-191.018667 426.666667-426.666667S747.648 85.333333 512 85.333333zM170.666667 512a341.333333 341.333333 0 1 1 682.666666 0 341.333333 341.333333 0 0 1-682.666666 0z"
-              p-id="11249"
-            ></path>
-          </svg>
-          <div class="header-user-name">{{ nickName }}</div>
+        <div class="header-actions">
+          <ThemeToggle />
+          <UserMenu :nickname="nickName" />
         </div>
       </header>
       <main class="main">
@@ -384,7 +377,7 @@ onUnmounted(() => {
 .background {
   width: 100%;
   height: 100vh;
-  background: radial-gradient(#fff, #f6f9fd);
+  background: radial-gradient(var(--app-bg-gradient-start), var(--app-bg-gradient-end));
 }
 .container {
   display: flex;
@@ -409,6 +402,7 @@ onUnmounted(() => {
 .title {
   font-size: 1.2rem;
   font-weight: 600;
+  color: var(--app-text-primary);
 }
 .icon {
   width: 2.5rem;
@@ -418,23 +412,10 @@ onUnmounted(() => {
   width: 2.5rem;
   height: 2.5rem;
 }
-.header-user {
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0.5rem 0.8rem;
-  border-radius: 0.2rem;
-  border: 1px solid #e5e5e5;
-  cursor: pointer;
-  background-color: #fff;
-}
-.icon-user {
-  width: 1.5rem;
-  height: 1.5rem;
-}
-.header-user-name {
-  font-size: 0.9rem;
-  line-height: 0.9rem;
+  gap: 0.75rem;
 }
 
 .main {
@@ -456,12 +437,12 @@ onUnmounted(() => {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1a1c1e;
+  color: var(--app-text-primary);
 }
 
 .main-count {
   font-size: 0.875rem;
-  color: #73767a;
+  color: var(--app-text-secondary);
 }
 
 .main-search {
@@ -478,19 +459,19 @@ onUnmounted(() => {
 
 .main-search-input :deep(.el-input__wrapper) {
   border-radius: 4px;
-  border: 1px solid #e0e0e6;
+  border: 1px solid var(--app-border-strong);
   box-shadow: none;
   margin-left: 3px;
   transition: all 0.2s ease;
 }
 
 .main-search-input :deep(.el-input__wrapper.is-focus) {
-  border: 1px solid #2463dc;
-  box-shadow: 0 0 0 2px rgba(0, 89, 255, 0.2);
+  border: 1px solid var(--app-accent);
+  box-shadow: 0 0 0 2px rgba(36, 99, 220, 0.2);
 }
 
 .main-search-input :deep(.el-input__prefix .el-icon) {
-  color: #a8abb2;
+  color: var(--app-text-muted);
 }
 
 .card-delete {
@@ -507,16 +488,16 @@ onUnmounted(() => {
   right: 3rem;
   width: 2rem;
   height: 2rem;
-  background-color: #fff;
-  color: gray;
+  background-color: var(--app-surface);
+  color: var(--app-text-secondary);
 }
 
 .card-delete:hover {
-  color: #f11212;
+  color: var(--app-danger);
 }
 
 .card-edit:hover {
-  color: #000;
+  color: var(--app-text-primary);
 }
 
 .project-grid {
@@ -530,10 +511,10 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: 1.25rem;
-  background-color: #fff;
-  border: 1px solid #e8ebf0;
+  background-color: var(--app-surface);
+  border: 1px solid var(--app-card-border);
   border-radius: 0.35rem;
-  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 3px 5px var(--app-shadow);
 }
 
 .project-card-top {
@@ -551,8 +532,8 @@ onUnmounted(() => {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 0.5rem;
-  background-color: #eef4ff;
-  color: #2463dc;
+  background-color: var(--app-accent-soft);
+  color: var(--app-accent);
   transition: background-color 0.2s ease;
 }
 
@@ -565,10 +546,10 @@ onUnmounted(() => {
 .project-card-status {
   padding: 0.125rem 0.625rem;
   font-size: 0.75rem;
-  color: #73767a;
-  border: 1px solid #e5e7eb;
+  color: var(--app-text-secondary);
+  border: 1px solid var(--app-border);
   border-radius: 999px;
-  background-color: #fff;
+  background-color: var(--app-surface);
 }
 
 .project-card-name,
@@ -576,14 +557,14 @@ onUnmounted(() => {
   margin: 0 0 0.375rem;
   font-size: 1rem;
   font-weight: 700;
-  color: #1a1c1e;
+  color: var(--app-text-primary);
 }
 
 .project-card-desc,
 .project-create-desc {
   margin: 0 0 1.25rem;
   font-size: 0.8125rem;
-  color: #73767a;
+  color: var(--app-text-secondary);
   line-height: 1.5;
 }
 
@@ -600,7 +581,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.375rem;
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--app-text-muted);
 }
 
 .project-card-time svg {
@@ -615,7 +596,7 @@ onUnmounted(() => {
   background: none;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: #2463dc;
+  color: var(--app-accent);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -629,8 +610,8 @@ onUnmounted(() => {
   justify-content: center;
   min-height: 11rem;
   text-align: center;
-  border: 1px dashed #c8d4e6;
-  background-color: #fff;
+  border: 1px dashed var(--app-border-strong);
+  background-color: var(--app-surface);
   cursor: pointer;
   transition:
     border-color 0.2s ease,
@@ -638,12 +619,12 @@ onUnmounted(() => {
 }
 
 .project-card--create:hover {
-  border-color: #2463dc;
-  background-color: #f0f6ff;
+  border-color: var(--app-accent);
+  background-color: var(--app-surface-hover);
 }
 
 .project-card--create:hover .project-create-icon {
-  background-color: #fff;
+  background-color: var(--app-surface);
 }
 .project-create-icon {
   margin-bottom: 0.875rem;

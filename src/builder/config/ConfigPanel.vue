@@ -171,7 +171,7 @@ async function handleSaveProject() {
   min-height: 0;
   overflow: auto;
   padding: 1.5rem 2rem;
-  background-color: #fff;
+  background-color: var(--app-surface);
 }
 
 .config-section {
@@ -182,7 +182,7 @@ async function handleSaveProject() {
   margin: 0 0 1rem;
   font-size: 1rem;
   font-weight: 700;
-  color: #111;
+  color: var(--app-text-primary);
 }
 
 .config-form {
@@ -191,7 +191,11 @@ async function handleSaveProject() {
 
 .config-form :deep(.el-form-item__label) {
   font-weight: 600;
-  color: #333;
+  color: var(--app-text-primary);
+}
+
+.config-panel :deep(.el-divider) {
+  border-color: var(--app-border);
 }
 
 .config-color-row {

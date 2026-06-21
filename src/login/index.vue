@@ -190,30 +190,31 @@ function handleSwitchMode() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf3 100%);
+  background: linear-gradient(135deg, var(--app-bg-gradient-start) 0%, var(--app-bg-gradient-end) 100%);
 }
 
 .auth-card {
   width: 100%;
   max-width: 24rem;
   padding: 2.5rem 2rem;
-  background-color: #fff;
+  background-color: var(--app-surface);
   border-radius: 0.75rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px var(--app-shadow);
+  border: 1px solid var(--app-border);
 }
 
 .auth-title {
   margin: 0;
   font-size: 1.75rem;
   font-weight: 700;
-  color: #1a1c1e;
+  color: var(--app-text-primary);
   text-align: center;
 }
 
 .auth-subtitle {
   margin: 0.5rem 0 2rem;
   font-size: 0.875rem;
-  color: #73767a;
+  color: var(--app-text-secondary);
   text-align: center;
 }
 
@@ -233,7 +234,7 @@ function handleSwitchMode() {
   padding: 0;
   border: none;
   background: none;
-  color: #2463dc;
+  color: var(--app-accent);
   font-size: 0.875rem;
   cursor: pointer;
   text-align: center;

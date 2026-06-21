@@ -8,6 +8,29 @@
   /* 主内容区浅灰底，与侧栏、白页头区分 */
   --wiki-layout-main-bg: #f0f2f5;
 
+  /* 应用主题变量（浅色） */
+  --app-bg: #ffffff;
+  --app-bg-gradient-start: #ffffff;
+  --app-bg-gradient-end: #f6f9fd;
+  --app-bg-subtle: #f5f7fa;
+  --app-bg-muted: #fbfcff;
+  --app-surface: #ffffff;
+  --app-surface-hover: #f0f6ff;
+  --app-border: #e5e5e5;
+  --app-border-strong: #e0e0e6;
+  --app-text-primary: #1a1c1e;
+  --app-text-secondary: #73767a;
+  --app-text-muted: #9ca3af;
+  --app-accent: #2463dc;
+  --app-accent-soft: #eef4ff;
+  --app-icon-fill: #2c2c2c;
+  /** 用户头像立方体填充色 */
+  --app-avatar-cube-fill: #000000;
+  --app-shadow: rgba(0, 0, 0, 0.1);
+  --app-card-border: #e8ebf0;
+  --app-danger: #f11212;
+  --app-error: #c0392b;
+
   /* 主色：炭黑 */
   --el-color-primary: #1a1c1e;
   --el-color-primary-rgb: 26, 28, 30;
@@ -17,4 +40,52 @@
   --el-color-primary-light-8: #b0b3b6;
   --el-color-primary-light-9: #e8e9ea;
   --el-color-primary-dark-2: #121416;
+
+  color-scheme: light;
+}
+
+html.dark {
+  /* Wiki 布局暗色 */
+  --wiki-layout-main-bg: #141414;
+
+  /* 应用主题变量（深色） */
+  --app-bg: #0f1115;
+  --app-bg-gradient-start: #12151c;
+  --app-bg-gradient-end: #0f1115;
+  --app-bg-subtle: #171a21;
+  --app-bg-muted: #141820;
+  --app-surface: #1c1f26;
+  --app-surface-hover: #252a34;
+  --app-border: #2d333d;
+  --app-border-strong: #3a4150;
+  --app-text-primary: #e8eaed;
+  --app-text-secondary: #a8adb8;
+  --app-text-muted: #7d8491;
+  --app-accent: #5b8cff;
+  --app-accent-soft: #1e2a45;
+  --app-icon-fill: #e8eaed;
+  /** 用户头像立方体填充色 */
+  --app-avatar-cube-fill: #ffffff;
+  --app-shadow: rgba(0, 0, 0, 0.35);
+  --app-card-border: #2d333d;
+  --app-danger: #ff6b6b;
+  --app-error: #ff8787;
+
+  /* Element Plus 主色暗色适配（与 accent 保持一致，保证按钮等组件可读） */
+  --el-color-primary: #5b8cff;
+  --el-color-primary-rgb: 91, 140, 255;
+  --el-color-primary-light-3: #7fa3ff;
+  --el-color-primary-light-5: #a3bfff;
+  --el-color-primary-light-7: #c7daff;
+  --el-color-primary-light-8: #d9e6ff;
+  --el-color-primary-light-9: #1e2a45;
+  --el-color-primary-dark-2: #4a78e8;
+
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: var(--app-bg);
+  color: var(--app-text-primary);
 }

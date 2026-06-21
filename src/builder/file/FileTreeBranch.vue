@@ -97,24 +97,24 @@ function handleClick() {
   gap: 0.25rem;
   padding: 0.375rem;
   font-size: 14px;
-  color: #333;
+  color: var(--app-text-primary);
   cursor: pointer;
   user-select: none;
 }
 
 .file-tree-item:hover {
-  background-color: #eef3ff;
+  background-color: var(--app-surface-hover);
 }
 
 .file-tree-item--selected {
-  background-color: #dbe7ff;
-  color: #2463dc;
+  background-color: var(--app-accent-soft);
+  color: var(--app-accent);
 }
 
 .file-tree-arrow {
   width: 12px;
   font-size: 0.625rem;
-  color: #666;
+  color: var(--app-text-secondary);
   transition: transform 0.2s ease;
 }
 

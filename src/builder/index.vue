@@ -237,11 +237,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   font-size: 0.875rem;
-  color: #73767a;
+  color: var(--app-text-secondary);
+  background-color: var(--app-bg);
 }
 
 .builder-status--error {
-  color: #c0392b;
+  color: var(--app-error);
 }
 
 .container {
@@ -249,17 +250,18 @@ onUnmounted(() => {
   height: 100vh;
   overflow: hidden;
   display: flex;
+  background-color: var(--app-bg);
 }
 .left {
   flex: 1;
   height: 100%;
   min-width: 0;
-  border-right: 1px solid #e5e5e5;
+  border-right: 1px solid var(--app-border);
 }
 .main {
   flex: 3;
   height: 100%;
-  background-color: #fff;
+  background-color: var(--app-surface);
   display: flex;
   flex-direction: column;
 }
@@ -271,20 +273,20 @@ onUnmounted(() => {
   gap: 1rem;
   align-items: center;
   padding: 0 1rem;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .main-tab-item {
   font-size: 1rem;
   padding: 0.5rem 2rem;
-  color: #000;
+  color: var(--app-text-primary);
   font-weight: 700;
   cursor: pointer;
   transition: color 0.2s ease;
 }
 
 .main-tab-item--active {
-  color: #2463dc;
+  color: var(--app-accent);
 }
 
 .main-tab-indicator {
@@ -292,7 +294,7 @@ onUnmounted(() => {
   left: 0;
   bottom: 0;
   height: 2px;
-  background-color: #2463dc;
+  background-color: var(--app-accent);
   transition:
     transform 0.25s ease,
     width 0.25s ease;
@@ -314,6 +316,6 @@ onUnmounted(() => {
   flex: 1.5;
   height: 100%;
   min-width: 0;
-  border-left: 1px solid #e5e5e5;
+  border-left: 1px solid var(--app-border);
 }
 </style>

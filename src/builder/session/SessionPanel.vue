@@ -6,6 +6,8 @@ import { useRouter } from 'vue-router'
 import { deleteSession, getSessionList, updateSession, type sessionItem } from '@/http/session'
 import { getUserInfo } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
+import ThemeToggle from '@/components/ThemeToggle.vue'
+import UserMenu from '@/components/UserMenu.vue'
 import { SESSION_EMPTY_PREVIEW } from './constants'
 import { useSessionContext } from './sessionContext'
 
@@ -394,17 +396,8 @@ onUnmounted(() => {
       </div>
 
       <div class="user-bar">
-        <div class="user-bar-avatar">
-          <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path
-              d="M746.666667 657.066667c-29.866667-29.866667-64-51.2-102.4-68.266667 29.866667-34.133333 51.2-76.8 51.2-128 0-102.4-81.066667-183.466667-183.466667-183.466667s-183.466667 81.066667-183.466667 183.466667c0 51.2 21.333333 93.866667 51.2 128-38.4 17.066667-72.533333 38.4-102.4 68.266667-17.066667 17.066667-17.066667 42.666667 0 59.733333 8.533333 8.533333 21.333333 12.8 29.866667 12.8 12.8 0 21.333333-4.266667 29.866667-12.8 46.933333-46.933333 106.666667-72.533333 174.933333-72.533333 64 0 128 25.6 174.933333 72.533333 17.066667 17.066667 42.666667 17.066667 59.733334 0 17.066667-17.066667 17.066667-42.666667 0-59.733333z m-332.8-196.266667c0-55.466667 42.666667-98.133333 98.133333-98.133333 55.466667 0 98.133333 42.666667 98.133333 98.133333 0 55.466667-42.666667 98.133333-98.133333 98.133333-55.466667 0-98.133333-42.666667-98.133333-98.133333z"
-              fill="currentColor" />
-            <path
-              d="M512 85.333333C276.352 85.333333 85.333333 276.352 85.333333 512s191.018667 426.666667 426.666667 426.666667 426.666667-191.018667 426.666667-426.666667S747.648 85.333333 512 85.333333zM170.666667 512a341.333333 341.333333 0 1 1 682.666666 0 341.333333 341.333333 0 0 1-682.666666 0z"
-              fill="currentColor" />
-          </svg>
-        </div>
-        <span class="user-bar-name">{{ nickName }}</span>
+        <UserMenu :nickname="nickName" compact />
+        <ThemeToggle />
       </div>
     </footer>
   </aside>
@@ -418,7 +411,7 @@ onUnmounted(() => {
   height: 100%;
   min-height: 0;
   padding: 1rem 0.75rem;
-  background-color: #fbfcff;
+  background-color: var(--app-bg-muted);
 }
 
 .session-panel-header {
@@ -436,7 +429,7 @@ onUnmounted(() => {
   justify-content: center;
   width: 2.25rem;
   height: 2.25rem;
-  border: 1.5px solid #2463dc;
+  border: 1.5px solid var(--app-accent);
   border-radius: 0.5rem;
   flex-shrink: 0;
 }
@@ -449,7 +442,7 @@ onUnmounted(() => {
 .session-panel-title {
   font-size: 1rem;
   font-weight: 700;
-  color: #2463dc;
+  color: var(--app-accent);
   line-height: 1.3;
 }
 
@@ -471,7 +464,7 @@ onUnmounted(() => {
 .session-section-label {
   font-size: 0.875rem;
   font-weight: 600;
-  color: #1a1c1e;
+  color: var(--app-text-primary);
 }
 
 .session-create-btn {
@@ -479,7 +472,7 @@ onUnmounted(() => {
   border: none;
   background: none;
   font-size: 0.8125rem;
-  color: #2463dc;
+  color: var(--app-accent);
   cursor: pointer;
 }
 
@@ -498,7 +491,7 @@ onUnmounted(() => {
 
 .session-search :deep(.el-input__wrapper) {
   border-radius: 0.5rem;
-  border: 1px solid #e0e0e6;
+  border: 1px solid var(--app-border-strong);
   box-shadow: none;
 }
 
@@ -523,7 +516,7 @@ onUnmounted(() => {
   flex: 1;
   min-height: 4rem;
   font-size: 0.8125rem;
-  color: #9ca3af;
+  color: var(--app-text-muted);
 }
 
 .session-item {
@@ -537,13 +530,13 @@ onUnmounted(() => {
 }
 
 .session-item:hover {
-  background-color: #f3f6fc;
+  background-color: var(--app-surface-hover);
 }
 
 .session-item--active {
-  background-color: #eef4ff;
-  border-color: #d6e4ff;
-  border-left: 3px solid #2463dc;
+  background-color: var(--app-accent-soft);
+  border-color: var(--app-border);
+  border-left: 3px solid var(--app-accent);
   padding-left: calc(0.75rem - 2px);
 }
 
@@ -563,7 +556,7 @@ onUnmounted(() => {
   min-width: 0;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #1a1c1e;
+  color: var(--app-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -572,14 +565,14 @@ onUnmounted(() => {
 .session-item-time {
   flex-shrink: 0;
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--app-text-muted);
 }
 
 .session-item-preview {
   flex: 1;
   min-width: 0;
   font-size: 0.75rem;
-  color: #73767a;
+  color: var(--app-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -602,7 +595,7 @@ onUnmounted(() => {
   border: none;
   border-radius: 0.25rem;
   background: none;
-  color: #9ca3af;
+  color: var(--app-text-muted);
   cursor: pointer;
   transition:
     background-color 0.2s ease,
@@ -611,11 +604,11 @@ onUnmounted(() => {
 
 .session-item-action:hover {
   background-color: rgba(0, 0, 0, 0.05);
-  color: #2463dc;
+  color: var(--app-accent);
 }
 
 .session-item-action--delete:hover {
-  color: #f11212;
+  color: var(--app-danger);
 }
 
 .session-panel-footer {
@@ -631,9 +624,9 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem;
-  border: 1px solid #e8ebf0;
+  border: 1px solid var(--app-card-border);
   border-radius: 0.35rem;
-  background-color: #fff;
+  background-color: var(--app-surface);
 }
 
 .project-card-body {
@@ -643,14 +636,14 @@ onUnmounted(() => {
 
 .project-card-label {
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--app-text-muted);
   margin-bottom: 0.125rem;
 }
 
 .project-card-name {
   font-size: 0.9375rem;
   font-weight: 700;
-  color: #1a1c1e;
+  color: var(--app-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -659,7 +652,7 @@ onUnmounted(() => {
 .project-card-desc {
   margin-top: 0.125rem;
   font-size: 0.75rem;
-  color: #73767a;
+  color: var(--app-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -672,10 +665,10 @@ onUnmounted(() => {
   justify-content: center;
   width: 2rem;
   height: 2rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--app-border);
   border-radius: 0.375rem;
-  background-color: #f9fafb;
-  color: #606266;
+  background-color: var(--app-bg-subtle);
+  color: var(--app-text-secondary);
   cursor: pointer;
   transition:
     border-color 0.2s ease,
@@ -683,8 +676,8 @@ onUnmounted(() => {
 }
 
 .project-card-switch:hover {
-  border-color: #2463dc;
-  color: #2463dc;
+  border-color: var(--app-accent);
+  color: var(--app-accent);
 }
 
 .user-bar {
@@ -694,30 +687,8 @@ onUnmounted(() => {
   padding: 0.5rem 0.25rem;
 }
 
-.user-bar-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  background-color: #eef4ff;
-  color: #2463dc;
-  flex-shrink: 0;
-}
-
-.user-bar-avatar svg {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.user-bar-name {
+.user-bar :deep(.user-menu-trigger--compact) {
   flex: 1;
   min-width: 0;
-  font-size: 0.875rem;
-  color: #1a1c1e;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 </style>

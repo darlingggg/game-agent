@@ -3,7 +3,7 @@ import { onUnmounted, ref, watch } from 'vue'
 import { useProjectStore } from '@/stores/project'
 import { INDEX_HTML_PATH, parseProjectHtmlConfig } from '../config/projectHtmlConfig'
 import { fetchProjectTempFileContent } from '../file/projectTempFiles'
-import { refreshProjectTempPreview, resetProjectTempPreview, startProjectTempPreview } from './webcontainer'
+import { refreshProjectTempPreview, previewIframeReloadSignal, resetProjectTempPreview, startProjectTempPreview } from './webcontainer'
 
 defineOptions({
   name: 'PreviewPanel',
@@ -86,6 +86,13 @@ watch(
   },
   { immediate: true },
 )
+
+/** AI 写入文件后防抖重载 iframe，使 Tailwind 样式生效 */
+watch(previewIframeReloadSignal, () => {
+  if (previewUrl.value) {
+    iframeKey.value += 1
+  }
+})
 
 onUnmounted(() => {
   previewLoadToken++
@@ -171,7 +178,7 @@ async function handleRefresh() {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background-color: #fcfcfd;
+  background-color: var(--app-bg-muted);
 }
 
 .preview-toolbar {
@@ -180,15 +187,15 @@ async function handleRefresh() {
   align-items: center;
   justify-content: space-between;
   padding: 0.25rem 1rem;
-  border-bottom: 1px solid #e5e5e5;
-  background-color: #fff;
+  border-bottom: 1px solid var(--app-border);
+  background-color: var(--app-surface);
 }
 
 .preview-toolbar-title {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
-  color: #000;
+  color: var(--app-text-primary);
 }
 
 .preview-toolbar-actions {
@@ -204,10 +211,10 @@ async function handleRefresh() {
   width: 2rem;
   height: 2rem;
   padding: 0;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--app-border);
   border-radius: 50%;
-  background-color: #fff;
-  color: #333;
+  background-color: var(--app-surface);
+  color: var(--app-text-primary);
   cursor: pointer;
   transition:
     background-color 0.2s ease,
@@ -216,9 +223,9 @@ async function handleRefresh() {
 }
 
 .preview-toolbar-btn:hover:not(:disabled) {
-  background-color: #f5f7fa;
-  border-color: #d0d7de;
-  color: #2463dc;
+  background-color: var(--app-bg-subtle);
+  border-color: var(--app-border-strong);
+  color: var(--app-accent);
 }
 
 .preview-toolbar-btn:disabled {
@@ -329,12 +336,12 @@ async function handleRefresh() {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  color: #000;
+  color: var(--app-text-primary);
   font-size: 0.85rem;
   text-align: center;
 }
 
 .preview-placeholder--error {
-  color: #c0392b;
+  color: var(--app-error);
 }
 </style>
