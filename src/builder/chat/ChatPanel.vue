@@ -522,6 +522,28 @@ function handleActionClick() {
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+}
+
+.chat-panel-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-panel-messages::-webkit-scrollbar-track {
+  background: var(--app-scrollbar-track);
+}
+
+.chat-panel-messages::-webkit-scrollbar-thumb {
+  background-color: var(--app-scrollbar-thumb);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+
+.chat-panel-messages::-webkit-scrollbar-thumb:hover {
+  background-color: var(--app-scrollbar-thumb-hover);
 }
 
 .chat-panel-empty {

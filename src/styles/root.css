@@ -30,6 +30,12 @@
   --app-card-border: #e8ebf0;
   --app-danger: #f11212;
   --app-error: #c0392b;
+  /** 滚动条轨道色 */
+  --app-scrollbar-track: transparent;
+  /** 滚动条滑块色 */
+  --app-scrollbar-thumb: #d8dce3;
+  /** 滚动条滑块悬停色 */
+  --app-scrollbar-thumb-hover: #b0b8c4;
 
   /* 主色：炭黑 */
   --el-color-primary: #1a1c1e;
@@ -70,6 +76,12 @@ html.dark {
   --app-card-border: #2d333d;
   --app-danger: #ff6b6b;
   --app-error: #ff8787;
+  /** 滚动条轨道色 */
+  --app-scrollbar-track: transparent;
+  /** 滚动条滑块色 */
+  --app-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  /** 滚动条滑块悬停色 */
+  --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 
   /* Element Plus 主色暗色适配（与 accent 保持一致，保证按钮等组件可读） */
   --el-color-primary: #5b8cff;

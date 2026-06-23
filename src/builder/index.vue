@@ -81,8 +81,19 @@ const tabs: TabItem[] = [
   { key: 'log', label: '日志' },
 ]
 
+/** Tab 对应的面板组件 */
+const panelComponents = {
+  chat: ChatPanel,
+  file: FilePanel,
+  config: ConfigPanel,
+  log: LogPanel,
+} as const
+
 /** 当前选中的 Tab 索引 */
 const activeTab = ref(0)
+
+/** Panel 切换过渡名称（根据 Tab 索引方向决定左/右滑动） */
+const panelTransitionName = ref('panel-slide-forward')
 
 /** Tab 元素引用，用于计算底部指示条位置 */
 const tabRefs = ref<HTMLElement[]>([])
@@ -129,12 +140,18 @@ function updateIndicator() {
  * @param index 目标 Tab 索引
  */
 function switchTab(index: number) {
+  if (index === activeTab.value) return
+
+  panelTransitionName.value = index > activeTab.value ? 'panel-slide-forward' : 'panel-slide-backward'
   activeTab.value = index
   nextTick(updateIndicator)
 }
 
 /** 当前选中 Tab 的内容标识 */
 const activeTabKey = computed(() => tabs[activeTab.value]?.key ?? 'chat')
+
+/** 当前选中的面板组件 */
+const activePanelComponent = computed(() => panelComponents[activeTabKey.value as keyof typeof panelComponents])
 
 /**
  * 从地址栏 projectId 初始化当前项目
@@ -202,25 +219,20 @@ onUnmounted(() => {
     </section>
     <main class="main">
       <div class="main-tab">
-        <div
-          v-for="(tab, index) in tabs"
-          :key="tab.key"
-          :ref="(el) => setTabRef(el, index)"
-          class="main-tab-item"
-          :class="{ 'main-tab-item--active': activeTab === index }"
-          @click="switchTab(index)"
-        >
+        <div v-for="(tab, index) in tabs" :key="tab.key" :ref="(el) => setTabRef(el, index)" class="main-tab-item"
+          :class="{ 'main-tab-item--active': activeTab === index }" @click="switchTab(index)">
           {{ tab.label }}
         </div>
         <div class="main-tab-indicator" :style="indicatorStyle" />
       </div>
       <div class="main-content">
-        <KeepAlive include="ChatPanel">
-          <ChatPanel v-if="activeTabKey === 'chat'" class="main-content-panel" />
-        </KeepAlive>
-        <FilePanel v-if="activeTabKey === 'file'" class="main-content-panel" />
-        <ConfigPanel v-if="activeTabKey === 'config'" class="main-content-panel" />
-        <LogPanel v-show="activeTabKey === 'log'" class="main-content-panel" />
+        <div class="main-content-viewport">
+          <KeepAlive include="ChatPanel">
+            <Transition :name="panelTransitionName">
+              <component :is="activePanelComponent" :key="activeTabKey" class="main-content-panel" />
+            </Transition>
+          </KeepAlive>
+        </div>
       </div>
     </main>
     <section class="right">
@@ -252,12 +264,14 @@ onUnmounted(() => {
   display: flex;
   background-color: var(--app-bg);
 }
+
 .left {
   flex: 1;
   height: 100%;
   min-width: 0;
   border-right: 1px solid var(--app-border);
 }
+
 .main {
   flex: 3;
   height: 100%;
@@ -265,6 +279,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
 }
+
 .main-tab {
   position: relative;
   width: 100%;
@@ -306,10 +321,88 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.main-content-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .main-content-panel {
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+/* 向右切换：新旧 panel 同时滑动，新 panel 从右侧滑入 */
+.panel-slide-forward-enter-active,
+.panel-slide-forward-leave-active {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition:
+    transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.28s ease;
+}
+
+.panel-slide-forward-enter-active {
+  z-index: 2;
+}
+
+.panel-slide-forward-leave-active {
+  z-index: 1;
+}
+
+.panel-slide-forward-enter-from {
+  transform: translateX(1.5rem);
+  opacity: 0;
+}
+
+.panel-slide-forward-leave-to {
+  transform: translateX(-1.5rem);
+  opacity: 0.3;
+}
+
+/* 向左切换：新旧 panel 同时滑动，新 panel 从左侧滑入 */
+.panel-slide-backward-enter-active,
+.panel-slide-backward-leave-active {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition:
+    transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.28s ease;
+}
+
+.panel-slide-backward-enter-active {
+  z-index: 2;
+}
+
+.panel-slide-backward-leave-active {
+  z-index: 1;
+}
+
+.panel-slide-backward-enter-from {
+  transform: translateX(-1.5rem);
+  opacity: 0.3;
+}
+
+.panel-slide-backward-leave-to {
+  transform: translateX(1.5rem);
+  opacity: 0.3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .panel-slide-forward-enter-active,
+  .panel-slide-forward-leave-active,
+  .panel-slide-backward-enter-active,
+  .panel-slide-backward-leave-active {
+    transition: none;
+  }
 }
 
 .right {

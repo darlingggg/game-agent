@@ -29,6 +29,25 @@ const historyEntries = computed(() => logContext.historyEntries.value)
 const liveEntries = computed(() => logContext.liveEntries.value)
 
 /**
+ * 格式化日志时间
+ * @param value ISO 时间字符串
+ */
+function formatLogTime(value: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+}
+
+/**
  * 判断是否为 AI 日志
  * @param entry 日志条目
  */
@@ -152,66 +171,50 @@ onMounted(() => {
       </div>
 
       <div v-else-if="isAiEntry(entry)" class="log-panel-line log-panel-line--ai">
-        <span class="log-panel-tag log-panel-tag--ai">[ai]</span>
-        <button
-          v-if="shouldCollapseAiLog(entry.content, entry.streaming)"
-          type="button"
-          class="log-panel-ai-btn"
-          @click="toggleAiDetail(entry)"
-        >
+        <span class="log-panel-tag log-panel-tag--ai"
+          :data-time="entry.createdAt ? formatLogTime(entry.createdAt) : undefined">[ai]</span>
+        <button v-if="shouldCollapseAiLog(entry.content, entry.streaming)" type="button" class="log-panel-ai-btn"
+          @click="toggleAiDetail(entry)">
           <span class="log-panel-text">{{ getAiDisplayText(entry) }}</span>
           <span v-if="!entry.expanded" class="log-panel-ai-ellipsis">...</span>
-          <svg
-            class="log-panel-tool-arrow"
-            :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <svg class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
+            viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
           </svg>
         </button>
         <span v-else class="log-panel-text">{{ entry.content }}</span>
       </div>
 
       <div v-else-if="isToolEntry(entry)" class="log-panel-line log-panel-line--tool">
-        <span class="log-panel-tag log-panel-tag--tool">[tool]</span>
+        <span class="log-panel-tag log-panel-tag--tool"
+          :data-time="entry.createdAt ? formatLogTime(entry.createdAt) : undefined">[tool]</span>
         <button type="button" class="log-panel-tool-btn" @click="toggleToolDetail(entry)">
           <span>{{ entry.content }}</span>
-          <svg
-            class="log-panel-tool-arrow"
-            :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <svg class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
+            viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
           </svg>
         </button>
         <span class="log-panel-status">{{ getToolStatusMark(entry.status) }}</span>
-        <pre v-if="entry.expanded && getToolDetailText(entry)" class="log-panel-tool-detail">{{ getToolDetailText(entry) }}</pre>
+        <pre v-if="entry.expanded && getToolDetailText(entry)"
+          class="log-panel-tool-detail">{{ getToolDetailText(entry) }}</pre>
       </div>
     </template>
 
     <template v-for="entry in liveEntries" :key="entry.id">
       <div v-if="entry.prefix === 'ai'" class="log-panel-line log-panel-line--ai">
-        <span class="log-panel-tag log-panel-tag--ai">[ai]</span>
-        <button
-          v-if="shouldCollapseAiLog(entry.content, entry.streaming)"
-          type="button"
-          class="log-panel-ai-btn"
-          @click="toggleAiDetail(entry)"
-        >
+        <span class="log-panel-tag log-panel-tag--ai"
+          :data-time="entry.createdAt ? formatLogTime(entry.createdAt) : undefined">[ai]</span>
+        <button v-if="shouldCollapseAiLog(entry.content, entry.streaming)" type="button" class="log-panel-ai-btn"
+          @click="toggleAiDetail(entry)">
           <span class="log-panel-text">{{ getAiDisplayText(entry) }}</span>
           <span v-if="!entry.expanded" class="log-panel-ai-ellipsis">...</span>
-          <svg
-            class="log-panel-tool-arrow"
-            :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <svg class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
+            viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
           </svg>
         </button>
         <span v-else class="log-panel-text">{{ entry.content }}</span>
@@ -219,28 +222,23 @@ onMounted(() => {
       </div>
 
       <div v-else class="log-panel-line log-panel-line--tool">
-        <span class="log-panel-tag log-panel-tag--tool">[tool]</span>
-        <button
-          type="button"
-          class="log-panel-tool-btn"
+        <span class="log-panel-tag log-panel-tag--tool"
+          :data-time="entry.createdAt ? formatLogTime(entry.createdAt) : undefined">[tool]</span>
+        <button type="button" class="log-panel-tool-btn"
           :class="{ 'log-panel-tool-btn--disabled': !entry.result && entry.status === 'loading' }"
-          @click="toggleToolDetail(entry)"
-        >
+          @click="toggleToolDetail(entry)">
           <span>{{ entry.content }}</span>
-          <svg
-            v-if="entry.result || entry.status !== 'loading'"
-            class="log-panel-tool-arrow"
-            :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <svg v-if="entry.result || entry.status !== 'loading'" class="log-panel-tool-arrow"
+            :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }" viewBox="0 0 24 24" fill="none"
+            aria-hidden="true">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
           </svg>
         </button>
         <span v-if="entry.status === 'loading'" class="log-panel-loading" aria-label="执行中" />
         <span v-else class="log-panel-status">{{ getToolStatusMark(entry.status) }}</span>
-        <pre v-if="entry.expanded && getToolDetailText(entry)" class="log-panel-tool-detail">{{ getToolDetailText(entry) }}</pre>
+        <pre v-if="entry.expanded && getToolDetailText(entry)"
+          class="log-panel-tool-detail">{{ getToolDetailText(entry) }}</pre>
       </div>
     </template>
   </div>
@@ -275,8 +273,28 @@ onMounted(() => {
 }
 
 .log-panel-tag {
+  position: relative;
   flex-shrink: 0;
   font-weight: 700;
+  cursor: default;
+}
+
+.log-panel-tag[data-time]:hover::after {
+  content: attr(data-time);
+  position: absolute;
+  left: calc(100% + 0.375rem);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.125rem 0.375rem;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background-color: #222;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  z-index: 1;
 }
 
 .log-panel-tag--ai {
