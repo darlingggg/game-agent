@@ -57,3 +57,11 @@ export const getFileContent = (params: FileContentParams): Promise<string> => {
 export const writeFileContent = (data: FileWriteParams): Promise<void> => {
   return axios.post('/file/write', data)
 }
+
+/** 删除指定文件
+ * @param body.dir 项目根路径
+ * @param body.path 文件绝对路径
+ */
+export const deleteFile = (body: { dir: string; path: string }): Promise<void> => {
+  return axios.post('/file/delete', body)
+}

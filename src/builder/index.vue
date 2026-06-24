@@ -10,6 +10,7 @@ import FilePanel from './file/FilePanel.vue'
 import LogPanel from './log/LogPanel.vue'
 import PreviewPanel from './preview/PreviewPanel.vue'
 import SessionPanel from './session/SessionPanel.vue'
+import SnapshotPanel from './snapshot/SnapshotPanel.vue'
 import { createLogContext, logContextKey } from './log/logContext'
 import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
 
@@ -78,6 +79,7 @@ const tabs: TabItem[] = [
   { key: 'chat', label: '对话' },
   { key: 'file', label: '文件' },
   { key: 'config', label: '配置' },
+  { key: 'snapshot', label: '版本' },
   { key: 'log', label: '日志' },
 ]
 
@@ -86,6 +88,7 @@ const panelComponents = {
   chat: ChatPanel,
   file: FilePanel,
   config: ConfigPanel,
+  snapshot: SnapshotPanel,
   log: LogPanel,
 } as const
 
@@ -219,8 +222,14 @@ onUnmounted(() => {
     </section>
     <main class="main">
       <div class="main-tab">
-        <div v-for="(tab, index) in tabs" :key="tab.key" :ref="(el) => setTabRef(el, index)" class="main-tab-item"
-          :class="{ 'main-tab-item--active': activeTab === index }" @click="switchTab(index)">
+        <div
+          v-for="(tab, index) in tabs"
+          :key="tab.key"
+          :ref="(el) => setTabRef(el, index)"
+          class="main-tab-item"
+          :class="{ 'main-tab-item--active': activeTab === index }"
+          @click="switchTab(index)"
+        >
           {{ tab.label }}
         </div>
         <div class="main-tab-indicator" :style="indicatorStyle" />
@@ -356,13 +365,13 @@ onUnmounted(() => {
 }
 
 .panel-slide-forward-enter-from {
-  transform: translateX(1.5rem);
+  transform: translateX(5rem);
   opacity: 0;
 }
 
 .panel-slide-forward-leave-to {
-  transform: translateX(-1.5rem);
-  opacity: 0.3;
+  transform: translateX(-5rem);
+  opacity: 0;
 }
 
 /* 向左切换：新旧 panel 同时滑动，新 panel 从左侧滑入 */
@@ -386,17 +395,16 @@ onUnmounted(() => {
 }
 
 .panel-slide-backward-enter-from {
-  transform: translateX(-1.5rem);
-  opacity: 0.3;
+  transform: translateX(-5rem);
+  opacity: 0;
 }
 
 .panel-slide-backward-leave-to {
-  transform: translateX(1.5rem);
-  opacity: 0.3;
+  transform: translateX(5rem);
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   .panel-slide-forward-enter-active,
   .panel-slide-forward-leave-active,
   .panel-slide-backward-enter-active,
