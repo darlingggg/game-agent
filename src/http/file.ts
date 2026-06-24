@@ -14,6 +14,20 @@ export interface ProjectTempFileItem {
   name: string
   /** 相对 projectTemp 根目录的路径 */
   relativePath: string
+  /** 文件字节数（fs.stat size），与快照保存逻辑一致 */
+  bytes?: number
+  /** 文件行数，与快照保存逻辑一致 */
+  length?: number
+}
+
+/** 文件 stat 信息 */
+export interface ProjectFileStat {
+  /** 文件字节数（fs.stat size） */
+  bytes: number
+  /** 文件行数 */
+  length: number
+  path: string
+  relativePath: string
 }
 
 /** 文件内容查询参数 */
@@ -40,6 +54,14 @@ interface FileWriteParams {
  */
 export const getFileList = (params: FileListParams): Promise<ProjectTempFileItem[]> => {
   return axios.get('/files', { params })
+}
+
+/**
+ * 获取指定文件的 stat 信息（bytes 为 fs.stat size，length 与快照保存逻辑一致）
+ * @param params 查询参数
+ */
+export const getFileStat = (body: { dir: string; path: string }): Promise<ProjectFileStat> => {
+  return axios.post('/file/meta', body)
 }
 
 /**

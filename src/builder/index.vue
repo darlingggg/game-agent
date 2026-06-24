@@ -4,13 +4,15 @@ import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type C
 import { useRoute, useRouter } from 'vue-router'
 import { getProjectList } from '@/http/project'
 import { useProjectStore } from '@/stores/project'
-import ChatPanel from './chat/ChatPanel.vue'
-import ConfigPanel from './config/ConfigPanel.vue'
-import FilePanel from './file/FilePanel.vue'
-import LogPanel from './log/LogPanel.vue'
-import PreviewPanel from './preview/PreviewPanel.vue'
-import SessionPanel from './session/SessionPanel.vue'
-import SnapshotPanel from './snapshot/SnapshotPanel.vue'
+import {
+  ChatPanel,
+  ConfigPanel,
+  FilePanel,
+  LogPanel,
+  PreviewPanel,
+  SessionPanel,
+  SnapshotPanel,
+} from './panels'
 import { createLogContext, logContextKey } from './log/logContext'
 import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
 
@@ -83,20 +85,29 @@ const tabs: TabItem[] = [
   { key: 'log', label: '日志' },
 ]
 
-/** Tab 对应的面板组件 */
-const panelComponents = {
-  chat: ChatPanel,
-  file: FilePanel,
-  config: ConfigPanel,
-  snapshot: SnapshotPanel,
-  log: LogPanel,
-} as const
-
 /** 当前选中的 Tab 索引 */
 const activeTab = ref(0)
 
-/** Panel 切换过渡名称（根据 Tab 索引方向决定左/右滑动） */
-const panelTransitionName = ref('panel-slide-forward')
+/** Tab 滑动方向 */
+type PanelSlideDirection = 'forward' | 'backward'
+
+/** 面板切换动画时长（毫秒） */
+const PANEL_TRANSITION_MS = 280
+
+/** 正在退出的 Tab key */
+const leavingTabKey = ref<string | null>(null)
+
+/** 当前滑动方向 */
+const slideDirection = ref<PanelSlideDirection>('forward')
+
+/** 是否正在切换动画中 */
+const isPanelTransitioning = ref(false)
+
+/** 面板切换动画结束定时器 */
+let panelTransitionTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 已挂载过的 Tab 面板（首次访问后保持挂载，避免切换丢失状态） */
+const mountedTabKeys = ref<Set<string>>(new Set(['chat']))
 
 /** Tab 元素引用，用于计算底部指示条位置 */
 const tabRefs = ref<HTMLElement[]>([])
@@ -143,18 +154,62 @@ function updateIndicator() {
  * @param index 目标 Tab 索引
  */
 function switchTab(index: number) {
-  if (index === activeTab.value) return
+  if (index === activeTab.value || isPanelTransitioning.value) return
 
-  panelTransitionName.value = index > activeTab.value ? 'panel-slide-forward' : 'panel-slide-backward'
+  slideDirection.value = index > activeTab.value ? 'forward' : 'backward'
+  leavingTabKey.value = tabs[activeTab.value]?.key ?? null
+
+  const newKey = tabs[index]?.key
+  if (newKey) {
+    mountedTabKeys.value = new Set([...mountedTabKeys.value, newKey])
+  }
+
   activeTab.value = index
+  isPanelTransitioning.value = true
+
+  if (panelTransitionTimer) {
+    clearTimeout(panelTransitionTimer)
+  }
+  panelTransitionTimer = setTimeout(() => {
+    leavingTabKey.value = null
+    isPanelTransitioning.value = false
+    panelTransitionTimer = null
+  }, PANEL_TRANSITION_MS)
+
   nextTick(updateIndicator)
 }
 
 /** 当前选中 Tab 的内容标识 */
 const activeTabKey = computed(() => tabs[activeTab.value]?.key ?? 'chat')
 
-/** 当前选中的面板组件 */
-const activePanelComponent = computed(() => panelComponents[activeTabKey.value as keyof typeof panelComponents])
+/**
+ * 获取面板切换动效 class（v-show 保持挂载，仅用 class 控制显隐与动画）
+ * @param key Tab key
+ */
+function getPanelTransitionClass(key: string) {
+  const isActive = activeTabKey.value === key
+  const isLeaving = leavingTabKey.value === key
+
+  if (!isPanelTransitioning.value) {
+    return isActive ? ['main-content-panel--active'] : ['main-content-panel--idle']
+  }
+
+  if (isActive) {
+    return [`main-content-panel--enter-${slideDirection.value}`]
+  }
+  if (isLeaving) {
+    return [`main-content-panel--leave-${slideDirection.value}`]
+  }
+  return ['main-content-panel--idle']
+}
+
+/**
+ * 是否应挂载 Tab 面板（未访问过的 Tab 不加载 chunk，减少首屏体积）
+ * @param key Tab key
+ */
+function shouldMountTabPanel(key: string) {
+  return mountedTabKeys.value.has(key)
+}
 
 /**
  * 从地址栏 projectId 初始化当前项目
@@ -209,6 +264,9 @@ watch(
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateIndicator)
+  if (panelTransitionTimer) {
+    clearTimeout(panelTransitionTimer)
+  }
   projectStore.setCurrentProject(null)
 })
 </script>
@@ -236,11 +294,37 @@ onUnmounted(() => {
       </div>
       <div class="main-content">
         <div class="main-content-viewport">
-          <KeepAlive include="ChatPanel">
-            <Transition :name="panelTransitionName">
-              <component :is="activePanelComponent" :key="activeTabKey" class="main-content-panel" />
-            </Transition>
-          </KeepAlive>
+          <!-- 首次访问才挂载对应面板 chunk，访问后保持挂载避免丢失状态 -->
+          <ChatPanel
+            v-if="shouldMountTabPanel('chat')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('chat')"
+            :aria-hidden="activeTabKey !== 'chat' && leavingTabKey !== 'chat'"
+          />
+          <FilePanel
+            v-if="shouldMountTabPanel('file')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('file')"
+            :aria-hidden="activeTabKey !== 'file' && leavingTabKey !== 'file'"
+          />
+          <ConfigPanel
+            v-if="shouldMountTabPanel('config')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('config')"
+            :aria-hidden="activeTabKey !== 'config' && leavingTabKey !== 'config'"
+          />
+          <SnapshotPanel
+            v-if="shouldMountTabPanel('snapshot')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('snapshot')"
+            :aria-hidden="activeTabKey !== 'snapshot' && leavingTabKey !== 'snapshot'"
+          />
+          <LogPanel
+            v-if="shouldMountTabPanel('log')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('log')"
+            :aria-hidden="activeTabKey !== 'log' && leavingTabKey !== 'log'"
+          />
         </div>
       </div>
     </main>
@@ -264,6 +348,16 @@ onUnmounted(() => {
 
 .builder-status--error {
   color: var(--app-error);
+}
+
+:global(.builder-panel-loading) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.875rem;
+  color: var(--app-text-muted);
 }
 
 .container {
@@ -339,77 +433,130 @@ onUnmounted(() => {
 }
 
 .main-content-panel {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   min-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  visibility: hidden;
 }
 
-/* 向右切换：新旧 panel 同时滑动，新 panel 从右侧滑入 */
-.panel-slide-forward-enter-active,
-.panel-slide-forward-leave-active {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  transition:
-    transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.28s ease;
-}
-
-.panel-slide-forward-enter-active {
+.main-content-panel--active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
   z-index: 2;
+  visibility: visible;
 }
 
-.panel-slide-forward-leave-active {
-  z-index: 1;
-}
-
-.panel-slide-forward-enter-from {
-  transform: translateX(5rem);
+.main-content-panel--idle {
   opacity: 0;
+  transform: translateX(0);
+  pointer-events: none;
+  z-index: 0;
+  visibility: hidden;
 }
 
-.panel-slide-forward-leave-to {
-  transform: translateX(-5rem);
-  opacity: 0;
-}
-
-/* 向左切换：新旧 panel 同时滑动，新 panel 从左侧滑入 */
-.panel-slide-backward-enter-active,
-.panel-slide-backward-leave-active {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  transition:
-    transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.28s ease;
-}
-
-.panel-slide-backward-enter-active {
+.main-content-panel--enter-forward {
+  animation: panel-enter-forward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: auto;
   z-index: 2;
+  visibility: visible;
 }
 
-.panel-slide-backward-leave-active {
+.main-content-panel--enter-backward {
+  animation: panel-enter-backward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: auto;
+  z-index: 2;
+  visibility: visible;
+}
+
+.main-content-panel--leave-forward {
+  animation: panel-leave-forward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
   z-index: 1;
+  visibility: visible;
 }
 
-.panel-slide-backward-enter-from {
-  transform: translateX(-5rem);
-  opacity: 0;
+.main-content-panel--leave-backward {
+  animation: panel-leave-backward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+  z-index: 1;
+  visibility: visible;
 }
 
-.panel-slide-backward-leave-to {
-  transform: translateX(5rem);
-  opacity: 0;
+@keyframes panel-enter-forward {
+  from {
+    transform: translateX(5rem);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes panel-leave-forward {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(-5rem);
+    opacity: 0;
+  }
+}
+
+@keyframes panel-enter-backward {
+  from {
+    transform: translateX(-5rem);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes panel-leave-backward {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(5rem);
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .panel-slide-forward-enter-active,
-  .panel-slide-forward-leave-active,
-  .panel-slide-backward-enter-active,
-  .panel-slide-backward-leave-active {
-    transition: none;
+  .main-content-panel--enter-forward,
+  .main-content-panel--enter-backward,
+  .main-content-panel--leave-forward,
+  .main-content-panel--leave-backward {
+    animation: none;
+  }
+
+  .main-content-panel--enter-forward,
+  .main-content-panel--enter-backward,
+  .main-content-panel--active {
+    opacity: 1;
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .main-content-panel--leave-forward,
+  .main-content-panel--leave-backward,
+  .main-content-panel--idle {
+    opacity: 0;
+    visibility: hidden;
   }
 }
 

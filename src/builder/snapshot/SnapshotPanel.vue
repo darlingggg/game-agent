@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { Camera, Delete, Edit } from '@element-plus/icons-vue'
+import { Camera, Delete, Edit, RefreshLeft } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
+import { fetchProjectTempFileList } from '@/builder/file/projectTempFiles'
 import { addSnapshot, deleteSnapshot, getSnapshotList, updateSnapshot } from '@/http/snapshot'
 import { useProjectStore } from '@/stores/project'
 import SnapshotFileTreeBranch from './SnapshotFileTreeBranch.vue'
 import { buildSnapshotFileTree, getSnapshotDirExpandKey, type SnapshotFileItem, type SnapshotFileTreeNode } from './snapshotFileTree'
-
+import {
+  buildSnapshotRestorePlan,
+  executeSnapshotRestore,
+  hasSnapshotRestoreChanges,
+  type SnapshotRestorePlan,
+} from './snapshotRestore'
+import SnapshotRestoreDiff from './SnapshotRestoreDiff.vue'
 defineOptions({
   name: 'SnapshotPanel',
 })
@@ -53,6 +60,21 @@ const saveDialogVisible = ref(false)
 
 /** 编辑快照弹窗可见性 */
 const editDialogVisible = ref(false)
+
+/** 还原版本预览弹窗可见性 */
+const restoreDialogVisible = ref(false)
+
+/** 还原计划预览加载中 */
+const restorePreviewLoading = ref(false)
+
+/** 正在预览还原的版本号 */
+const restorePreviewVersion = ref('')
+
+/** 正在还原的版本号 */
+const restoringVersion = ref('')
+
+/** 当前还原计划 */
+const restorePlan = ref<SnapshotRestorePlan | null>(null)
 
 /** 保存快照表单 */
 const saveForm = ref({
@@ -392,6 +414,92 @@ async function handleSaveSnapshot() {
   }
 }
 
+/**
+ * 打开还原版本预览弹窗
+ * @param group 版本快照分组
+ */
+async function openRestoreDialog(group: SnapshotVersionGroup) {
+  const currentProjectId = projectId.value
+  if (!currentProjectId) {
+    ElMessage.warning('当前项目未就绪')
+    return
+  }
+
+  let projectDirPath = ''
+  try {
+    projectDirPath = projectStore.requireProjectDirPath()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '项目目录未就绪')
+    return
+  }
+
+  restorePreviewLoading.value = true
+  restorePreviewVersion.value = group.version
+  restorePlan.value = null
+  restoreDialogVisible.value = true
+
+  try {
+    const [snapshotList, currentFiles] = await Promise.all([
+      getSnapshotList({ projectId: currentProjectId }),
+      fetchProjectTempFileList(),
+    ])
+
+    const versionSnapshotFiles = snapshotList.filter((item) => item.version === group.version)
+    if (!versionSnapshotFiles.length) {
+      ElMessage.warning('该版本快照不存在或已被删除')
+      restoreDialogVisible.value = false
+      return
+    }
+
+    restorePlan.value = await buildSnapshotRestorePlan(
+      group.version,
+      versionSnapshotFiles,
+      currentFiles,
+      projectDirPath,
+    )
+  } catch (error) {
+    restoreDialogVisible.value = false
+    ElMessage.error(error instanceof Error ? error.message : '还原预览加载失败')
+  } finally {
+    restorePreviewLoading.value = false
+    restorePreviewVersion.value = ''
+  }
+}
+
+/**
+ * 确认执行版本还原
+ */
+async function handleConfirmRestore() {
+  const plan = restorePlan.value
+  if (!plan) return
+
+  if (!hasSnapshotRestoreChanges(plan)) {
+    ElMessage.info('当前项目已与该版本一致，无需还原')
+    restoreDialogVisible.value = false
+    return
+  }
+
+  let projectDirPath = ''
+  try {
+    projectDirPath = projectStore.requireProjectDirPath()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '项目目录未就绪')
+    return
+  }
+
+  restoringVersion.value = plan.version
+  try {
+    await executeSnapshotRestore(plan, projectDirPath)
+    ElMessage.success(`版本「${plan.version}」还原成功`)
+    restoreDialogVisible.value = false
+    restorePlan.value = null
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '版本还原失败')
+  } finally {
+    restoringVersion.value = ''
+  }
+}
+
 onMounted(() => {
   void loadSnapshotList()
 })
@@ -419,25 +527,41 @@ onMounted(() => {
             </div>
           </button>
           <div class="snapshot-operation-container">
-            <button type="button" class="snapshot-panel-edit-btn" aria-label="编辑版本快照" @click="openEditDialog(group)">
-              <el-icon class="snapshot-panel-edit-icon">
-                <Edit />
-              </el-icon>
-            </button>
-            <button
-              type="button"
-              class="snapshot-panel-delete-btn"
-              :disabled="deletingVersion === group.version"
-              aria-label="删除版本快照"
-              @click="handleDeleteVersion(group.version)"
-            >
-              <el-icon class="snapshot-panel-delete-icon">
-                <Delete />
-              </el-icon>
-            </button>
-            <button type="button" class="snapshot-panel-expand-btn" aria-label="展开或收起版本快照" @click="toggleVersion(group.version)">
-              <svg class="snapshot-panel-arrow" :class="{ 'snapshot-panel-arrow--expanded': isVersionExpanded(group.version) }" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <el-tooltip content="还原" placement="top" :show-after="200">
+              <span class="snapshot-panel-tooltip-trigger">
+                <button type="button" class="snapshot-panel-restore-btn"
+                  :disabled="restorePreviewVersion === group.version || restoringVersion === group.version"
+                  aria-label="还原版本快照" @click="openRestoreDialog(group)">
+                  <el-icon class="snapshot-panel-restore-icon">
+                    <RefreshLeft />
+                  </el-icon>
+                </button>
+              </span>
+            </el-tooltip>
+            <el-tooltip content="编辑" placement="top" :show-after="200">
+              <button type="button" class="snapshot-panel-edit-btn" aria-label="编辑版本快照" @click="openEditDialog(group)">
+                <el-icon class="snapshot-panel-edit-icon">
+                  <Edit />
+                </el-icon>
+              </button>
+            </el-tooltip>
+            <el-tooltip content="删除" placement="top" :show-after="200">
+              <span class="snapshot-panel-tooltip-trigger">
+                <button type="button" class="snapshot-panel-delete-btn" :disabled="deletingVersion === group.version"
+                  aria-label="删除版本快照" @click="handleDeleteVersion(group.version)">
+                  <el-icon class="snapshot-panel-delete-icon">
+                    <Delete />
+                  </el-icon>
+                </button>
+              </span>
+            </el-tooltip>
+            <button type="button" class="snapshot-panel-expand-btn" aria-label="展开或收起版本快照"
+              @click="toggleVersion(group.version)">
+              <svg class="snapshot-panel-arrow"
+                :class="{ 'snapshot-panel-arrow--expanded': isVersionExpanded(group.version) }" viewBox="0 0 24 24"
+                fill="none" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
               </svg>
             </button>
           </div>
@@ -447,7 +571,8 @@ onMounted(() => {
           <div v-if="group.fileTree.children?.length" class="snapshot-panel-file-tree">
             <ul class="file-tree">
               <li v-for="node in group.fileTree.children" :key="node.path" class="file-tree-node">
-                <SnapshotFileTreeBranch :version="group.version" :node="node" :depth="0" :expanded-dirs="expandedDirs" @dir-toggle="toggleDirectory(group.version, $event)" />
+                <SnapshotFileTreeBranch :version="group.version" :node="node" :depth="0" :expanded-dirs="expandedDirs"
+                  @dir-toggle="toggleDirectory(group.version, $event)" />
               </li>
             </ul>
           </div>
@@ -456,13 +581,76 @@ onMounted(() => {
       </li>
     </ul>
 
+    <el-dialog v-model="restoreDialogVisible" title="还原版本" width="32rem" append-to-body>
+      <div v-loading="restorePreviewLoading" class="snapshot-restore-dialog">
+        <template v-if="restorePlan">
+          <p class="snapshot-restore-summary">
+            将版本「{{ restorePlan.version }}」还原到当前项目：
+            <strong>{{ restorePlan.unchanged.length }}</strong> 个不变，
+            <strong>{{ restorePlan.deleted.length }}</strong> 个删除，
+            <strong>{{ restorePlan.added.length }}</strong> 个新增，
+            <strong>{{ restorePlan.overwritten.length }}</strong> 个覆盖
+          </p>
+          <p v-if="!hasSnapshotRestoreChanges(restorePlan)" class="snapshot-restore-empty">
+            当前项目已与该版本一致，无需还原。
+          </p>
+          <div v-if="restorePlan.deleted.length" class="snapshot-restore-section">
+            <h4 class="snapshot-restore-section-title snapshot-restore-section-title--delete">删除 ({{
+              restorePlan.deleted.length }})</h4>
+            <ul class="snapshot-restore-file-list">
+              <li v-for="item in restorePlan.deleted" :key="`delete-${item.relativePath}`">{{ item.relativePath }}</li>
+            </ul>
+          </div>
+          <div v-if="restorePlan.added.length" class="snapshot-restore-section">
+            <h4 class="snapshot-restore-section-title snapshot-restore-section-title--add">新增 ({{
+              restorePlan.added.length }})</h4>
+            <ul class="snapshot-restore-file-list">
+              <li v-for="item in restorePlan.added" :key="`add-${item.relativePath}`">
+                {{ item.relativePath }}
+                <SnapshotRestoreDiff mode="added" :target-lines="item.targetLines" />
+              </li>
+            </ul>
+          </div>
+          <div v-if="restorePlan.overwritten.length" class="snapshot-restore-section">
+            <h4 class="snapshot-restore-section-title snapshot-restore-section-title--overwrite">覆盖 ({{
+              restorePlan.overwritten.length }})</h4>
+            <ul class="snapshot-restore-file-list">
+              <li v-for="item in restorePlan.overwritten" :key="`overwrite-${item.relativePath}`">
+                {{ item.relativePath }}
+                <SnapshotRestoreDiff mode="overwrite" :current-lines="item.currentLines"
+                  :target-lines="item.targetLines" :current-bytes="item.currentBytes"
+                  :target-bytes="item.targetBytes" />
+              </li>
+            </ul>
+          </div>
+          <div v-if="restorePlan.unchanged.length" class="snapshot-restore-section">
+            <h4 class="snapshot-restore-section-title">不变 ({{ restorePlan.unchanged.length }})</h4>
+            <ul class="snapshot-restore-file-list snapshot-restore-file-list--muted">
+              <li v-for="item in restorePlan.unchanged" :key="`unchanged-${item.relativePath}`">{{ item.relativePath }}
+              </li>
+            </ul>
+          </div>
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="restoreDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="!!restoringVersion"
+          :disabled="restorePreviewLoading || !restorePlan || !hasSnapshotRestoreChanges(restorePlan)"
+          @click="handleConfirmRestore">
+          确认还原
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="editDialogVisible" title="编辑版本快照" width="26rem" append-to-body>
       <el-form label-position="top">
         <el-form-item label="版本号" required>
-          <el-input v-model="editForm.version" placeholder="请输入版本号，如 v1.0.0" :maxlength="MAX_SNAPSHOT_VERSION_LENGTH" show-word-limit clearable />
+          <el-input v-model="editForm.version" placeholder="请输入版本号，如 v1.0.0" :maxlength="MAX_SNAPSHOT_VERSION_LENGTH"
+            show-word-limit clearable />
         </el-form-item>
         <el-form-item label="版本描述">
-          <el-input v-model="editForm.desc" type="textarea" :rows="3" placeholder="请输入版本描述（选填）" :maxlength="MAX_SNAPSHOT_DESC_LENGTH" show-word-limit />
+          <el-input v-model="editForm.desc" type="textarea" :rows="3" placeholder="请输入版本描述（选填）"
+            :maxlength="MAX_SNAPSHOT_DESC_LENGTH" show-word-limit />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -474,10 +662,12 @@ onMounted(() => {
     <el-dialog v-model="saveDialogVisible" title="保存当前版本" width="26rem" append-to-body>
       <el-form label-position="top">
         <el-form-item label="版本号" required>
-          <el-input v-model="saveForm.version" placeholder="请输入版本号，如 v1.0.0" :maxlength="MAX_SNAPSHOT_VERSION_LENGTH" show-word-limit clearable />
+          <el-input v-model="saveForm.version" placeholder="请输入版本号，如 v1.0.0" :maxlength="MAX_SNAPSHOT_VERSION_LENGTH"
+            show-word-limit clearable />
         </el-form-item>
         <el-form-item label="版本描述">
-          <el-input v-model="saveForm.desc" type="textarea" :rows="3" placeholder="请输入版本描述（选填）" :maxlength="MAX_SNAPSHOT_DESC_LENGTH" show-word-limit />
+          <el-input v-model="saveForm.desc" type="textarea" :rows="3" placeholder="请输入版本描述（选填）"
+            :maxlength="MAX_SNAPSHOT_DESC_LENGTH" show-word-limit />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -495,28 +685,12 @@ onMounted(() => {
   min-height: 0;
   padding: 1rem;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .snapshot-panel::-webkit-scrollbar {
-  width: 6px;
-}
-
-.snapshot-panel::-webkit-scrollbar-track {
-  background: var(--app-scrollbar-track);
-}
-
-.snapshot-panel::-webkit-scrollbar-thumb {
-  background-color: var(--app-scrollbar-thumb);
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background-clip: padding-box;
-  transition: background-color 0.2s ease;
-}
-
-.snapshot-panel::-webkit-scrollbar-thumb:hover {
-  background-color: var(--app-scrollbar-thumb-hover);
+  display: none;
 }
 
 .snapshot-panel-header {
@@ -588,7 +762,7 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.snapshot-panel-group + .snapshot-panel-group {
+.snapshot-panel-group+.snapshot-panel-group {
   margin-top: 0.75rem;
 }
 
@@ -633,7 +807,14 @@ onMounted(() => {
   padding-right: 0.75rem;
 }
 
+/** 禁用按钮外包一层，保证 tooltip 在 disabled 时仍可触发 */
+.snapshot-panel-tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+}
+
 .snapshot-panel-edit-btn,
+.snapshot-panel-restore-btn,
 .snapshot-panel-delete-btn,
 .snapshot-panel-expand-btn {
   display: inline-flex;
@@ -653,6 +834,7 @@ onMounted(() => {
 }
 
 .snapshot-panel-edit-btn:hover,
+.snapshot-panel-restore-btn:hover:not(:disabled),
 .snapshot-panel-delete-btn:hover:not(:disabled),
 .snapshot-panel-expand-btn:hover {
   background: rgba(0, 0, 0, 0.06);
@@ -660,20 +842,32 @@ onMounted(() => {
 }
 
 html.dark .snapshot-panel-edit-btn:hover,
+html.dark .snapshot-panel-restore-btn:hover:not(:disabled),
 html.dark .snapshot-panel-delete-btn:hover:not(:disabled),
 html.dark .snapshot-panel-expand-btn:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
 .snapshot-panel-edit-icon,
+.snapshot-panel-restore-icon,
 .snapshot-panel-delete-icon {
   font-size: 1rem;
   line-height: 1;
 }
 
 .snapshot-panel-edit-icon :deep(svg),
+.snapshot-panel-restore-icon :deep(svg),
 .snapshot-panel-delete-icon :deep(svg) {
   display: block;
+}
+
+.snapshot-panel-restore-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.snapshot-panel-restore-btn:hover:not(:disabled) {
+  color: #67c23a;
 }
 
 .snapshot-panel-delete-btn:hover:not(:disabled) {
@@ -727,6 +921,12 @@ html.dark .snapshot-panel-expand-btn:hover {
   border-radius: 4px;
   background-color: var(--app-bg-muted);
   overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.snapshot-panel-file-tree::-webkit-scrollbar {
+  display: none;
 }
 
 .file-tree {
@@ -743,6 +943,89 @@ html.dark .snapshot-panel-expand-btn:hover {
   background-color: var(--app-bg-muted);
   color: var(--app-text-muted);
   font-size: 0.8125rem;
+}
+
+.snapshot-restore-dialog {
+  min-height: 6rem;
+}
+
+.snapshot-restore-summary {
+  margin: 0 0 1rem;
+  color: var(--app-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.snapshot-restore-empty {
+  margin: 0 0 1rem;
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+}
+
+.snapshot-restore-section {
+  margin-bottom: 0.875rem;
+}
+
+.snapshot-restore-section-title {
+  margin: 0 0 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text-primary);
+}
+
+.snapshot-restore-section-title--delete {
+  color: var(--app-danger);
+}
+
+.snapshot-restore-section-title--add {
+  color: #16a34a;
+}
+
+.snapshot-restore-section-title--overwrite {
+  color: var(--app-accent);
+}
+
+.snapshot-restore-file-list {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  list-style: none;
+  max-height: 8rem;
+  overflow-y: auto;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  background-color: var(--app-bg-muted);
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+}
+
+.snapshot-restore-file-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.snapshot-restore-file-list::-webkit-scrollbar-track {
+  background: var(--app-scrollbar-track);
+  border-radius: 999px;
+}
+
+.snapshot-restore-file-list::-webkit-scrollbar-thumb {
+  background-color: var(--app-scrollbar-thumb);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.snapshot-restore-file-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--app-scrollbar-thumb-hover);
+}
+
+.snapshot-restore-file-list--muted {
+  color: var(--app-text-muted);
+}
+
+.snapshot-restore-file-list li {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  word-break: break-all;
 }
 </style>
 

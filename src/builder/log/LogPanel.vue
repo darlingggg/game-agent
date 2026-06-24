@@ -258,6 +258,28 @@ onMounted(() => {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+}
+
+.log-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.log-panel::-webkit-scrollbar-track {
+  background: #111;
+}
+
+.log-panel::-webkit-scrollbar-thumb {
+  background-color: #444;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+
+.log-panel::-webkit-scrollbar-thumb:hover {
+  background-color: #555;
 }
 
 .log-panel-line {
@@ -268,7 +290,6 @@ onMounted(() => {
 .log-panel-line--tool {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 0.375rem;
 }
 
