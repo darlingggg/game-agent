@@ -104,6 +104,12 @@ const expandedDirs = ref<Record<string, boolean>>({})
 /** 当前项目 ID */
 const projectId = computed(() => projectStore.currentProject?.id ?? 0)
 
+/** 当前快照版本数量 */
+const currentSnapshotCount = computed(() => versionGroups.value.length)
+
+/** 是否已达版本快照数量上限 */
+const isSnapshotLimitReached = computed(() => currentSnapshotCount.value >= MAX_SNAPSHOT_COUNT)
+
 /** 当前线上版本号 */
 const onlineVersion = ref('')
 
@@ -394,17 +400,10 @@ async function handleUpdateSnapshot() {
 }
 
 /**
- * 判断是否已达版本快照数量上限
- */
-function isSnapshotLimitReached() {
-  return versionGroups.value.length >= MAX_SNAPSHOT_COUNT
-}
-
-/**
  * 打开保存快照弹窗
  */
 function openSaveDialog() {
-  if (isSnapshotLimitReached()) {
+  if (isSnapshotLimitReached.value) {
     ElMessage.warning(`版本快照最多保存 ${MAX_SNAPSHOT_COUNT} 个，请先删除不用的存档后再保存`)
     return
   }
@@ -432,7 +431,7 @@ async function handleSaveSnapshot() {
     return
   }
 
-  if (isSnapshotLimitReached()) {
+  if (isSnapshotLimitReached.value) {
     ElMessage.warning(`版本快照最多保存 ${MAX_SNAPSHOT_COUNT} 个，请先删除不用的存档后再保存`)
     return
   }
@@ -578,7 +577,17 @@ watch(
 <template>
   <div v-loading="listLoading" class="snapshot-panel">
     <div class="snapshot-panel-header">
-      <h1 class="snapshot-panel-title">版本快照</h1>
+      <div class="snapshot-panel-title-group">
+        <h1 class="snapshot-panel-title">版本快照</h1>
+        <span
+          class="snapshot-panel-count-tag"
+          :class="{ 'snapshot-panel-count-tag--limit': isSnapshotLimitReached }"
+        >
+          <span class="snapshot-panel-count-current">{{ currentSnapshotCount }}</span>
+          <span class="snapshot-panel-count-sep">/</span>
+          <span class="snapshot-panel-count-max">{{ MAX_SNAPSHOT_COUNT }}</span>
+        </span>
+      </div>
       <button type="button" class="snapshot-panel-save-btn" @click="openSaveDialog">
         <el-icon class="snapshot-panel-save-icon">
           <Camera />
@@ -832,11 +841,67 @@ watch(
   line-height: 1.45;
 }
 
+.snapshot-panel-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .snapshot-panel-title {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
   color: var(--app-text-primary);
+  line-height: 1.2;
+}
+
+.snapshot-panel-count-tag {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 0.0625rem;
+  padding: 0.1875rem 0.5625rem;
+  border: 1px solid var(--snapshot-count-tag-border);
+  border-radius: 999px;
+  background: var(--snapshot-count-tag-bg);
+  color: var(--snapshot-count-tag-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--snapshot-count-tag-shadow);
+}
+
+.snapshot-panel-count-current {
+  color: var(--snapshot-count-tag-current);
+  font-weight: 700;
+}
+
+.snapshot-panel-count-sep {
+  margin: 0 0.0625rem;
+  color: var(--snapshot-count-tag-sep);
+  font-weight: 500;
+}
+
+.snapshot-panel-count-max {
+  color: var(--snapshot-count-tag-max);
+  font-weight: 600;
+}
+
+.snapshot-panel-count-tag--limit {
+  border-color: var(--snapshot-count-tag-limit-border);
+  background: var(--snapshot-count-tag-limit-bg);
+  color: var(--snapshot-count-tag-limit-text);
+}
+
+.snapshot-panel-count-tag--limit .snapshot-panel-count-current {
+  color: var(--snapshot-count-tag-limit-current);
+}
+
+.snapshot-panel-count-tag--limit .snapshot-panel-count-sep,
+.snapshot-panel-count-tag--limit .snapshot-panel-count-max {
+  color: var(--snapshot-count-tag-limit-muted);
 }
 
 .snapshot-panel-save-btn {
@@ -1197,6 +1262,18 @@ html.dark .snapshot-panel-expand-btn:hover {
   --snapshot-online-version: #0f5c3a;
   --snapshot-online-desc: #4a7a62;
   --snapshot-online-shadow: 0 2px 10px rgba(26, 143, 92, 0.1);
+  --snapshot-count-tag-bg: linear-gradient(135deg, #eef4ff 0%, #e4edff 100%);
+  --snapshot-count-tag-border: #c7daff;
+  --snapshot-count-tag-text: #5b7fc7;
+  --snapshot-count-tag-current: #1e4fa8;
+  --snapshot-count-tag-sep: #8faee0;
+  --snapshot-count-tag-max: #5b7fc7;
+  --snapshot-count-tag-shadow: 0 1px 2px rgba(30, 79, 168, 0.08);
+  --snapshot-count-tag-limit-bg: linear-gradient(135deg, #fff8eb 0%, #fff1d6 100%);
+  --snapshot-count-tag-limit-border: #f5d08a;
+  --snapshot-count-tag-limit-text: #b8820a;
+  --snapshot-count-tag-limit-current: #d48806;
+  --snapshot-count-tag-limit-muted: #c9973a;
 }
 
 /* 深色主题：版本下拉浅蓝暗色适配 */
@@ -1217,5 +1294,17 @@ html.dark .snapshot-panel {
   --snapshot-online-version: #b8efd4;
   --snapshot-online-desc: #8fbaa8;
   --snapshot-online-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  --snapshot-count-tag-bg: linear-gradient(135deg, #1a2744 0%, #223358 100%);
+  --snapshot-count-tag-border: #3d5a8c;
+  --snapshot-count-tag-text: #7a9fd4;
+  --snapshot-count-tag-current: #9ec0ff;
+  --snapshot-count-tag-sep: #5a7aad;
+  --snapshot-count-tag-max: #7a9fd4;
+  --snapshot-count-tag-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --snapshot-count-tag-limit-bg: linear-gradient(135deg, #3d2e14 0%, #4a3818 100%);
+  --snapshot-count-tag-limit-border: #8a6b2e;
+  --snapshot-count-tag-limit-text: #e0b84a;
+  --snapshot-count-tag-limit-current: #f5cc5c;
+  --snapshot-count-tag-limit-muted: #c9a84a;
 }
 </style>
