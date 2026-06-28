@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
+import { showRequestError } from '@/ajax'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useBuildContext } from '@/builder/build/buildContext'
 import { buildProjectStream } from '@/http/project'
@@ -255,6 +256,7 @@ async function handleBuild() {
       onEvent: (event) => {
         if (event.event === 'error') {
           const message = typeof event.data === 'string' ? event.data : '构建失败'
+          showRequestError(message)
           buildContext.handleBuildEvent({ event: 'text', data: message })
           throw new Error(message)
         }
@@ -273,9 +275,7 @@ async function handleBuild() {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return
     }
-    const message = error instanceof Error ? error.message : '构建失败'
-    buildContext.handleBuildEvent({ event: 'text', data: message })
-    ElMessage.error(message)
+    buildContext.handleBuildEvent({ event: 'text', data: error instanceof Error ? error.message : '构建失败' })
   } finally {
     buildContext.finishBuild()
     building.value = false

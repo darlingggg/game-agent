@@ -9,7 +9,7 @@ import {
   getAiCollapsedPreview,
   shouldCollapseAiLog,
 } from './parsePersistedLog'
-import { TERMINAL_HEADER_LINES, TERMINAL_SAMPLE_LOGS } from './terminalLogs'
+import { buildTerminalHeaderLines } from './terminalLogs'
 import type { AiLogEntry, DisplayLogEntry, ToolLogEntry } from './logTypes'
 
 defineOptions({
@@ -55,8 +55,21 @@ function getBuildProgressText(): string {
 /** 终端滚动容器 */
 const terminalRef = ref<HTMLElement | null>(null)
 
-/** 静态头部日志 */
-const staticLines = [...TERMINAL_HEADER_LINES, ...TERMINAL_SAMPLE_LOGS]
+/** 当前项目会话启动时间（切换项目时刷新） */
+const sessionBootAt = ref(new Date())
+
+/** 个性化终端头部日志 */
+const staticLines = computed(() => {
+  const project = projectStore.currentProject
+  return buildTerminalHeaderLines({
+    projectTitle: project?.title,
+    projectId: project?.id,
+    account: project?.account,
+    version: project?.currentVersion,
+    dirPath: project?.dirPath,
+    bootAt: sessionBootAt.value,
+  })
+})
 
 /** 历史日志 */
 const historyEntries = computed(() => logContext.historyEntries.value)
@@ -177,6 +190,7 @@ async function scrollBuildLogToBottom() {
 watch(
   () => projectStore.currentProject?.id,
   (projectId) => {
+    sessionBootAt.value = new Date()
     if (projectId) {
       void logContext.loadHistory(projectId)
     }

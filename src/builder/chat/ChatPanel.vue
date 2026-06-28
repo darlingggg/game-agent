@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
 import { nextTick, ref, watch } from 'vue'
 import { createSession, getSessionList, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
@@ -164,8 +163,8 @@ async function loadSessionMessages() {
 
     messages.value = sessionMessages
     await scrollToBottom()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '消息加载失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     messagesLoading.value = false
   }
@@ -364,8 +363,8 @@ async function handleSend() {
         createdAt: new Date().toISOString(),
       })
     }
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '会话创建失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
     return
   }
 
@@ -416,9 +415,6 @@ async function handleSend() {
       title: chatTitle,
       signal: abortController.signal,
       onEvent: (event) => {
-        if (event.event === 'error') {
-          throw new Error(event.data ?? 'AI 回复失败')
-        }
         handleSseEvent(assistantId, event)
       },
     })
@@ -430,7 +426,6 @@ async function handleSend() {
     if (assistantMessage && !assistantMessage.content) {
       assistantMessage.content = '回复失败，请重试'
     }
-    ElMessage.error(error instanceof Error ? error.message : 'AI 回复失败')
   } finally {
     finishAssistantStreaming(assistantId)
 
@@ -445,8 +440,8 @@ async function handleSend() {
     if (assistantMessage?.content.trim() && assistantMessage.content !== '回复失败，请重试') {
       try {
         await saveMessageToSession('assistant', assistantMessage.content)
-      } catch (error) {
-        ElMessage.error(error instanceof Error ? error.message : 'AI 消息保存失败')
+      } catch {
+        // 错误提示由 axios 拦截器统一处理
       }
     }
     streamingAssistantId = null

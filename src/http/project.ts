@@ -1,4 +1,4 @@
-import axios, { getToken } from '@/ajax'
+import axios, { getToken, handleUnauthorized, showRequestError } from '@/ajax'
 import type { BuildDoneResult } from '@/builder/build/buildTypes'
 import { consumeSseResponse, type SseEvent } from '@/http/sse'
 
@@ -71,8 +71,15 @@ export async function buildProjectStream(options: BuildProjectStreamOptions): Pr
     signal,
   })
 
+  if (response.status === 401 || response.status === 403) {
+    handleUnauthorized()
+    throw new Error('登录已失效，请重新登录')
+  }
+
   if (!response.ok) {
-    throw new Error(`构建请求失败（${response.status}）`)
+    const message = `构建请求失败（${response.status}）`
+    showRequestError(message)
+    throw new Error(message)
   }
 
   await consumeSseResponse(response, onEvent)

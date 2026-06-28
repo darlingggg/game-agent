@@ -231,8 +231,8 @@ async function loadSnapshotList() {
     })
     versionGroups.value = groupSnapshotsByVersion(files, projectStore.projectDirPath)
     buildContext.setSnapshotVersionCount(versionGroups.value.length)
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '快照列表加载失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     listLoading.value = false
   }
@@ -253,10 +253,10 @@ async function loadOnlineVersion() {
     const result = await getProjectVersion({ projectId: currentProjectId })
     onlineVersion.value = result.version?.trim() ?? ''
     onlineVersionDesc.value = result.desc?.trim() ?? ''
-  } catch (error) {
+  } catch {
     onlineVersion.value = ''
     onlineVersionDesc.value = ''
-    ElMessage.error(error instanceof Error ? error.message : '线上版本加载失败')
+    // 错误提示由 axios 拦截器统一处理
   }
 }
 
@@ -302,7 +302,7 @@ async function handleDeleteVersion(version: string) {
     await loadSnapshotList()
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
-    ElMessage.error(error instanceof Error ? error.message : '版本快照删除失败')
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     deletingVersion.value = ''
   }
@@ -386,8 +386,8 @@ async function handleUpdateSnapshot() {
     editDialogVisible.value = false
     await loadSnapshotList()
     await loadOnlineVersion()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '版本快照修改失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     editing.value = false
   }
@@ -456,8 +456,8 @@ async function handleSaveSnapshot() {
     ElMessage.success('版本快照保存成功')
     saveDialogVisible.value = false
     await loadSnapshotList()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '版本快照保存失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     saving.value = false
   }
@@ -506,9 +506,9 @@ async function openRestoreDialog(group: SnapshotVersionGroup) {
       currentFiles,
       projectDirPath,
     )
-  } catch (error) {
+  } catch {
     restoreDialogVisible.value = false
-    ElMessage.error(error instanceof Error ? error.message : '还原预览加载失败')
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     restorePreviewLoading.value = false
     restorePreviewVersion.value = ''
@@ -542,8 +542,8 @@ async function handleConfirmRestore() {
     ElMessage.success(`版本「${plan.version}」还原成功`)
     restoreDialogVisible.value = false
     restorePlan.value = null
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '版本还原失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     restoringVersion.value = ''
   }

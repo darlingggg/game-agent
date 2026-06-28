@@ -142,8 +142,8 @@ async function fetchProjectList() {
   try {
     projects.value = await getProjectList()
     projectStore.setProjectList(projects.value)
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '项目列表加载失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     listLoading.value = false
   }
@@ -174,8 +174,8 @@ async function handleCreateProject() {
     ElMessage.success('项目创建成功')
     createDialogVisible.value = false
     await fetchProjectList()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '项目创建失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     creating.value = false
   }
@@ -230,8 +230,8 @@ async function handleUpdateProject() {
     ElMessage.success('项目配置保存成功')
     editDialogVisible.value = false
     await fetchProjectList()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '项目配置保存失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     editing.value = false
   }
@@ -254,8 +254,8 @@ onMounted(async () => {
   try {
     const res = await getUserInfo()
     nickName.value = res.nickname
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '用户信息加载失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   }
 
   await fetchProjectList()
