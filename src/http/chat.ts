@@ -1,4 +1,4 @@
-import { getToken } from '@/ajax'
+import { getToken, handleUnauthorized, showRequestError } from '@/ajax'
 
 /** 聊天请求体 */
 export interface ChatBody {
@@ -42,10 +42,23 @@ export async function chatWithAI(options: ChatSseOptions) {
     signal,
   })
 
+  if (response.status === 401 || response.status === 403) {
+    handleUnauthorized()
+    throw new Error('登录已失效，请重新登录')
+  }
+
+  if (!response.ok) {
+    const message = `请求失败（${response.status}）`
+    showRequestError(message)
+    throw new Error(message)
+  }
+
   // 获取响应的可读流
   const reader = response.body?.getReader()
   if (!reader) {
-    throw new Error('获取响应的可读流失败')
+    const message = '获取响应的可读流失败'
+    showRequestError(message)
+    throw new Error(message)
   }
   const decoder = new TextDecoder('utf-8')
 
@@ -69,12 +82,21 @@ export async function chatWithAI(options: ChatSseOptions) {
       const raw = line.slice(5).trim()
       if (!raw) continue
 
+      let json: ChatSseEvent
       try {
-        const json = JSON.parse(raw) as ChatSseEvent
-        onEvent?.(json)
+        json = JSON.parse(raw) as ChatSseEvent
       } catch {
-        // 忽略空行或不完整数据
+        // 忽略不完整 JSON
+        continue
       }
+
+      if (json.event === 'error') {
+        const message = json.data ?? 'AI 回复失败'
+        showRequestError(message)
+        throw new Error(message)
+      }
+
+      onEvent?.(json)
     }
   }
 }

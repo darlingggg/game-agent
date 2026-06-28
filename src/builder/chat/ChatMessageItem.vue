@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
 import { computed, ref } from 'vue'
 import { getAiReply } from '@/http/session'
 import { AI_AVATAR_SVG, USER_AVATAR_SVG } from './chatAvatars'
@@ -61,7 +60,6 @@ async function toggleReply() {
     replyContent.value = result.content
   } catch (error) {
     replyExpanded.value = false
-    ElMessage.error(error instanceof Error ? error.message : 'AI 回复加载失败')
   } finally {
     replyLoading.value = false
   }

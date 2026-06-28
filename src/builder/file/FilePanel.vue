@@ -12,6 +12,7 @@ import {
   saveProjectTempFileContent,
   type FileTreeNode,
 } from './projectTempFiles'
+import { PROJECT_FILES_CHANGED_EVENT } from '../snapshot/snapshotRestore'
 
 defineOptions({
   name: 'FilePanel',
@@ -131,9 +132,10 @@ function handleSaveShortcut(event: KeyboardEvent) {
   void handleSave()
 }
 
-onMounted(async () => {
-  window.addEventListener('keydown', handleSaveShortcut, true)
-
+/**
+ * 重新加载项目文件树
+ */
+async function reloadFileTree() {
   treeLoading.value = true
   treeError.value = ''
   try {
@@ -143,10 +145,42 @@ onMounted(async () => {
   } finally {
     treeLoading.value = false
   }
+}
+
+/**
+ * 版本还原等操作后刷新文件树，并清理已删除文件的选中状态
+ */
+async function handleProjectFilesChanged() {
+  const previousSelectedPath = selectedFilePath.value
+  await reloadFileTree()
+
+  if (!previousSelectedPath) return
+
+  const stillExists = (nodes: FileTreeNode[] | undefined): boolean => {
+    if (!nodes) return false
+    for (const node of nodes) {
+      if (node.type === 'file' && node.path === previousSelectedPath) return true
+      if (node.type === 'directory' && stillExists(node.children)) return true
+    }
+    return false
+  }
+
+  if (!stillExists(fileTree.value?.children)) {
+    selectedFilePath.value = ''
+    editorContent.value = ''
+    contentError.value = ''
+  }
+}
+
+onMounted(async () => {
+  window.addEventListener('keydown', handleSaveShortcut, true)
+  window.addEventListener(PROJECT_FILES_CHANGED_EVENT, handleProjectFilesChanged)
+  await reloadFileTree()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleSaveShortcut, true)
+  window.removeEventListener(PROJECT_FILES_CHANGED_EVENT, handleProjectFilesChanged)
 })
 </script>
 

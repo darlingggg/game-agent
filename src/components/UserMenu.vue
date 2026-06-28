@@ -97,7 +97,7 @@ function handleMenuCommand(command: string) {
 
 .user-menu-name {
   font-size: 0.875rem;
-  line-height: 1;
+  line-height: 1.2;
   max-width: 8rem;
   overflow: hidden;
   text-overflow: ellipsis;

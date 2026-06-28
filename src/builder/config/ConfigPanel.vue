@@ -95,8 +95,8 @@ async function handleSaveProject() {
     })
     await syncPreviewFile(INDEX_HTML_PATH, updatedHtml)
     ElMessage.success('项目信息保存成功')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '项目信息保存失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     projectSaving.value = false
   }

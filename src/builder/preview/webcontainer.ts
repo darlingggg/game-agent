@@ -272,6 +272,24 @@ function shouldSyncPreviewFile(relativePath: string): boolean {
 }
 
 /**
+ * 从 WebContainer 中删除文件
+ * @param relativePath 相对 projectTemp 根目录的路径
+ */
+export async function removePreviewFile(relativePath: string): Promise<void> {
+  if (!webcontainerInstance || !shouldSyncPreviewFile(relativePath)) {
+    return
+  }
+
+  const webPath = relativePath.startsWith('/') ? relativePath : `/${relativePath}`
+
+  try {
+    await webcontainerInstance.fs.rm(webPath)
+  } catch (error) {
+    console.warn('[Preview] 删除文件失败', relativePath, error)
+  }
+}
+
+/**
  * 将已保存的文件同步到 WebContainer，触发 Vite 热更新
  * @param relativePath 相对 projectTemp 根目录的路径
  * @param content 文件内容

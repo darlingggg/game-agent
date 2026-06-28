@@ -4,12 +4,16 @@ import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type C
 import { useRoute, useRouter } from 'vue-router'
 import { getProjectList } from '@/http/project'
 import { useProjectStore } from '@/stores/project'
-import ChatPanel from './chat/ChatPanel.vue'
-import ConfigPanel from './config/ConfigPanel.vue'
-import FilePanel from './file/FilePanel.vue'
-import LogPanel from './log/LogPanel.vue'
-import PreviewPanel from './preview/PreviewPanel.vue'
-import SessionPanel from './session/SessionPanel.vue'
+import {
+  ChatPanel,
+  ConfigPanel,
+  FilePanel,
+  LogPanel,
+  PreviewPanel,
+  SessionPanel,
+  SnapshotPanel,
+} from './panels'
+import { createBuildContext, buildContextKey } from './build/buildContext'
 import { createLogContext, logContextKey } from './log/logContext'
 import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
 
@@ -74,15 +78,52 @@ provide(sessionContextKey, {
 const logContext = createLogContext()
 provide(logContextKey, logContext)
 
+/** 构建日志上下文，供预览面板触发、日志面板悬浮框展示 */
+const buildContext = createBuildContext()
+provide(buildContextKey, buildContext)
+
+/** 构建开始时自动切换到日志 Tab，确保悬浮框可见 */
+watch(
+  () => buildContext.running.value,
+  (running) => {
+    if (!running) return
+    const logIndex = tabs.findIndex((item) => item.key === 'log')
+    if (logIndex < 0) return
+    switchToLogTab(logIndex)
+  },
+)
+
 const tabs: TabItem[] = [
   { key: 'chat', label: '对话' },
   { key: 'file', label: '文件' },
   { key: 'config', label: '配置' },
+  { key: 'snapshot', label: '版本' },
   { key: 'log', label: '日志' },
 ]
 
 /** 当前选中的 Tab 索引 */
 const activeTab = ref(0)
+
+/** Tab 滑动方向 */
+type PanelSlideDirection = 'forward' | 'backward'
+
+/** 面板切换动画时长（毫秒） */
+const PANEL_TRANSITION_MS = 280
+
+/** 正在退出的 Tab key */
+const leavingTabKey = ref<string | null>(null)
+
+/** 当前滑动方向 */
+const slideDirection = ref<PanelSlideDirection>('forward')
+
+/** 是否正在切换动画中 */
+const isPanelTransitioning = ref(false)
+
+/** 面板切换动画结束定时器 */
+let panelTransitionTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 已挂载过的 Tab 面板（首次访问后保持挂载，避免切换丢失状态） */
+const mountedTabKeys = ref<Set<string>>(new Set(['chat']))
 
 /** Tab 元素引用，用于计算底部指示条位置 */
 const tabRefs = ref<HTMLElement[]>([])
@@ -125,16 +166,91 @@ function updateIndicator() {
 }
 
 /**
+ * 构建开始时强制切到日志 Tab（不受切换动画阻塞）
+ * @param index 日志 Tab 索引
+ */
+function switchToLogTab(index: number) {
+  if (index === activeTab.value) return
+
+  slideDirection.value = index > activeTab.value ? 'forward' : 'backward'
+  leavingTabKey.value = tabs[activeTab.value]?.key ?? null
+  mountedTabKeys.value = new Set([...mountedTabKeys.value, 'log'])
+  activeTab.value = index
+  isPanelTransitioning.value = true
+
+  if (panelTransitionTimer) {
+    clearTimeout(panelTransitionTimer)
+  }
+  panelTransitionTimer = setTimeout(() => {
+    leavingTabKey.value = null
+    isPanelTransitioning.value = false
+    panelTransitionTimer = null
+  }, PANEL_TRANSITION_MS)
+
+  nextTick(updateIndicator)
+}
+
+/**
  * 切换 Tab
  * @param index 目标 Tab 索引
  */
 function switchTab(index: number) {
+  if (index === activeTab.value || isPanelTransitioning.value) return
+
+  slideDirection.value = index > activeTab.value ? 'forward' : 'backward'
+  leavingTabKey.value = tabs[activeTab.value]?.key ?? null
+
+  const newKey = tabs[index]?.key
+  if (newKey) {
+    mountedTabKeys.value = new Set([...mountedTabKeys.value, newKey])
+  }
+
   activeTab.value = index
+  isPanelTransitioning.value = true
+
+  if (panelTransitionTimer) {
+    clearTimeout(panelTransitionTimer)
+  }
+  panelTransitionTimer = setTimeout(() => {
+    leavingTabKey.value = null
+    isPanelTransitioning.value = false
+    panelTransitionTimer = null
+  }, PANEL_TRANSITION_MS)
+
   nextTick(updateIndicator)
 }
 
 /** 当前选中 Tab 的内容标识 */
 const activeTabKey = computed(() => tabs[activeTab.value]?.key ?? 'chat')
+
+/**
+ * 获取面板切换动效 class（v-show 保持挂载，仅用 class 控制显隐与动画）
+ * @param key Tab key
+ */
+function getPanelTransitionClass(key: string) {
+  const isActive = activeTabKey.value === key
+  const isLeaving = leavingTabKey.value === key
+
+  if (!isPanelTransitioning.value) {
+    return isActive ? ['main-content-panel--active'] : ['main-content-panel--idle']
+  }
+
+  if (isActive) {
+    return [`main-content-panel--enter-${slideDirection.value}`]
+  }
+  if (isLeaving) {
+    return [`main-content-panel--leave-${slideDirection.value}`]
+  }
+  return ['main-content-panel--idle']
+}
+
+/**
+ * 是否应挂载 Tab 面板（未访问过的 Tab 不加载 chunk，减少首屏体积）
+ * @param key Tab key
+ */
+function shouldMountTabPanel(key: string) {
+  return mountedTabKeys.value.has(key)
+}
 
 /**
  * 从地址栏 projectId 初始化当前项目
@@ -189,6 +305,9 @@ watch(
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateIndicator)
+  if (panelTransitionTimer) {
+    clearTimeout(panelTransitionTimer)
+  }
   projectStore.setCurrentProject(null)
 })
 </script>
@@ -215,12 +334,39 @@ onUnmounted(() => {
         <div class="main-tab-indicator" :style="indicatorStyle" />
       </div>
       <div class="main-content">
-        <KeepAlive include="ChatPanel">
-          <ChatPanel v-if="activeTabKey === 'chat'" class="main-content-panel" />
-        </KeepAlive>
-        <FilePanel v-if="activeTabKey === 'file'" class="main-content-panel" />
-        <ConfigPanel v-if="activeTabKey === 'config'" class="main-content-panel" />
-        <LogPanel v-show="activeTabKey === 'log'" class="main-content-panel" />
+        <div class="main-content-viewport">
+          <!-- 首次访问才挂载对应面板 chunk，访问后保持挂载避免丢失状态 -->
+          <ChatPanel
+            v-if="shouldMountTabPanel('chat')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('chat')"
+            :aria-hidden="activeTabKey !== 'chat' && leavingTabKey !== 'chat'"
+          />
+          <FilePanel
+            v-if="shouldMountTabPanel('file')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('file')"
+            :aria-hidden="activeTabKey !== 'file' && leavingTabKey !== 'file'"
+          />
+          <ConfigPanel
+            v-if="shouldMountTabPanel('config')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('config')"
+            :aria-hidden="activeTabKey !== 'config' && leavingTabKey !== 'config'"
+          />
+          <SnapshotPanel
+            v-if="shouldMountTabPanel('snapshot')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('snapshot')"
+            :aria-hidden="activeTabKey !== 'snapshot' && leavingTabKey !== 'snapshot'"
+          />
+          <LogPanel
+            v-if="shouldMountTabPanel('log')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('log')"
+            :aria-hidden="activeTabKey !== 'log' && leavingTabKey !== 'log'"
+          />
+        </div>
       </div>
     </main>
     <section class="right">
@@ -245,6 +391,16 @@ onUnmounted(() => {
   color: var(--app-error);
 }
 
+:global(.builder-panel-loading) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.875rem;
+  color: var(--app-text-muted);
+}
+
 .container {
   width: 100%;
   height: 100vh;
@@ -252,12 +408,14 @@ onUnmounted(() => {
   display: flex;
   background-color: var(--app-bg);
 }
+
 .left {
   flex: 1;
   height: 100%;
   min-width: 0;
   border-right: 1px solid var(--app-border);
 }
+
 .main {
   flex: 3;
   height: 100%;
@@ -265,6 +423,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
 }
+
 .main-tab {
   position: relative;
   width: 100%;
@@ -306,10 +465,140 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.main-content-panel {
+.main-content-viewport {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
+}
+
+.main-content-panel {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  visibility: hidden;
+}
+
+.main-content-panel--active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  z-index: 2;
+  visibility: visible;
+}
+
+.main-content-panel--idle {
+  opacity: 0;
+  transform: translateX(0);
+  pointer-events: none;
+  z-index: 0;
+  visibility: hidden;
+}
+
+.main-content-panel--enter-forward {
+  animation: panel-enter-forward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: auto;
+  z-index: 2;
+  visibility: visible;
+}
+
+.main-content-panel--enter-backward {
+  animation: panel-enter-backward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: auto;
+  z-index: 2;
+  visibility: visible;
+}
+
+.main-content-panel--leave-forward {
+  animation: panel-leave-forward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+  z-index: 1;
+  visibility: visible;
+}
+
+.main-content-panel--leave-backward {
+  animation: panel-leave-backward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+  z-index: 1;
+  visibility: visible;
+}
+
+@keyframes panel-enter-forward {
+  from {
+    transform: translateX(5rem);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes panel-leave-forward {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(-5rem);
+    opacity: 0;
+  }
+}
+
+@keyframes panel-enter-backward {
+  from {
+    transform: translateX(-5rem);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes panel-leave-backward {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(5rem);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main-content-panel--enter-forward,
+  .main-content-panel--enter-backward,
+  .main-content-panel--leave-forward,
+  .main-content-panel--leave-backward {
+    animation: none;
+  }
+
+  .main-content-panel--enter-forward,
+  .main-content-panel--enter-backward,
+  .main-content-panel--active {
+    opacity: 1;
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .main-content-panel--leave-forward,
+  .main-content-panel--leave-backward,
+  .main-content-panel--idle {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 
 .right {

@@ -1,5 +1,6 @@
 import { fetchProjectTempFileContent, normalizeRelativePath } from '../file/projectTempFiles'
-import { syncPreviewFile } from './webcontainer'
+import type { SnapshotRestorePlan } from '../snapshot/snapshotRestore'
+import { removePreviewFile, requestPreviewIframeReloadDebounced, syncPreviewFile } from './webcontainer'
 
 /** write_file_content 工具参数结构 */
 interface WriteFileContentParams {
@@ -62,4 +63,23 @@ export async function syncWriteFileContentToPreview(paramsJson: string): Promise
   }
 
   await syncPreviewFile(relativePath, content)
+}
+
+/**
+ * 版本还原完成后，将变更同步到 WebContainer 预览环境
+ * @param plan 还原计划
+ */
+export async function syncSnapshotRestoreToPreview(plan: SnapshotRestorePlan): Promise<void> {
+  for (const item of plan.deleted) {
+    await removePreviewFile(item.relativePath)
+  }
+
+  for (const item of [...plan.added, ...plan.overwritten]) {
+    if (item.snapshotContent === undefined) continue
+    await syncPreviewFile(item.relativePath, item.snapshotContent)
+  }
+
+  if (plan.deleted.length > 0 || plan.added.length > 0 || plan.overwritten.length > 0) {
+    requestPreviewIframeReloadDebounced()
+  }
 }
