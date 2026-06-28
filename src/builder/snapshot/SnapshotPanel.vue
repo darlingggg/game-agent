@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { Camera, Delete, Edit, RefreshLeft } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { fetchProjectTempFileList } from '@/builder/file/projectTempFiles'
+import { useBuildContext } from '@/builder/build/buildContext'
 import { addSnapshot, deleteSnapshot, getSnapshotList, updateSnapshot } from '@/http/snapshot'
+import { getProjectVersion } from '@/http/project'
 import { useProjectStore } from '@/stores/project'
 import SnapshotFileTreeBranch from './SnapshotFileTreeBranch.vue'
 import { buildSnapshotFileTree, getSnapshotDirExpandKey, type SnapshotFileItem, type SnapshotFileTreeNode } from './snapshotFileTree'
@@ -42,6 +44,7 @@ interface SnapshotVersionGroup {
 }
 
 const projectStore = useProjectStore()
+const buildContext = useBuildContext()
 
 /** 列表加载中 */
 const listLoading = ref(false)
@@ -100,6 +103,22 @@ const expandedDirs = ref<Record<string, boolean>>({})
 
 /** 当前项目 ID */
 const projectId = computed(() => projectStore.currentProject?.id ?? 0)
+
+/** 当前线上版本号 */
+const onlineVersion = ref('')
+
+/** 当前线上版本描述 */
+const onlineVersionDesc = ref('')
+
+/**
+ * 判断版本是否为当前线上版本
+ * @param version 版本号
+ */
+function isOnlineVersion(version: string) {
+  const current = onlineVersion.value.trim()
+  if (!current) return false
+  return version.trim() === current
+}
 
 /**
  * 格式化创建时间
@@ -211,10 +230,33 @@ async function loadSnapshotList() {
       return rest
     })
     versionGroups.value = groupSnapshotsByVersion(files, projectStore.projectDirPath)
+    buildContext.setSnapshotVersionCount(versionGroups.value.length)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '快照列表加载失败')
   } finally {
     listLoading.value = false
+  }
+}
+
+/**
+ * 加载当前线上版本信息
+ */
+async function loadOnlineVersion() {
+  const currentProjectId = projectId.value
+  if (!currentProjectId) {
+    onlineVersion.value = ''
+    onlineVersionDesc.value = ''
+    return
+  }
+
+  try {
+    const result = await getProjectVersion({ projectId: currentProjectId })
+    onlineVersion.value = result.version?.trim() ?? ''
+    onlineVersionDesc.value = result.desc?.trim() ?? ''
+  } catch (error) {
+    onlineVersion.value = ''
+    onlineVersionDesc.value = ''
+    ElMessage.error(error instanceof Error ? error.message : '线上版本加载失败')
   }
 }
 
@@ -225,6 +267,11 @@ async function loadSnapshotList() {
 async function handleDeleteVersion(version: string) {
   const currentProjectId = projectId.value
   if (!currentProjectId) return
+
+  if (isOnlineVersion(version)) {
+    ElMessage.warning('已上线版本不可删除')
+    return
+  }
 
   try {
     await ElMessageBox.confirm(`确定要删除版本「${version}」吗？删除后不可恢复。`, '提示', {
@@ -324,19 +371,21 @@ async function handleUpdateSnapshot() {
     return
   }
 
+  const desc = editForm.value.desc.trim()
+
   editing.value = true
   try {
     await updateSnapshot({
       projectId: currentProjectId,
       oldVersion,
       version,
-      desc: editForm.value.desc.trim(),
+      desc,
     })
 
     migrateVersionState(oldVersion, version)
-    ElMessage.success('版本快照修改成功')
     editDialogVisible.value = false
     await loadSnapshotList()
+    await loadOnlineVersion()
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '版本快照修改失败')
   } finally {
@@ -502,7 +551,28 @@ async function handleConfirmRestore() {
 
 onMounted(() => {
   void loadSnapshotList()
+  void loadOnlineVersion()
 })
+
+watch(
+  () => projectId.value,
+  (currentProjectId) => {
+    if (!currentProjectId) {
+      onlineVersion.value = ''
+      onlineVersionDesc.value = ''
+      return
+    }
+    void loadOnlineVersion()
+  },
+)
+
+watch(
+  () => buildContext.buildCompletedSignal.value,
+  () => {
+    void loadSnapshotList()
+    void loadOnlineVersion()
+  },
+)
 </script>
 
 <template>
@@ -516,13 +586,24 @@ onMounted(() => {
         <span class="snapshot-panel-save-text">保存当前版本</span>
       </button>
     </div>
+    <div v-if="onlineVersion" class="snapshot-panel-online">
+      <div class="snapshot-panel-online-header">
+        <span class="snapshot-panel-online-badge">线上</span>
+        <span class="snapshot-panel-online-label">当前线上版本</span>
+      </div>
+      <span class="snapshot-panel-online-version">{{ onlineVersion }}</span>
+      <p v-if="onlineVersionDesc" class="snapshot-panel-online-desc">{{ onlineVersionDesc }}</p>
+    </div>
     <div v-if="!listLoading && versionGroups.length === 0" class="snapshot-panel-empty">暂无版本快照</div>
     <ul v-else class="snapshot-panel-list">
       <li v-for="group in versionGroups" :key="group.version" class="snapshot-panel-group">
         <div class="snapshot-panel-toggle">
           <button type="button" class="snapshot-panel-toggle-main" @click="toggleVersion(group.version)">
             <div class="snapshot-panel-summary">
-              <span class="snapshot-panel-version">{{ group.version }}</span>
+              <div class="snapshot-panel-version-row">
+                <span class="snapshot-panel-version">{{ group.version }}</span>
+                <span v-if="isOnlineVersion(group.version)" class="snapshot-panel-online-tag">已上线</span>
+              </div>
               <span class="snapshot-panel-time">{{ formatCreatedAt(group.createdAt) }}</span>
             </div>
           </button>
@@ -545,10 +626,12 @@ onMounted(() => {
                 </el-icon>
               </button>
             </el-tooltip>
-            <el-tooltip content="删除" placement="top" :show-after="200">
+            <el-tooltip :content="isOnlineVersion(group.version) ? '已上线版本不可删除' : '删除'" placement="top"
+              :show-after="200">
               <span class="snapshot-panel-tooltip-trigger">
-                <button type="button" class="snapshot-panel-delete-btn" :disabled="deletingVersion === group.version"
-                  aria-label="删除版本快照" @click="handleDeleteVersion(group.version)">
+                <button type="button" class="snapshot-panel-delete-btn"
+                  :disabled="deletingVersion === group.version || isOnlineVersion(group.version)" aria-label="删除版本快照"
+                  @click="handleDeleteVersion(group.version)">
                   <el-icon class="snapshot-panel-delete-icon">
                     <Delete />
                   </el-icon>
@@ -701,6 +784,54 @@ onMounted(() => {
   margin-bottom: 1rem;
 }
 
+.snapshot-panel-online {
+  margin-bottom: 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--snapshot-online-border);
+  border-left: 4px solid var(--snapshot-online-accent);
+  border-radius: 8px;
+  background: var(--snapshot-online-bg);
+  box-shadow: var(--snapshot-online-shadow);
+}
+
+.snapshot-panel-online-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+.snapshot-panel-online-badge {
+  flex-shrink: 0;
+  padding: 0.125rem 0.4375rem;
+  border-radius: 999px;
+  background-color: var(--snapshot-online-badge-bg);
+  color: var(--snapshot-online-accent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.snapshot-panel-online-label {
+  font-size: 0.75rem;
+  color: var(--snapshot-online-label);
+}
+
+.snapshot-panel-online-version {
+  display: block;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--snapshot-online-version);
+  line-height: 1.35;
+}
+
+.snapshot-panel-online-desc {
+  margin: 0.375rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--snapshot-online-desc);
+  line-height: 1.45;
+}
+
 .snapshot-panel-title {
   margin: 0;
   font-size: 1rem;
@@ -797,6 +928,24 @@ onMounted(() => {
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
+}
+
+.snapshot-panel-version-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.snapshot-panel-online-tag {
+  flex-shrink: 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: 2px;
+  background-color: #e8f7ef;
+  color: #1a8f5c;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .snapshot-operation-container {
@@ -1040,6 +1189,14 @@ html.dark .snapshot-panel-expand-btn:hover {
   --snapshot-accent-border-hover: #a3c4ff;
   --snapshot-group-border: #c7daff;
   --snapshot-detail-bg: #f8fbff;
+  --snapshot-online-bg: linear-gradient(135deg, #f3fbf6 0%, #e8f7ef 100%);
+  --snapshot-online-border: #b8e6cc;
+  --snapshot-online-accent: #1a8f5c;
+  --snapshot-online-badge-bg: #d8f3e4;
+  --snapshot-online-label: #5a8a72;
+  --snapshot-online-version: #0f5c3a;
+  --snapshot-online-desc: #4a7a62;
+  --snapshot-online-shadow: 0 2px 10px rgba(26, 143, 92, 0.1);
 }
 
 /* 深色主题：版本下拉浅蓝暗色适配 */
@@ -1052,5 +1209,13 @@ html.dark .snapshot-panel {
   --snapshot-accent-border-hover: #3d5a8c;
   --snapshot-group-border: #2d4470;
   --snapshot-detail-bg: #141c2e;
+  --snapshot-online-bg: linear-gradient(135deg, #152820 0%, #1a3028 100%);
+  --snapshot-online-border: #2d6b4a;
+  --snapshot-online-accent: #3ecf8e;
+  --snapshot-online-badge-bg: rgba(62, 207, 142, 0.15);
+  --snapshot-online-label: #7ab89a;
+  --snapshot-online-version: #b8efd4;
+  --snapshot-online-desc: #8fbaa8;
+  --snapshot-online-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
 </style>

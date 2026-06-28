@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useBuildContext } from '@/builder/build/buildContext'
+import { getBuildStepDetailText, hasBuildStepDetail } from '@/builder/build/buildEvent'
+import type { BuildStepStatus } from '@/builder/build/buildTypes'
 import { useProjectStore } from '@/stores/project'
 import { useLogContext } from './logContext'
 import {
@@ -15,6 +18,39 @@ defineOptions({
 
 const projectStore = useProjectStore()
 const logContext = useLogContext()
+const buildContext = useBuildContext()
+
+/** 构建日志滚动容器 */
+const buildLogRef = ref<HTMLElement | null>(null)
+const buildBodyRef = ref<HTMLElement | null>(null)
+
+/** 已完成步骤数 */
+const completedStepCount = computed(() =>
+  buildContext.steps.value.filter((item) => item.status === 'done').length,
+)
+
+/**
+ * 获取步骤状态图标
+ * @param status 步骤状态
+ */
+function getBuildStepStatusMark(status: BuildStepStatus): string {
+  if (status === 'done') return '✓'
+  if (status === 'error') return '✗'
+  return '…'
+}
+
+/**
+ * 获取构建进度文案
+ */
+function getBuildProgressText(): string {
+  const total = buildContext.steps.value.length
+  if (!total) return '准备中...'
+  if (buildContext.running.value) {
+    return `${completedStepCount.value}/${total} 步骤`
+  }
+  if (buildContext.summary.value) return '已完成'
+  return '构建结束'
+}
 
 /** 终端滚动容器 */
 const terminalRef = ref<HTMLElement | null>(null)
@@ -127,6 +163,16 @@ async function scrollToBottom() {
   el.scrollTop = el.scrollHeight
 }
 
+/**
+ * 构建日志滚动到底部
+ */
+async function scrollBuildLogToBottom() {
+  await nextTick()
+  const el = buildBodyRef.value ?? buildLogRef.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+}
+
 /** 项目就绪后加载历史日志 */
 watch(
   () => projectStore.currentProject?.id,
@@ -154,13 +200,91 @@ watch(
   },
 )
 
+/** 构建日志变化时自动滚动 */
+watch(
+  () => [buildContext.content.value, buildContext.steps.value.map((item) => item.status).join(',')].join('|'),
+  () => {
+    void scrollBuildLogToBottom()
+  },
+)
+
 onMounted(() => {
   void scrollToBottom()
 })
 </script>
 
 <template>
-  <div ref="terminalRef" class="log-panel">
+  <div class="log-panel-wrapper">
+    <div v-if="buildContext.visible.value" class="log-panel-build-float"
+      :class="{ 'log-panel-build-float--collapsed': buildContext.collapsed.value }">
+      <header class="log-panel-build-header">
+        <div class="log-panel-build-heading">
+          <span class="log-panel-build-title">项目构建</span>
+          <span class="log-panel-build-status">{{ getBuildProgressText() }}</span>
+        </div>
+        <div class="log-panel-build-actions">
+          <button type="button" class="log-panel-build-btn" :title="buildContext.collapsed.value ? '展开' : '收起'"
+            :aria-label="buildContext.collapsed.value ? '展开' : '收起'" @click="buildContext.toggleCollapsed">
+            <svg class="log-panel-build-btn-icon" :class="{ 'log-panel-build-btn-icon--expanded': !buildContext.collapsed.value }"
+              viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button v-if="!buildContext.running.value" type="button" class="log-panel-build-btn" title="关闭"
+            aria-label="关闭" @click="buildContext.closePanel">
+            <svg class="log-panel-build-btn-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div v-show="!buildContext.collapsed.value" ref="buildBodyRef" class="log-panel-build-body">
+        <div v-if="buildContext.summary.value" class="log-panel-build-summary">
+          <p class="log-panel-build-summary-text">{{ buildContext.summary.value }}</p>
+          <p v-if="buildContext.durationText.value" class="log-panel-build-summary-meta">
+            总耗时 {{ buildContext.durationText.value }}
+          </p>
+          <a v-if="buildContext.resultLink.value" class="log-panel-build-link" :href="buildContext.resultLink.value"
+            target="_blank" rel="noopener noreferrer">
+            {{ buildContext.resultLink.value }}
+          </a>
+          <p v-if="buildContext.deploymentId.value" class="log-panel-build-summary-meta">
+            Deployment ID：{{ buildContext.deploymentId.value }}
+          </p>
+        </div>
+
+        <ul v-if="buildContext.steps.value.length" class="log-panel-build-steps">
+          <li v-for="step in buildContext.steps.value" :key="step.key"
+            class="log-panel-build-step" :class="`log-panel-build-step--${step.status}`">
+            <button type="button" class="log-panel-build-step-main"
+              :class="{ 'log-panel-build-step-main--clickable': hasBuildStepDetail(step) }"
+              :disabled="!hasBuildStepDetail(step)" @click="buildContext.toggleStepExpand(step.key)">
+              <span class="log-panel-build-step-mark">{{ getBuildStepStatusMark(step.status) }}</span>
+              <span class="log-panel-build-step-title">{{ step.title }}</span>
+              <span v-if="step.durationText" class="log-panel-build-step-duration">{{ step.durationText }}</span>
+              <span v-if="step.status === 'running'" class="log-panel-build-step-loading" aria-label="执行中" />
+              <svg v-if="hasBuildStepDetail(step)" class="log-panel-build-step-arrow"
+                :class="{ 'log-panel-build-step-arrow--expanded': step.expanded }" viewBox="0 0 24 24" fill="none"
+                aria-hidden="true">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </button>
+            <p v-if="step.message" class="log-panel-build-step-message">{{ step.message }}</p>
+            <pre v-if="step.expanded && getBuildStepDetailText(step)"
+              class="log-panel-build-step-detail">{{ getBuildStepDetailText(step) }}</pre>
+          </li>
+        </ul>
+
+        <div v-if="buildContext.content.value" class="log-panel-build-log-section">
+          <div class="log-panel-build-log-label">构建日志</div>
+          <pre ref="buildLogRef" class="log-panel-build-content">{{ buildContext.content.value }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div ref="terminalRef" class="log-panel">
     <div v-for="(line, index) in staticLines" :key="`static-${index}`" class="log-panel-line">
       {{ line }}
     </div>
@@ -241,10 +365,276 @@ onMounted(() => {
           class="log-panel-tool-detail">{{ getToolDetailText(entry) }}</pre>
       </div>
     </template>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.log-panel-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.log-panel-build-float {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 2;
+  width: min(32rem, calc(100% - 1.5rem));
+  max-height: calc(100% - 1.5rem);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background-color: rgba(17, 17, 17, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.log-panel-build-float--collapsed {
+  max-height: none;
+}
+
+.log-panel-build-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid #333;
+}
+
+.log-panel-build-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.log-panel-build-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #f5c26b;
+}
+
+.log-panel-build-status {
+  font-size: 0.75rem;
+  color: #7ec8ff;
+}
+
+.log-panel-build-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.log-panel-build-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #222;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.log-panel-build-btn:hover {
+  color: #fff;
+  border-color: #666;
+}
+
+.log-panel-build-btn-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  transition: transform 0.2s ease;
+}
+
+.log-panel-build-btn-icon--expanded {
+  transform: rotate(180deg);
+}
+
+.log-panel-build-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  max-height: 24rem;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+}
+
+.log-panel-build-summary {
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid #2a2a2a;
+  background-color: #141414;
+}
+
+.log-panel-build-summary-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #e6e6e6;
+}
+
+.log-panel-build-summary-meta {
+  margin: 0.375rem 0 0;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.log-panel-build-link {
+  display: block;
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: #7ec8ff;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.log-panel-build-link:hover {
+  text-decoration: underline;
+}
+
+.log-panel-build-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.log-panel-build-step {
+  margin-bottom: 0.5rem;
+}
+
+.log-panel-build-step:last-child {
+  margin-bottom: 0;
+}
+
+.log-panel-build-step-main {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #ccc;
+  font: inherit;
+  text-align: left;
+}
+
+.log-panel-build-step-main--clickable {
+  cursor: pointer;
+}
+
+.log-panel-build-step-main--clickable:hover {
+  color: #fff;
+}
+
+.log-panel-build-step-main:disabled {
+  cursor: default;
+}
+
+.log-panel-build-step-mark {
+  flex-shrink: 0;
+  width: 1rem;
+  font-weight: 700;
+}
+
+.log-panel-build-step--running .log-panel-build-step-mark {
+  color: #7ec8ff;
+}
+
+.log-panel-build-step--done .log-panel-build-step-mark {
+  color: #6adb8a;
+}
+
+.log-panel-build-step--error .log-panel-build-step-mark {
+  color: #f56c6c;
+}
+
+.log-panel-build-step-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.log-panel-build-step-duration {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.log-panel-build-step-loading {
+  flex-shrink: 0;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid #555;
+  border-top-color: #7ec8ff;
+  border-radius: 50%;
+  animation: log-spin 0.8s linear infinite;
+}
+
+.log-panel-build-step-arrow {
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  transition: transform 0.2s ease;
+}
+
+.log-panel-build-step-arrow--expanded {
+  transform: rotate(180deg);
+}
+
+.log-panel-build-step-message {
+  margin: 0.25rem 0 0 1.375rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #999;
+}
+
+.log-panel-build-step-detail {
+  margin: 0.375rem 0 0 1.375rem;
+  padding: 0.5rem 0.625rem;
+  border-left: 2px solid #444;
+  background-color: #111;
+  color: #9cdcfe;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.log-panel-build-log-section {
+  padding: 0.5rem 0.75rem 0.625rem;
+}
+
+.log-panel-build-log-label {
+  margin-bottom: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #888;
+}
+
+.log-panel-build-content {
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  max-height: none;
+  color: #ccc;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .log-panel {
   width: 100%;
   height: 100%;

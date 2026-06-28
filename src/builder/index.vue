@@ -13,6 +13,7 @@ import {
   SessionPanel,
   SnapshotPanel,
 } from './panels'
+import { createBuildContext, buildContextKey } from './build/buildContext'
 import { createLogContext, logContextKey } from './log/logContext'
 import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
 
@@ -76,6 +77,21 @@ provide(sessionContextKey, {
 /** 日志上下文，供聊天面板写入、日志面板展示 */
 const logContext = createLogContext()
 provide(logContextKey, logContext)
+
+/** 构建日志上下文，供预览面板触发、日志面板悬浮框展示 */
+const buildContext = createBuildContext()
+provide(buildContextKey, buildContext)
+
+/** 构建开始时自动切换到日志 Tab，确保悬浮框可见 */
+watch(
+  () => buildContext.running.value,
+  (running) => {
+    if (!running) return
+    const logIndex = tabs.findIndex((item) => item.key === 'log')
+    if (logIndex < 0) return
+    switchToLogTab(logIndex)
+  },
+)
 
 const tabs: TabItem[] = [
   { key: 'chat', label: '对话' },
@@ -147,6 +163,31 @@ function updateIndicator() {
     width: `${el.offsetWidth}px`,
     transform: `translateX(${el.offsetLeft}px)`,
   }
+}
+
+/**
+ * 构建开始时强制切到日志 Tab（不受切换动画阻塞）
+ * @param index 日志 Tab 索引
+ */
+function switchToLogTab(index: number) {
+  if (index === activeTab.value) return
+
+  slideDirection.value = index > activeTab.value ? 'forward' : 'backward'
+  leavingTabKey.value = tabs[activeTab.value]?.key ?? null
+  mountedTabKeys.value = new Set([...mountedTabKeys.value, 'log'])
+  activeTab.value = index
+  isPanelTransitioning.value = true
+
+  if (panelTransitionTimer) {
+    clearTimeout(panelTransitionTimer)
+  }
+  panelTransitionTimer = setTimeout(() => {
+    leavingTabKey.value = null
+    isPanelTransitioning.value = false
+    panelTransitionTimer = null
+  }, PANEL_TRANSITION_MS)
+
+  nextTick(updateIndicator)
 }
 
 /**
