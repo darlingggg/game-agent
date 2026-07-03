@@ -71,6 +71,30 @@ export const useProjectStore = defineStore(
       }
     }
 
+    /**
+     * 更新列表与当前项目中的部署信息
+     * @param id 项目 ID
+     * @param payload 待更新的字段
+     */
+    function patchProjectDeploy(
+      id: number,
+      payload: Pick<projectItem, 'link' | 'currentVersion'>,
+    ) {
+      const target = projectList.value.find((item) => item.id === id)
+      if (target) {
+        target.link = payload.link
+        target.currentVersion = payload.currentVersion
+      }
+
+      if (currentProject.value?.id === id) {
+        currentProject.value = {
+          ...currentProject.value,
+          link: payload.link,
+          currentVersion: payload.currentVersion,
+        }
+      }
+    }
+
     return {
       projectList,
       currentProject,
@@ -80,6 +104,7 @@ export const useProjectStore = defineStore(
       getProjectById,
       requireProjectDirPath,
       patchProject,
+      patchProjectDeploy,
     }
   },
   {

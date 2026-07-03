@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
 import { nextTick, ref, watch } from 'vue'
 import { createSession, getSessionList, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
@@ -164,8 +163,8 @@ async function loadSessionMessages() {
 
     messages.value = sessionMessages
     await scrollToBottom()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '消息加载失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     messagesLoading.value = false
   }
@@ -364,8 +363,8 @@ async function handleSend() {
         createdAt: new Date().toISOString(),
       })
     }
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '会话创建失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
     return
   }
 
@@ -416,9 +415,6 @@ async function handleSend() {
       title: chatTitle,
       signal: abortController.signal,
       onEvent: (event) => {
-        if (event.event === 'error') {
-          throw new Error(event.data ?? 'AI 回复失败')
-        }
         handleSseEvent(assistantId, event)
       },
     })
@@ -430,7 +426,6 @@ async function handleSend() {
     if (assistantMessage && !assistantMessage.content) {
       assistantMessage.content = '回复失败，请重试'
     }
-    ElMessage.error(error instanceof Error ? error.message : 'AI 回复失败')
   } finally {
     finishAssistantStreaming(assistantId)
 
@@ -445,8 +440,8 @@ async function handleSend() {
     if (assistantMessage?.content.trim() && assistantMessage.content !== '回复失败，请重试') {
       try {
         await saveMessageToSession('assistant', assistantMessage.content)
-      } catch (error) {
-        ElMessage.error(error instanceof Error ? error.message : 'AI 消息保存失败')
+      } catch {
+        // 错误提示由 axios 拦截器统一处理
       }
     }
     streamingAssistantId = null
@@ -487,25 +482,48 @@ function handleActionClick() {
     </div>
 
     <div class="chat-panel-input-area">
-      <textarea v-model="inputText" class="chat-panel-input" placeholder="输入消息，Enter 换行， Ctrl+Enter 发送" rows="5"
-        :disabled="isStreaming" @keydown="handleInputKeydown" />
-      <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-        :title="isStreaming ? '终止' : '发送'" @click="handleActionClick">
-        <!-- 发送图标 -->
-        <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
-        </svg>
-        <!-- 终止图标 -->
-        <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
-        </svg>
-      </button>
+      <div class="chat-panel-input-shell">
+        <textarea
+          v-model="inputText"
+          class="chat-panel-input"
+          placeholder="输入消息，Enter 换行， Ctrl+Enter 发送"
+          rows="5"
+          :disabled="isStreaming"
+          @keydown="handleInputKeydown"
+        />
+        <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+          :title="isStreaming ? '终止' : '发送'" @click="handleActionClick">
+          <!-- 发送图标 -->
+          <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
+          </svg>
+          <!-- 终止图标 -->
+          <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* Stitch 风格输入框：聚焦时 Google 多色渐变边框 */
 .chat-panel {
+  --chat-input-bg: var(--app-surface);
+  --chat-input-shell-border: var(--app-border-strong);
+  --chat-input-shell-focus-gradient: conic-gradient(
+    from 0deg,
+    #4285f4,
+    #9b72cb,
+    #d96570,
+    #f4b400,
+    #0f9d58,
+    #4285f4
+  );
+  --chat-input-shell-focus-shadow:
+    0 0 0 3px rgba(66, 133, 244, 0.12),
+    0 4px 20px rgba(155, 114, 203, 0.14);
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -557,43 +575,81 @@ function handleActionClick() {
 }
 
 .chat-panel-input-area {
-  position: relative;
   flex-shrink: 0;
   border-top: 1px solid var(--app-border);
   background-color: var(--app-bg-muted);
   padding: 0.75rem 1rem;
 }
 
+.chat-panel-input-shell {
+  position: relative;
+  padding: 2px;
+  border-radius: 1.125rem;
+  background: var(--chat-input-shell-border);
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    background 0.28s ease,
+    box-shadow 0.28s ease;
+}
+
+.chat-panel-input-shell::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: 200%;
+  aspect-ratio: 1;
+  background: var(--chat-input-shell-focus-gradient);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.28s ease;
+  pointer-events: none;
+}
+
+.chat-panel-input-shell:has(.chat-panel-input:focus) {
+  background: transparent;
+  box-shadow: var(--chat-input-shell-focus-shadow);
+}
+
+.chat-panel-input-shell:has(.chat-panel-input:focus)::before {
+  opacity: 1;
+  animation: chat-input-border-flow 3s linear infinite;
+}
+
+@keyframes chat-input-border-flow {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
 .chat-panel-input {
+  position: relative;
+  z-index: 1;
+  display: block;
+  box-sizing: border-box;
   width: 100%;
+  margin: 0;
   resize: none;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border: none;
+  border-radius: calc(1.125rem - 2px);
   padding: 0.75rem 3rem 0.75rem 0.875rem;
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--app-text-primary);
-  background-color: var(--app-surface);
+  background-color: var(--chat-input-bg);
   outline: none;
-  transition: border-color 0.2s ease;
   font-family: auto;
-}
-
-.chat-panel-input {
   overflow: auto;
   scrollbar-width: none;
-  /* Firefox */
   -ms-overflow-style: none;
-  /* IE/Edge */
+  transition: background-color 0.2s ease;
 }
 
 /* Chrome/Safari/Opera */
 .chat-panel-input::-webkit-scrollbar {
   display: none;
-}
-
-.chat-panel-input:focus {
-  border-color: var(--app-accent);
 }
 
 .chat-panel-input:disabled {
@@ -604,8 +660,9 @@ function handleActionClick() {
 
 .chat-panel-action-btn {
   position: absolute;
-  right: 1.5rem;
-  bottom: 1.5rem;
+  right: 0.625rem;
+  bottom: 0.625rem;
+  z-index: 2;
   width: 2rem;
   height: 2rem;
   border: none;
@@ -635,5 +692,28 @@ function handleActionClick() {
 
 .chat-panel-action-btn--stop:hover {
   background-color: #dc2626;
+}
+
+html.dark .chat-panel {
+  --chat-input-bg: var(--app-surface);
+  --chat-input-shell-border: var(--app-border-strong);
+  --chat-input-shell-focus-gradient: conic-gradient(
+    from 0deg,
+    #5b9bf8,
+    #b08cf0,
+    #e07a7f,
+    #f7c948,
+    #3ecf8e,
+    #5b9bf8
+  );
+  --chat-input-shell-focus-shadow:
+    0 0 0 3px rgba(91, 155, 248, 0.18),
+    0 4px 24px rgba(176, 140, 240, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel-input-shell:has(.chat-panel-input:focus)::before {
+    animation: none;
+  }
 }
 </style>

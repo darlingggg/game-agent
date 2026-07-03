@@ -134,8 +134,8 @@ async function fetchSessionList() {
     if (!activeExists && !isPendingNewSession.value && list.length > 0) {
       sessionContext.selectSession(list[0]!.id, false)
     }
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '会话列表加载失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   } finally {
     listLoading.value = false
   }
@@ -230,7 +230,7 @@ async function handleDeleteSession(session: sessionItem) {
     ElMessage.success('会话删除成功')
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
-    ElMessage.error(error instanceof Error ? error.message : '会话删除失败')
+    // 错误提示由 axios 拦截器统一处理
   }
 }
 
@@ -270,7 +270,7 @@ async function handleRenameSession(session: sessionItem) {
     ElMessage.success('标题修改成功')
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
-    ElMessage.error(error instanceof Error ? error.message : '标题修改失败')
+    // 错误提示由 axios 拦截器统一处理
   }
 }
 
@@ -302,8 +302,8 @@ onMounted(async () => {
   try {
     const res = await getUserInfo()
     nickName.value = res.nickname
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '用户信息加载失败')
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
   }
 
   if (projectId.value) {
