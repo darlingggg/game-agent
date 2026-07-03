@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "description": "添加",
-  "createdAt": "2026-06-21 10:00:00",
-  "files": []
+  "version": "1.0.1",
+  "description": "添加ai的skill模块(markdown格式)",
+  "createdAt": "2026-07-03 10:00:00",
+  "files": [{ "path": "agent_base/skills/system-prompt.md", "description": "系统提示词", "action": "add" }]
 }
