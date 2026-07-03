@@ -17,6 +17,14 @@ function createAsyncPanel(loader: () => Promise<{ default: unknown }>) {
     loader,
     loadingComponent: PanelLoading,
     delay: 120,
+    onError(error, retry, fail, attempts) {
+      console.error('[BuilderPanel] 面板加载失败:', error)
+      if (attempts <= 2) {
+        retry()
+        return
+      }
+      fail()
+    },
   })
 }
 
@@ -31,6 +39,9 @@ export const ConfigPanel = createAsyncPanel(() => import('./config/ConfigPanel.v
 
 /** 版本快照面板 */
 export const SnapshotPanel = createAsyncPanel(() => import('./snapshot/SnapshotPanel.vue'))
+
+/** 项目模板面板 */
+export const TempPanel = createAsyncPanel(() => import('./temp/TempPanel.vue'))
 
 /** 日志面板 */
 export const LogPanel = createAsyncPanel(() => import('./log/LogPanel.vue'))

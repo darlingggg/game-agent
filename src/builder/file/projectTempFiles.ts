@@ -54,6 +54,18 @@ export function normalizeRelativePath(relativePath: string): string {
   return relativePath.replace(/\\/g, '/')
 }
 
+/** agent_base 目录名（该目录下文件只读，不可手动编辑） */
+export const AGENT_BASE_DIR = 'agent_base'
+
+/**
+ * 判断文件是否位于 agent_base 下（只读）
+ * @param relativePath 相对 projectTemp 根目录的路径
+ */
+export function isAgentBaseReadOnlyPath(relativePath: string): boolean {
+  const normalized = normalizeRelativePath(relativePath).replace(/^\/+|\/+$/g, '')
+  return normalized === AGENT_BASE_DIR || normalized.startsWith(`${AGENT_BASE_DIR}/`)
+}
+
 /**
  * 向目录节点中插入文件路径
  * @param root 根节点

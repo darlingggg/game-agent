@@ -1,6 +1,9 @@
 {
   "version": "1.0.1",
-  "description": "添加ai的skill模块(markdown格式)",
+  "description": "添加ai的skill模块(markdown格式)，修改项目ico图标",
   "createdAt": "2026-07-03 10:00:00",
-  "files": [{ "path": "agent_base/skills/system-prompt.md", "description": "系统提示词", "action": "add" }]
+  "files": [
+    { "path": "agent_base/skills/system-prompt.md", "description": "系统提示词", "action": "add" },
+    { "path": "public/favicon.ico", "description": "项目ico图标", "action": "update" }
+  ]
 }

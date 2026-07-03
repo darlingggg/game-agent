@@ -1,6 +1,7 @@
 import { normalizeRelativePath, saveProjectTempFileContent } from '@/builder/file/projectTempFiles'
 import { syncSnapshotRestoreToPreview } from '@/builder/preview/previewSync'
 import { deleteFile, getFileStat, type ProjectTempFileItem } from '@/http/file'
+import { updateProject } from '@/http/project'
 import type { snapshotItem } from '@/http/snapshot'
 import { toProjectRelativePath } from './snapshotFileTree'
 
@@ -39,6 +40,8 @@ export interface SnapshotRestoreFileChange {
 export interface SnapshotRestorePlan {
   /** 目标版本号 */
   version: string
+  /** 快照创建时的模板版本号 */
+  tempVersion: string
   /** 不变文件 */
   unchanged: SnapshotRestoreFileChange[]
   /** 新增文件 */
@@ -47,6 +50,16 @@ export interface SnapshotRestorePlan {
   deleted: SnapshotRestoreFileChange[]
   /** 覆盖文件 */
   overwritten: SnapshotRestoreFileChange[]
+}
+
+/** 版本还原时需同步的项目信息 */
+export interface SnapshotRestoreProjectUpdate {
+  /** 项目 id */
+  id: number
+  /** 项目标题 */
+  title: string
+  /** 项目描述 */
+  desc?: string
 }
 
 /** 项目文件变更事件名，文件面板监听后刷新列表 */
@@ -207,6 +220,7 @@ export async function buildSnapshotRestorePlan(
 ): Promise<SnapshotRestorePlan> {
   const plan: SnapshotRestorePlan = {
     version,
+    tempVersion: snapshotFiles[0]?.tempVersion?.trim() ?? '',
     unchanged: [],
     added: [],
     deleted: [],
@@ -284,11 +298,16 @@ export async function buildSnapshotRestorePlan(
 }
 
 /**
- * 执行版本还原：删除多余文件，写入新增与覆盖文件
+ * 执行版本还原：删除多余文件，写入新增与覆盖文件，并同步项目模板版本
  * @param plan 还原计划
  * @param projectDirPath 项目根目录绝对路径
+ * @param projectUpdate 项目信息（title、desc 保持不变，仅更新 tempVersion）
  */
-export async function executeSnapshotRestore(plan: SnapshotRestorePlan, projectDirPath: string): Promise<void> {
+export async function executeSnapshotRestore(
+  plan: SnapshotRestorePlan,
+  projectDirPath: string,
+  projectUpdate: SnapshotRestoreProjectUpdate,
+): Promise<void> {
   for (const item of plan.deleted) {
     if (!item.currentAbsolutePath) continue
     await deleteFile({ dir: projectDirPath, path: item.currentAbsolutePath })
@@ -299,6 +318,13 @@ export async function executeSnapshotRestore(plan: SnapshotRestorePlan, projectD
     if (item.snapshotContent === undefined) continue
     await saveProjectTempFileContent(item.relativePath, item.snapshotContent)
   }
+
+  await updateProject({
+    id: projectUpdate.id,
+    title: projectUpdate.title,
+    desc: projectUpdate.desc,
+    tempVersion: plan.tempVersion || undefined,
+  })
 
   await syncSnapshotRestoreToPreview(plan)
 

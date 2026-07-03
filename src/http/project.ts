@@ -30,7 +30,16 @@ export const deleteProject = (data: { id: number }): Promise<{ content: string }
   return axios.post(`/project/delete`, data)
 }
 
-export const updateProject = (data: { id: number; title: string; desc?: string }): Promise<{ content: string }> => {
+/** 更新项目参数 */
+export interface updateProjectBody {
+  id: number
+  title: string
+  desc?: string
+  /** 模板版本号 */
+  tempVersion?: string
+}
+
+export const updateProject = (data: updateProjectBody): Promise<{ content: string }> => {
   return axios.patch(`/project/update`, data)
 }
 
