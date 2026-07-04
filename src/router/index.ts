@@ -1,4 +1,4 @@
-import { getToken } from '@/ajax'
+import { isLoggedIn } from '@/ajax'
 import { createRouter, createWebHistory } from 'vue-router'
 
 /** 无需登录即可访问的路由 */
@@ -16,15 +16,15 @@ const router = createRouter({
   ],
 })
 
-/** 路由守卫：未登录跳转登录页 */
+/** 路由守卫：未登录跳转登录页（以 Refresh Token 为准判断登录态） */
 router.beforeEach((to) => {
-  const token = getToken()
+  const loggedIn = isLoggedIn()
 
   if (PUBLIC_PATHS.has(to.path)) {
-    return token ? { path: '/' } : true
+    return loggedIn ? { path: '/' } : true
   }
 
-  if (!token) {
+  if (!loggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
 

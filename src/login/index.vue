@@ -3,7 +3,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { setToken } from '@/ajax'
+import { setTokens } from '@/ajax'
 import { loginUser, registerUser } from '@/http/user'
 
 defineOptions({
@@ -103,7 +103,7 @@ async function handleSubmit() {
       })
       : await loginUser({ account, password })
 
-    setToken(result.token)
+    setTokens(result.accessToken, result.refreshToken)
     ElMessage.success(isRegisterMode.value ? '注册成功' : '登录成功')
 
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'

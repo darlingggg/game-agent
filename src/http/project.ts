@@ -1,4 +1,4 @@
-import axios, { getToken, handleUnauthorized, showRequestError } from '@/ajax'
+import axios, { fetchWithAuth, showRequestError } from '@/ajax'
 import type { BuildDoneResult } from '@/builder/build/buildTypes'
 import { consumeSseResponse, type SseEvent } from '@/http/sse'
 
@@ -68,22 +68,15 @@ export interface BuildProjectStreamOptions {
  */
 export async function buildProjectStream(options: BuildProjectStreamOptions): Promise<void> {
   const { dir, projectId, onEvent, signal } = options
-  const token = getToken()
 
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/project/build`, {
+  const response = await fetchWithAuth(`${import.meta.env.VITE_API_URL}/project/build`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ dir, projectId }),
     signal,
   })
-
-  if (response.status === 401 || response.status === 403) {
-    handleUnauthorized()
-    throw new Error('登录已失效，请重新登录')
-  }
 
   if (!response.ok) {
     const message = `构建请求失败（${response.status}）`

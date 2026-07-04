@@ -7,11 +7,12 @@ interface RegisterUserParams {
   nickname?: string
 }
 
-interface RegisterUserResponse {
+interface AuthTokenResponse {
   id: string
   account: string
   nickname: string
-  token: string
+  accessToken: string
+  refreshToken: string
 }
 
 interface LoginUserParams {
@@ -25,17 +26,22 @@ interface UserInfoResponse {
   nickname: string
 }
 
-// 注册用户
-export const registerUser = (data: RegisterUserParams): Promise<RegisterUserResponse> => {
+/** 注册用户 */
+export const registerUser = (data: RegisterUserParams): Promise<AuthTokenResponse> => {
   return axios.post('/register', data)
 }
 
-// 登录用户
-export const loginUser = (data: LoginUserParams): Promise<RegisterUserResponse> => {
+/** 登录用户 */
+export const loginUser = (data: LoginUserParams): Promise<AuthTokenResponse> => {
   return axios.post('/login', data)
 }
 
-// 获取用户信息
+/** 获取用户信息 */
 export const getUserInfo = (): Promise<UserInfoResponse> => {
   return axios.get('/user/profile')
+}
+
+/** 登出，吊销 Refresh Token */
+export const logoutUser = (refreshToken: string): Promise<void> => {
+  return axios.post('/auth/logout', { refreshToken })
 }

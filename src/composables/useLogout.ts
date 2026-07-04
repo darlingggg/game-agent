@@ -1,6 +1,7 @@
 import { ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { removeToken } from '@/ajax'
+import { getRefreshToken, removeToken } from '@/ajax'
+import { logoutUser } from '@/http/user'
 
 /**
  * 退出登录相关逻辑
@@ -9,9 +10,17 @@ export function useLogout() {
   const router = useRouter()
 
   /**
-   * 执行退出登录：删除 token 并跳转登录页
+   * 执行退出登录：吊销 Refresh Token、清除本地凭证并跳转登录页
    */
   async function logout() {
+    const refreshToken = getRefreshToken()
+    if (refreshToken) {
+      try {
+        await logoutUser(refreshToken)
+      } catch {
+        // 登出接口失败仍清除本地凭证
+      }
+    }
     removeToken()
     await router.replace('/login')
   }
