@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { Camera, ChatDotRound, CopyDocument, Document, Notebook, Setting } from '@element-plus/icons-vue'
+import { Camera, ChatDotRound, CopyDocument, DArrowRight, Document, Notebook, Setting } from '@element-plus/icons-vue'
 import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type Component, type ComponentPublicInstance } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { getProjectList } from '@/http/project'
@@ -37,6 +37,16 @@ const chatResetSignal = ref(0)
 /** 首条消息创建会话完成通知 */
 const lastCreatedSession = ref<CreatedSessionPayload | null>(null)
 
+/** 会话栏是否收起 */
+const sessionPanelCollapsed = ref(false)
+
+/**
+ * 切换会话栏收起/展开
+ */
+function toggleSessionPanelCollapsed() {
+  sessionPanelCollapsed.value = !sessionPanelCollapsed.value
+}
+
 /**
  * 开始新建会话，等待用户发送首条消息后再调用接口
  */
@@ -67,6 +77,8 @@ provide(sessionContextKey, {
   lastCreatedSession,
   startNewSession,
   selectSession,
+  sessionPanelCollapsed,
+  toggleSessionPanelCollapsed,
 })
 
 /** 日志上下文，供聊天面板写入、日志面板展示 */
@@ -124,6 +136,9 @@ const mountedTabKeys = ref<Set<string>>(new Set(['chat']))
 /** Tab 元素引用，用于计算底部指示条位置 */
 const tabRefs = ref<HTMLElement[]>([])
 
+/** Tab 栏容器，指示条相对此元素定位 */
+const mainTabRef = ref<HTMLElement | null>(null)
+
 /** 底部指示条样式 */
 const indicatorStyle = ref({
   width: '0px',
@@ -153,11 +168,15 @@ function setTabRef(el: Element | ComponentPublicInstance | null, index: number) 
 /** 更新底部指示条位置与宽度 */
 function updateIndicator() {
   const el = tabRefs.value[activeTab.value]
-  if (!el) return
+  const container = mainTabRef.value
+  if (!el || !container) return
+
+  const tabRect = el.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
 
   indicatorStyle.value = {
-    width: `${el.offsetWidth}px`,
-    transform: `translateX(${el.offsetLeft}px)`,
+    width: `${tabRect.width}px`,
+    transform: `translateX(${tabRect.left - containerRect.left}px)`,
   }
 }
 
@@ -285,6 +304,13 @@ async function initCurrentProject() {
   }
 }
 
+watch(
+  () => sessionPanelCollapsed.value,
+  () => {
+    nextTick(updateIndicator)
+  },
+)
+
 /** 地址栏 projectId 变化时重新加载项目 */
 watch(
   () => route.query.projectId,
@@ -326,24 +352,40 @@ onUnmounted(() => {
 <template>
   <div v-if="projectLoading" class="builder-status">正在加载项目...</div>
   <div v-else-if="projectError" class="builder-status builder-status--error">{{ projectError }}</div>
-  <div v-else-if="projectReady" class="container">
+  <div
+    v-else-if="projectReady"
+    class="container"
+    :class="{ 'container--session-collapsed': sessionPanelCollapsed }"
+  >
     <section class="left">
       <SessionPanel />
     </section>
     <main class="main">
-      <div class="main-tab">
-        <div
-          v-for="(tab, index) in tabs"
-          :key="tab.key"
-          :ref="(el) => setTabRef(el, index)"
-          class="main-tab-item"
-          :class="{ 'main-tab-item--active': activeTab === index }"
-          @click="switchTab(index)"
+      <div ref="mainTabRef" class="main-tab">
+        <button
+          v-if="sessionPanelCollapsed"
+          type="button"
+          class="builder-session-toggle-btn main-tab-session-toggle"
+          title="展开会话栏"
+          aria-label="展开会话栏"
+          @click="toggleSessionPanelCollapsed"
         >
-          <el-icon class="main-tab-item-icon">
-            <component :is="tab.icon" />
-          </el-icon>
-          <span class="main-tab-item-label">{{ tab.label }}</span>
+          <el-icon><DArrowRight /></el-icon>
+        </button>
+        <div class="main-tab-list">
+          <div
+            v-for="(tab, index) in tabs"
+            :key="tab.key"
+            :ref="(el) => setTabRef(el, index)"
+            class="main-tab-item"
+            :class="{ 'main-tab-item--active': activeTab === index }"
+            @click="switchTab(index)"
+          >
+            <el-icon class="main-tab-item-icon">
+              <component :is="tab.icon" />
+            </el-icon>
+            <span class="main-tab-item-label">{{ tab.label }}</span>
+          </div>
         </div>
         <div class="main-tab-indicator" :style="indicatorStyle" />
       </div>
@@ -436,6 +478,21 @@ onUnmounted(() => {
   height: 100%;
   min-width: 0;
   border-right: 1px solid var(--app-border);
+  overflow: hidden;
+  transition:
+    flex 0.25s ease,
+    width 0.25s ease,
+    opacity 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.container--session-collapsed .left {
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+  border-right-color: transparent;
+  pointer-events: none;
 }
 
 .main {
@@ -444,17 +501,33 @@ onUnmounted(() => {
   background-color: var(--app-surface);
   display: flex;
   flex-direction: column;
+  transition: flex 0.25s ease;
+}
+
+.container--session-collapsed .main {
+  flex: 4;
 }
 
 .main-tab {
   position: relative;
   width: 100%;
   display: flex;
-  justify-content: start;
-  gap: 1rem;
   align-items: center;
+  gap: 0.75rem;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--app-border);
+}
+
+.main-tab-session-toggle {
+  align-self: center;
+}
+
+.main-tab-list {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .main-tab-item {

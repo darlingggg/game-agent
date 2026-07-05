@@ -31,6 +31,10 @@ export interface SessionContext {
    * @param resetChat 是否重置聊天区，默认 true
    */
   selectSession: (sessionId: number, resetChat?: boolean) => void
+  /** 会话栏是否收起 */
+  sessionPanelCollapsed: Ref<boolean>
+  /** 切换会话栏收起/展开 */
+  toggleSessionPanelCollapsed: () => void
 }
 
 /** 会话上下文注入 key */

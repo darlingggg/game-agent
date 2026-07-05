@@ -437,10 +437,8 @@ watch(
       <div class="temp-panel-title-group">
         <h1 class="temp-panel-title">项目模板</h1>
         <span v-if="currentVersion || latestVersion" class="temp-panel-version-tag">
-          <span class="temp-panel-version-current-label">当前</span>
           <span class="temp-panel-version-current">{{ currentVersion || '-' }}</span>
-          <span class="temp-panel-version-sep">→</span>
-          <span class="temp-panel-version-latest-label">最新</span>
+          <span class="temp-panel-version-sep">/</span>
           <span class="temp-panel-version-latest">{{ latestVersion || '-' }}</span>
         </span>
       </div>
@@ -480,7 +478,10 @@ watch(
         v-for="card in versionCards"
         :key="card.version"
         class="temp-panel-card"
-        :class="{ 'temp-panel-card--current': isCurrentProjectVersion(card.version) }"
+        :class="{
+          'temp-panel-card--current': isCurrentProjectVersion(card.version),
+          'temp-panel-card--latest': card.version === latestVersion,
+        }"
       >
         <div class="temp-panel-card-header">
           <div class="temp-panel-card-title-row">
@@ -495,8 +496,11 @@ watch(
                 <el-icon><QuestionFilled /></el-icon>
               </span>
             </el-tooltip>
-            <span v-if="isCurrentProjectVersion(card.version)" class="temp-panel-current-tag">当前项目</span>
-            <span v-if="card.version === latestVersion" class="temp-panel-latest-tag">最新</span>
+            <span v-if="isCurrentProjectVersion(card.version)" class="temp-panel-status-tag temp-panel-status-tag--current">当前</span>
+            <span v-if="card.version === latestVersion" class="temp-panel-status-tag temp-panel-status-tag--latest">
+              <span class="temp-panel-status-dot" aria-hidden="true"></span>
+              最新
+            </span>
           </div>
           <div class="temp-panel-card-actions">
             <span class="temp-panel-card-time">{{ formatCreatedAt(card.createdAt) }}</span>
@@ -563,54 +567,24 @@ watch(
 </template>
 
 <style scoped>
-/* 浅色主题：模板面板浅蓝配色（与项目主色一致） */
+/* 浅色主题：与版本快照面板保持一致的克制风格 */
 .temp-panel {
-  --temp-accent: #2463dc;
-  --temp-accent-soft: #eef4ff;
-  --temp-accent-soft-hover: #dbe8ff;
-  --temp-accent-border: #c7daff;
+  --temp-accent-bg: #eef4ff;
+  --temp-accent-bg-hover: #dbe8ff;
   --temp-accent-text: #1e4fa8;
-  --temp-card-border: #c7daff;
-  --temp-card-bg: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
-  --temp-card-current-border: #a3c4ff;
-  --temp-card-current-bg: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
-  --temp-card-current-shadow: 0 4px 14px rgba(36, 99, 220, 0.1);
-  --temp-current-tag-bg: #d8f3e4;
-  --temp-current-tag-text: #1a8f5c;
-  --temp-current-tag-border: #9edbb8;
-  --temp-latest-tag-bg: #fff1d6;
-  --temp-latest-tag-text: #c87a00;
-  --temp-latest-tag-border: #f5c96a;
-  --temp-version-current-bg: #e8f0ff;
-  --temp-version-current-text: #1e4fa8;
-  --temp-version-latest-bg: #fff3e0;
-  --temp-version-latest-text: #c87a00;
-  --temp-files-toggle-bg: #eef4ff;
-  --temp-files-toggle-bg-hover: #dbe8ff;
-  --temp-files-toggle-text: #1e4fa8;
-  --temp-files-count-bg: #2463dc;
-  --temp-files-count-text: #ffffff;
-  --temp-file-item-bg: #ffffff;
-  --temp-file-item-border: #dbe8ff;
-  --temp-action-add-bg: #d8f3e4;
+  --temp-accent-text-muted: #5b7fc7;
+  --temp-accent-border: #c7daff;
+  --temp-accent-border-hover: #a3c4ff;
+  --temp-group-border: var(--app-border);
   --temp-action-add-text: #1a8f5c;
-  --temp-action-update-bg: #e8f0ff;
   --temp-action-update-text: #1e4fa8;
-  --temp-action-delete-bg: #ffe8e8;
   --temp-action-delete-text: #c0392b;
-  --temp-update-btn-bg: linear-gradient(135deg, #3d7ae8 0%, #2463dc 100%);
-  --temp-update-btn-bg-hover: linear-gradient(135deg, #2463dc 0%, #1e4fa8 100%);
-  --temp-update-btn-text: #ffffff;
-  --temp-update-btn-border: #2463dc;
+  --temp-latest-tag-bg: #fff4e0;
+  --temp-latest-tag-text: #b45309;
+  --temp-latest-tag-border: #f0c060;
+  --temp-latest-header-bg: #fff9ed;
   --temp-radius-sm: 2px;
   --temp-radius-md: 4px;
-  --temp-shadow-sm: 0 1px 2px rgba(36, 99, 220, 0.06);
-  --temp-shadow-md: 0 1px 3px rgba(36, 99, 220, 0.08), 0 1px 0 rgba(255, 255, 255, 0.65) inset;
-  --temp-shadow-card: 0 1px 2px rgba(36, 99, 220, 0.05), 0 1px 0 rgba(255, 255, 255, 0.75) inset;
-  --temp-shadow-card-current: 0 2px 6px rgba(36, 99, 220, 0.1), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
-  --temp-shadow-btn: 0 1px 2px rgba(36, 99, 220, 0.2), 0 1px 0 rgba(255, 255, 255, 0.15) inset;
-  --temp-shadow-btn-hover: 0 2px 4px rgba(36, 99, 220, 0.24), 0 1px 0 rgba(255, 255, 255, 0.18) inset;
-  --temp-inset-highlight: 0 1px 0 rgba(255, 255, 255, 0.55) inset;
 
   width: 100%;
   height: 100%;
@@ -621,52 +595,22 @@ watch(
   -ms-overflow-style: none;
 }
 
-/* 深色主题：模板面板浅蓝暗色适配 */
+/* 深色主题 */
 html.dark .temp-panel {
-  --temp-accent: #5b8cff;
-  --temp-accent-soft: #1a2744;
-  --temp-accent-soft-hover: #223358;
-  --temp-accent-border: #2d4470;
+  --temp-accent-bg: #1a2744;
+  --temp-accent-bg-hover: #223358;
   --temp-accent-text: #9ec0ff;
-  --temp-card-border: #2d4470;
-  --temp-card-bg: linear-gradient(135deg, #1c1f26 0%, #141c2e 100%);
-  --temp-card-current-border: #3d5a8c;
-  --temp-card-current-bg: linear-gradient(135deg, #141c2e 0%, #1a2744 100%);
-  --temp-card-current-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-  --temp-current-tag-bg: rgba(62, 207, 142, 0.18);
-  --temp-current-tag-text: #3ecf8e;
-  --temp-current-tag-border: rgba(62, 207, 142, 0.35);
-  --temp-latest-tag-bg: rgba(255, 193, 94, 0.18);
-  --temp-latest-tag-text: #ffc15e;
-  --temp-latest-tag-border: rgba(255, 193, 94, 0.35);
-  --temp-version-current-bg: rgba(91, 140, 255, 0.18);
-  --temp-version-current-text: #9ec0ff;
-  --temp-version-latest-bg: rgba(255, 193, 94, 0.18);
-  --temp-version-latest-text: #ffc15e;
-  --temp-files-toggle-bg: #1a2744;
-  --temp-files-toggle-bg-hover: #223358;
-  --temp-files-toggle-text: #9ec0ff;
-  --temp-files-count-bg: #5b8cff;
-  --temp-files-count-text: #ffffff;
-  --temp-file-item-bg: #1c1f26;
-  --temp-file-item-border: #2d4470;
-  --temp-action-add-bg: rgba(62, 207, 142, 0.18);
+  --temp-accent-text-muted: #7a9fd4;
+  --temp-accent-border: #2d4470;
+  --temp-accent-border-hover: #3d5a8c;
+  --temp-group-border: var(--app-border);
   --temp-action-add-text: #3ecf8e;
-  --temp-action-update-bg: rgba(91, 140, 255, 0.18);
   --temp-action-update-text: #9ec0ff;
-  --temp-action-delete-bg: rgba(255, 135, 135, 0.18);
   --temp-action-delete-text: #ff8787;
-  --temp-update-btn-bg: linear-gradient(135deg, #6b9aff 0%, #5b8cff 100%);
-  --temp-update-btn-bg-hover: linear-gradient(135deg, #5b8cff 0%, #4a7ae8 100%);
-  --temp-update-btn-text: #ffffff;
-  --temp-update-btn-border: #5b8cff;
-  --temp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --temp-shadow-md: 0 1px 3px rgba(0, 0, 0, 0.25), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
-  --temp-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
-  --temp-shadow-card-current: 0 2px 6px rgba(0, 0, 0, 0.28), 0 1px 0 rgba(255, 255, 255, 0.05) inset;
-  --temp-shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px 0 rgba(255, 255, 255, 0.1) inset;
-  --temp-shadow-btn-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255, 255, 255, 0.12) inset;
-  --temp-inset-highlight: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  --temp-latest-tag-bg: rgba(255, 193, 94, 0.22);
+  --temp-latest-tag-text: #ffc15e;
+  --temp-latest-tag-border: rgba(255, 193, 94, 0.45);
+  --temp-latest-header-bg: rgba(255, 193, 94, 0.1);
 }
 
 .temp-panel::-webkit-scrollbar {
@@ -678,18 +622,14 @@ html.dark .temp-panel {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 1rem;
-  padding: 0.75rem 0.875rem;
-  border: 1px solid var(--temp-accent-border);
-  border-radius: var(--temp-radius-md);
-  background: var(--temp-accent-soft);
-  box-shadow: var(--temp-shadow-md);
+  min-height: 2rem;
+  margin-bottom: 0.75rem;
 }
 
 .temp-panel-title-group {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
+  gap: 0.5rem;
   min-width: 0;
   flex-wrap: wrap;
 }
@@ -700,59 +640,40 @@ html.dark .temp-panel {
 
 .temp-panel-title {
   margin: 0;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 700;
-  color: var(--temp-accent-text);
+  color: var(--app-text-primary);
   line-height: 1.2;
-  letter-spacing: 0.01em;
 }
 
 .temp-panel-version-tag {
   display: inline-flex;
   align-items: center;
-  gap: 0.3125rem;
-  padding: 0.1875rem 0.4375rem;
-  border-radius: var(--temp-radius-sm);
-  background: var(--app-surface);
+  gap: 0.125rem;
+  padding: 0.1875rem 0.5625rem;
   border: 1px solid var(--temp-accent-border);
+  border-radius: var(--temp-radius-sm);
+  background: var(--temp-accent-bg);
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  box-shadow: var(--temp-shadow-sm);
-}
-
-.temp-panel-version-current-label,
-.temp-panel-version-latest-label {
-  padding: 0.0625rem 0.3125rem;
-  border-radius: var(--temp-radius-sm);
-  font-size: 0.625rem;
-  font-weight: 700;
-}
-
-.temp-panel-version-current-label {
-  background: var(--temp-version-current-bg);
-  color: var(--temp-version-current-text);
-}
-
-.temp-panel-version-latest-label {
-  background: var(--temp-version-latest-bg);
-  color: var(--temp-version-latest-text);
 }
 
 .temp-panel-version-current {
-  color: var(--temp-version-current-text);
+  color: var(--temp-accent-text);
   font-weight: 700;
 }
 
 .temp-panel-version-sep {
-  color: var(--temp-accent);
-  font-weight: 700;
+  margin: 0 0.0625rem;
+  color: var(--temp-accent-text-muted);
+  font-weight: 500;
 }
 
 .temp-panel-version-latest {
-  color: var(--temp-version-latest-text);
-  font-weight: 700;
+  color: var(--temp-accent-text-muted);
+  font-weight: 600;
 }
 
 .temp-panel-update-btn {
@@ -760,40 +681,31 @@ html.dark .temp-panel {
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
-  height: 1.875rem;
-  padding: 0 0.6875rem;
-  border: 1px solid var(--temp-update-btn-border);
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--temp-accent-border);
   border-radius: var(--temp-radius-md);
-  background: var(--temp-update-btn-bg);
-  color: var(--temp-update-btn-text);
+  background: var(--temp-accent-bg);
+  color: var(--temp-accent-text);
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  box-shadow: var(--temp-shadow-btn);
   transition:
-    background 0.2s ease,
-    box-shadow 0.2s ease,
-    opacity 0.2s ease,
-    transform 0.15s ease;
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .temp-panel-update-btn:hover:not(:disabled) {
-  background: var(--temp-update-btn-bg-hover);
-  box-shadow: var(--temp-shadow-btn-hover);
-  transform: translateY(-1px);
-}
-
-.temp-panel-update-btn:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: var(--temp-shadow-btn);
+  background: var(--temp-accent-bg-hover);
+  border-color: var(--temp-accent-border-hover);
 }
 
 .temp-panel-update-btn:disabled,
 .temp-panel-update-btn--disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .temp-panel-update-btn--loading {
@@ -802,7 +714,7 @@ html.dark .temp-panel {
 
 .temp-panel-update-icon {
   flex-shrink: 0;
-  font-size: 1rem;
+  font-size: 0.9375rem;
 }
 
 .temp-panel-update-icon :deep(svg) {
@@ -838,40 +750,46 @@ html.dark .temp-panel {
 }
 
 .temp-panel-card {
-  border: 1px solid var(--temp-card-border);
+  border: 1px solid var(--temp-group-border);
   border-radius: var(--temp-radius-md);
-  background: var(--temp-card-bg);
-  padding: 0.75rem 0.875rem;
-  box-shadow: var(--temp-shadow-card);
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  background: var(--app-surface);
+  overflow: hidden;
 }
 
 .temp-panel-card--current {
-  border-color: var(--temp-card-current-border);
-  background: var(--temp-card-current-bg);
-  box-shadow: var(--temp-shadow-card-current);
-  border-left: 3px solid var(--temp-accent);
+  border-color: var(--temp-accent-border);
+}
+
+.temp-panel-card--latest:not(.temp-panel-card--current) {
+  border-color: var(--temp-latest-tag-border);
+}
+
+.temp-panel-card--latest:not(.temp-panel-card--current) .temp-panel-card-header {
+  background: var(--temp-latest-header-bg);
 }
 
 .temp-panel-tip {
   margin-bottom: 0.75rem;
-  padding: 0.4375rem 0.5625rem;
+  padding: 0.5rem 0.625rem;
   border-radius: var(--temp-radius-sm);
-  border: 1px solid var(--temp-accent-border);
+  border: 1px solid var(--temp-group-border);
   font-size: 0.8125rem;
   color: var(--app-text-muted);
-  background: var(--temp-accent-soft);
+  background: var(--app-bg-subtle);
   line-height: 1.45;
 }
 
 .temp-panel-card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  background: var(--temp-accent-bg);
+}
+
+.temp-panel-card--current .temp-panel-card-header {
+  border-bottom: 1px solid var(--temp-accent-border);
 }
 
 .temp-panel-card-actions {
@@ -903,8 +821,7 @@ html.dark .temp-panel {
   justify-content: center;
   width: 1rem;
   height: 1rem;
-  border-radius: 50%;
-  color: var(--app-text-muted);
+  color: var(--temp-accent-text-muted);
   font-size: 0.875rem;
   cursor: help;
   transition: color 0.15s ease;
@@ -912,44 +829,48 @@ html.dark .temp-panel {
 
 .temp-panel-desc-trigger:hover,
 .temp-panel-desc-trigger:focus-visible {
-  color: var(--temp-accent);
+  color: var(--temp-accent-text);
   outline: none;
 }
 
-.temp-panel-current-tag {
+.temp-panel-status-tag {
   flex-shrink: 0;
   padding: 0.125rem 0.4375rem;
   border-radius: var(--temp-radius-sm);
-  background-color: var(--temp-current-tag-bg);
-  border: 1px solid var(--temp-current-tag-border);
-  color: var(--temp-current-tag-text);
   font-size: 0.6875rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
-  box-shadow: var(--temp-shadow-sm);
 }
 
-.temp-panel-latest-tag {
-  flex-shrink: 0;
-  padding: 0.125rem 0.4375rem;
-  border-radius: var(--temp-radius-sm);
-  background-color: var(--temp-latest-tag-bg);
+.temp-panel-status-tag--current {
+  background: var(--app-surface);
+  border: 1px solid var(--temp-accent-border);
+  color: var(--temp-accent-text);
+}
+
+.temp-panel-status-tag--latest {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  background: var(--temp-latest-tag-bg);
   border: 1px solid var(--temp-latest-tag-border);
   color: var(--temp-latest-tag-text);
-  font-size: 0.6875rem;
   font-weight: 700;
-  line-height: 1.2;
-  box-shadow: var(--temp-shadow-sm);
+}
+
+.temp-panel-status-dot {
+  flex-shrink: 0;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .temp-panel-card-time {
-  padding: 0.125rem 0.375rem;
-  border-radius: var(--temp-radius-sm);
   font-size: 0.75rem;
-  color: var(--temp-accent-text);
-  background: var(--temp-accent-soft);
-  border: 1px solid var(--temp-accent-border);
+  color: var(--temp-accent-text-muted);
   line-height: 1.35;
+  font-variant-numeric: tabular-nums;
 }
 
 .temp-panel-card-update-btn {
@@ -959,20 +880,18 @@ html.dark .temp-panel {
   gap: 0.3125rem;
   height: 1.625rem;
   padding: 0 0.5625rem;
-  border: 1px solid var(--temp-update-btn-border);
+  border: 1px solid var(--temp-accent-border);
   border-radius: var(--temp-radius-sm);
-  background: var(--temp-update-btn-bg);
-  color: var(--temp-update-btn-text);
+  background: var(--app-surface);
+  color: var(--temp-accent-text);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  box-shadow: var(--temp-shadow-btn);
   transition:
-    background 0.2s ease,
-    box-shadow 0.2s ease,
-    opacity 0.2s ease,
-    transform 0.15s ease;
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .temp-panel-card-update-btn--loading {
@@ -990,23 +909,18 @@ html.dark .temp-panel {
 }
 
 .temp-panel-card-update-btn:hover:not(:disabled) {
-  background: var(--temp-update-btn-bg-hover);
-  box-shadow: var(--temp-shadow-btn-hover);
-  transform: translateY(-1px);
+  background: var(--temp-accent-bg-hover);
+  border-color: var(--temp-accent-border-hover);
 }
 
 .temp-panel-card-update-btn:disabled,
 .temp-panel-card-update-btn--disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .temp-panel-files-section {
-  border: 1px solid var(--temp-accent-border);
-  border-radius: var(--temp-radius-md);
-  overflow: hidden;
-  box-shadow: var(--temp-shadow-sm);
+  border-top: 1px solid var(--temp-group-border);
 }
 
 .temp-panel-files-toggle {
@@ -1015,51 +929,49 @@ html.dark .temp-panel {
   justify-content: space-between;
   gap: 0.5rem;
   width: 100%;
-  padding: 0.5rem 0.625rem;
+  padding: 0.5rem 0.875rem;
   border: none;
-  background: var(--temp-files-toggle-bg);
-  color: var(--temp-files-toggle-text);
+  background: transparent;
+  color: var(--app-text-secondary);
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
 
 .temp-panel-files-toggle:hover {
-  background: var(--temp-files-toggle-bg-hover);
+  background: var(--app-bg-subtle);
 }
 
 .temp-panel-files-toggle-left {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
   min-width: 0;
 }
 
 .temp-panel-files-toggle-label {
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .temp-panel-files-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.125rem;
-  height: 1.125rem;
-  padding: 0 0.3125rem;
-  border-radius: var(--temp-radius-sm);
-  background: var(--temp-files-count-bg);
-  color: var(--temp-files-count-text);
-  font-size: 0.6875rem;
-  font-weight: 700;
-  line-height: 1;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+  font-size: 0.75rem;
+  color: var(--temp-accent-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.temp-panel-files-count::before {
+  content: '(';
+}
+
+.temp-panel-files-count::after {
+  content: ')';
 }
 
 .temp-panel-files-arrow {
   flex-shrink: 0;
   width: 1rem;
   height: 1rem;
-  color: var(--temp-accent);
+  color: var(--app-text-muted);
   transition: transform 0.2s ease;
 }
 
@@ -1071,10 +983,9 @@ html.dark .temp-panel {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
-  padding: 0 0.5rem 0.5rem;
+  padding: 0 0.875rem 0.625rem;
   max-height: 16rem;
   overflow-y: auto;
-  background: var(--temp-accent-soft);
   scrollbar-width: thin;
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
@@ -1091,17 +1002,8 @@ html.dark .temp-panel {
 .temp-panel-file-item {
   padding: 0.4375rem 0.5625rem;
   border-radius: var(--temp-radius-sm);
-  background: var(--temp-file-item-bg);
-  border: 1px solid var(--temp-file-item-border);
-  box-shadow: var(--temp-shadow-sm);
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.temp-panel-file-item:hover {
-  border-color: var(--temp-accent-border);
-  box-shadow: var(--temp-shadow-md);
+  background: var(--app-bg-subtle);
+  border: 1px solid var(--temp-group-border);
 }
 
 .temp-panel-file-main {
@@ -1122,30 +1024,21 @@ html.dark .temp-panel {
 
 .temp-panel-file-action {
   flex-shrink: 0;
-  padding: 0.0625rem 0.375rem;
-  border-radius: var(--temp-radius-sm);
   font-size: 0.6875rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
-  border: 1px solid transparent;
 }
 
 .temp-panel-file-action--add {
-  background: var(--temp-action-add-bg);
   color: var(--temp-action-add-text);
-  border-color: var(--temp-current-tag-border);
 }
 
 .temp-panel-file-action--update {
-  background: var(--temp-action-update-bg);
   color: var(--temp-action-update-text);
-  border-color: var(--temp-accent-border);
 }
 
 .temp-panel-file-action--delete {
-  background: var(--temp-action-delete-bg);
   color: var(--temp-action-delete-text);
-  border-color: color-mix(in srgb, var(--temp-action-delete-text) 35%, transparent);
 }
 
 .temp-panel-file-desc {
@@ -1156,12 +1049,9 @@ html.dark .temp-panel {
 }
 
 .temp-panel-file-empty {
-  padding: 0.4375rem 0.5625rem;
-  border-radius: var(--temp-radius-sm);
-  border: 1px solid var(--temp-accent-border);
+  padding: 0.625rem 0.875rem;
   font-size: 0.8125rem;
   color: var(--app-text-muted);
-  background: var(--temp-accent-soft);
-  box-shadow: var(--temp-shadow-sm);
+  border-top: 1px solid var(--temp-group-border);
 }
 </style>
