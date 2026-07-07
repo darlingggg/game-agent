@@ -1,6 +1,6 @@
 import { fetchProjectTempFileContent, normalizeRelativePath } from '../file/projectTempFiles'
 import type { SnapshotRestorePlan } from '../snapshot/snapshotRestore'
-import { removePreviewFile, requestPreviewIframeReloadDebounced, syncPreviewFile } from './webcontainer'
+import { previewIframeReloadSignal, refreshProjectTempPreview, removePreviewFile, requestPreviewIframeReloadDebounced, syncPreviewFile } from './webcontainer'
 
 /** write_file_content 工具参数结构 */
 interface WriteFileContentParams {
@@ -82,4 +82,12 @@ export async function syncSnapshotRestoreToPreview(plan: SnapshotRestorePlan): P
   if (plan.deleted.length > 0 || plan.added.length > 0 || plan.overwritten.length > 0) {
     requestPreviewIframeReloadDebounced()
   }
+}
+
+/**
+ * 模板升级完成后，重新挂载 projectTemp 文件并刷新预览 iframe
+ */
+export async function syncTemplateUpgradeToPreview(): Promise<void> {
+  await refreshProjectTempPreview()
+  previewIframeReloadSignal.value += 1
 }

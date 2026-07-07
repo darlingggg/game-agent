@@ -76,9 +76,9 @@ const html = computed(() => renderMarkdown(props.content))
 .markdown-content :deep(blockquote) {
   margin: 0.375rem 0;
   padding: 0.375rem 0.75rem;
-  border-left: 3px solid #d1d5db;
-  color: #4b5563;
-  background-color: #f9fafb;
+  border-left: 3px solid var(--app-border-strong);
+  color: var(--app-text-secondary);
+  background-color: var(--app-bg-subtle);
   border-radius: 0 4px 4px 0;
 }
 
@@ -101,14 +101,16 @@ const html = computed(() => renderMarkdown(props.content))
 
 .markdown-content :deep(pre code) {
   padding: 0;
+  border: none;
   background: none;
   color: #e5e7eb;
   font-size: 0.75rem;
   line-height: 1.5;
+  text-decoration: none;
 }
 
 .markdown-content :deep(a) {
-  color: #2463dc;
+  color: var(--app-accent);
   text-decoration: none;
 }
 
@@ -126,18 +128,18 @@ const html = computed(() => renderMarkdown(props.content))
 .markdown-content :deep(th),
 .markdown-content :deep(td) {
   padding: 0.375rem 0.5rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--app-border);
 }
 
 .markdown-content :deep(th) {
-  background-color: #f9fafb;
+  background-color: var(--app-bg-subtle);
   font-weight: 600;
 }
 
 .markdown-content :deep(hr) {
   margin: 0.625rem 0;
   border: none;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--app-border);
 }
 
 .markdown-content :deep(img) {

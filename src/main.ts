@@ -23,6 +23,14 @@ function setRem() {
 }
 
 const app = createApp(App)
+
+/** 开发环境捕获渲染错误，避免静默白屏 */
+if (import.meta.env.DEV) {
+  app.config.errorHandler = (error, instance, info) => {
+    console.error('[Vue Error]', info, error, instance?.$?.type?.name ?? instance?.$?.type)
+  }
+}
+
 app.use(pinia)
 app.use(router)
 initTheme()

@@ -58,7 +58,7 @@ async function toggleReply() {
   try {
     const result = await getAiReply({ id: props.message.messageId })
     replyContent.value = result.content
-  } catch (error) {
+  } catch {
     replyExpanded.value = false
   } finally {
     replyLoading.value = false
@@ -75,10 +75,8 @@ async function toggleReply() {
         <template v-else-if="needsLazyLoad">
           <button type="button" class="chat-message-reply-toggle" @click="toggleReply">
             <span>Agent 回复</span>
-            <svg class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }"
-              viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round" />
+            <svg class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
           <div v-show="replyExpanded" class="chat-message-reply-panel">
@@ -93,8 +91,7 @@ async function toggleReply() {
           <MarkdownContent :content="message.content" />
           <span v-if="message.streaming && message.content" class="chat-message-cursor" />
         </template>
-        <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime
-        }}</span>
+        <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime }}</span>
       </div>
     </div>
     <div v-if="isUser" class="chat-message-avatar" v-html="avatarSvg" />
@@ -128,7 +125,18 @@ async function toggleReply() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--app-bg-subtle);
+}
+
+.chat-message--assistant .chat-message-avatar {
+  background-color: transparent;
+  color: #374151;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.chat-message--assistant .chat-message-avatar :deep(svg) {
+  display: block;
+  width: 68%;
+  height: 68%;
 }
 
 .chat-message--user .chat-message-avatar {
@@ -136,10 +144,15 @@ async function toggleReply() {
   border: 2px solid var(--app-accent);
 }
 
-.chat-message-avatar :deep(svg) {
+.chat-message--user .chat-message-avatar :deep(svg) {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+html.dark .chat-message--assistant .chat-message-avatar {
+  color: #e8eaed;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .chat-message-body {
@@ -150,7 +163,7 @@ async function toggleReply() {
 .chat-message-bubble {
   position: relative;
   padding: 0.625rem 0.875rem;
-  border-radius: 0.75rem;
+  border-radius: 0.625rem;
   font-size: 0.875rem;
   line-height: 1.6;
   word-break: break-word;
@@ -160,15 +173,19 @@ async function toggleReply() {
 .chat-message--user .chat-message-bubble {
   background-color: var(--app-bg-subtle);
   color: var(--app-text-primary);
-  border-top-right-radius: 0.25rem;
 }
 
 .chat-message--assistant .chat-message-bubble {
   color: var(--app-text-primary);
+  background-color: var(--app-surface);
   border: 1px solid var(--app-border);
-  border-top-left-radius: 0.25rem;
   font-size: 0.8125rem;
   white-space: normal;
+}
+
+html.dark .chat-message--user .chat-message-bubble {
+  background-color: rgba(91, 140, 255, 0.1);
+  border: 1px solid rgba(91, 140, 255, 0.14);
 }
 
 .chat-message-reply-toggle {
@@ -250,7 +267,6 @@ async function toggleReply() {
 }
 
 @keyframes chat-cursor-blink {
-
   0%,
   100% {
     opacity: 1;

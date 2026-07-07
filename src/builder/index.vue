@@ -1,18 +1,11 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type ComponentPublicInstance } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { Camera, ChatDotRound, CopyDocument, DArrowRight, Document, Notebook, Setting } from '@element-plus/icons-vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type Component, type ComponentPublicInstance } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { getProjectList } from '@/http/project'
 import { useProjectStore } from '@/stores/project'
-import {
-  ChatPanel,
-  ConfigPanel,
-  FilePanel,
-  LogPanel,
-  PreviewPanel,
-  SessionPanel,
-  SnapshotPanel,
-} from './panels'
+import { ChatPanel, ConfigPanel, FilePanel, LogPanel, PreviewPanel, SessionPanel, SnapshotPanel, TempPanel } from './panels'
 import { createBuildContext, buildContextKey } from './build/buildContext'
 import { createLogContext, logContextKey } from './log/logContext'
 import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
@@ -24,6 +17,8 @@ defineOptions({
 interface TabItem {
   key: string
   label: string
+  /** Tab 图标 */
+  icon: Component
 }
 
 const route = useRoute()
@@ -41,6 +36,16 @@ const chatResetSignal = ref(0)
 
 /** 首条消息创建会话完成通知 */
 const lastCreatedSession = ref<CreatedSessionPayload | null>(null)
+
+/** 会话栏是否收起 */
+const sessionPanelCollapsed = ref(false)
+
+/**
+ * 切换会话栏收起/展开
+ */
+function toggleSessionPanelCollapsed() {
+  sessionPanelCollapsed.value = !sessionPanelCollapsed.value
+}
 
 /**
  * 开始新建会话，等待用户发送首条消息后再调用接口
@@ -72,6 +77,8 @@ provide(sessionContextKey, {
   lastCreatedSession,
   startNewSession,
   selectSession,
+  sessionPanelCollapsed,
+  toggleSessionPanelCollapsed,
 })
 
 /** 日志上下文，供聊天面板写入、日志面板展示 */
@@ -94,11 +101,12 @@ watch(
 )
 
 const tabs: TabItem[] = [
-  { key: 'chat', label: '对话' },
-  { key: 'file', label: '文件' },
-  { key: 'config', label: '配置' },
-  { key: 'snapshot', label: '版本' },
-  { key: 'log', label: '日志' },
+  { key: 'chat', label: '对话', icon: ChatDotRound },
+  { key: 'file', label: '文件', icon: Document },
+  { key: 'config', label: '配置', icon: Setting },
+  { key: 'snapshot', label: '版本', icon: Camera },
+  { key: 'temp', label: '模板', icon: CopyDocument },
+  { key: 'log', label: '日志', icon: Notebook },
 ]
 
 /** 当前选中的 Tab 索引 */
@@ -127,6 +135,9 @@ const mountedTabKeys = ref<Set<string>>(new Set(['chat']))
 
 /** Tab 元素引用，用于计算底部指示条位置 */
 const tabRefs = ref<HTMLElement[]>([])
+
+/** Tab 栏容器，指示条相对此元素定位 */
+const mainTabRef = ref<HTMLElement | null>(null)
 
 /** 底部指示条样式 */
 const indicatorStyle = ref({
@@ -157,11 +168,15 @@ function setTabRef(el: Element | ComponentPublicInstance | null, index: number) 
 /** 更新底部指示条位置与宽度 */
 function updateIndicator() {
   const el = tabRefs.value[activeTab.value]
-  if (!el) return
+  const container = mainTabRef.value
+  if (!el || !container) return
+
+  const tabRect = el.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
 
   indicatorStyle.value = {
-    width: `${el.offsetWidth}px`,
-    transform: `translateX(${el.offsetLeft}px)`,
+    width: `${tabRect.width}px`,
+    transform: `translateX(${tabRect.left - containerRect.left}px)`,
   }
 }
 
@@ -289,10 +304,12 @@ async function initCurrentProject() {
   }
 }
 
-onMounted(() => {
-  nextTick(updateIndicator)
-  window.addEventListener('resize', updateIndicator)
-})
+watch(
+  () => sessionPanelCollapsed.value,
+  () => {
+    nextTick(updateIndicator)
+  },
+)
 
 /** 地址栏 projectId 变化时重新加载项目 */
 watch(
@@ -303,33 +320,72 @@ watch(
   { immediate: true },
 )
 
+/**
+ * 开发热更新后可能短暂丢失 currentProject，自动重新拉取
+ */
+watch(
+  () => projectStore.currentProject,
+  (project) => {
+    if (project || projectLoading.value || projectError.value) return
+    void initCurrentProject()
+  },
+)
+
+/** 离开 Builder 路由时再清空当前项目，避免 HMR 卸载组件时误清 store 导致白屏 */
+onBeforeRouteLeave(() => {
+  projectStore.setCurrentProject(null)
+})
+
+onMounted(() => {
+  nextTick(updateIndicator)
+  window.addEventListener('resize', updateIndicator)
+})
+
 onUnmounted(() => {
   window.removeEventListener('resize', updateIndicator)
   if (panelTransitionTimer) {
     clearTimeout(panelTransitionTimer)
   }
-  projectStore.setCurrentProject(null)
 })
 </script>
 
 <template>
   <div v-if="projectLoading" class="builder-status">正在加载项目...</div>
   <div v-else-if="projectError" class="builder-status builder-status--error">{{ projectError }}</div>
-  <div v-else-if="projectReady" class="container">
+  <div
+    v-else-if="projectReady"
+    class="container"
+    :class="{ 'container--session-collapsed': sessionPanelCollapsed }"
+  >
     <section class="left">
       <SessionPanel />
     </section>
     <main class="main">
-      <div class="main-tab">
-        <div
-          v-for="(tab, index) in tabs"
-          :key="tab.key"
-          :ref="(el) => setTabRef(el, index)"
-          class="main-tab-item"
-          :class="{ 'main-tab-item--active': activeTab === index }"
-          @click="switchTab(index)"
+      <div ref="mainTabRef" class="main-tab">
+        <button
+          v-if="sessionPanelCollapsed"
+          type="button"
+          class="builder-session-toggle-btn main-tab-session-toggle"
+          title="展开会话栏"
+          aria-label="展开会话栏"
+          @click="toggleSessionPanelCollapsed"
         >
-          {{ tab.label }}
+          <el-icon><DArrowRight /></el-icon>
+        </button>
+        <div class="main-tab-list">
+          <div
+            v-for="(tab, index) in tabs"
+            :key="tab.key"
+            :ref="(el) => setTabRef(el, index)"
+            class="main-tab-item"
+            :class="{ 'main-tab-item--active': activeTab === index }"
+            @click="switchTab(index)"
+          >
+            <el-icon class="main-tab-item-icon">
+              <component :is="tab.icon" />
+            </el-icon>
+            <span class="main-tab-item-label">{{ tab.label }}</span>
+          </div>
         </div>
         <div class="main-tab-indicator" :style="indicatorStyle" />
       </div>
@@ -360,6 +416,13 @@ onUnmounted(() => {
             :class="getPanelTransitionClass('snapshot')"
             :aria-hidden="activeTabKey !== 'snapshot' && leavingTabKey !== 'snapshot'"
           />
+          <TempPanel
+            v-if="shouldMountTabPanel('temp')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('temp')"
+            :panel-active="activeTabKey === 'temp'"
+            :aria-hidden="activeTabKey !== 'temp' && leavingTabKey !== 'temp'"
+          />
           <LogPanel
             v-if="shouldMountTabPanel('log')"
             class="main-content-panel"
@@ -373,6 +436,7 @@ onUnmounted(() => {
       <PreviewPanel />
     </section>
   </div>
+  <div v-else class="builder-status">正在恢复项目...</div>
 </template>
 
 <style scoped>
@@ -414,6 +478,21 @@ onUnmounted(() => {
   height: 100%;
   min-width: 0;
   border-right: 1px solid var(--app-border);
+  overflow: hidden;
+  transition:
+    flex 0.25s ease,
+    width 0.25s ease,
+    opacity 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.container--session-collapsed .left {
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+  border-right-color: transparent;
+  pointer-events: none;
 }
 
 .main {
@@ -422,26 +501,59 @@ onUnmounted(() => {
   background-color: var(--app-surface);
   display: flex;
   flex-direction: column;
+  transition: flex 0.25s ease;
+}
+
+.container--session-collapsed .main {
+  flex: 4;
 }
 
 .main-tab {
   position: relative;
   width: 100%;
   display: flex;
-  justify-content: start;
-  gap: 1rem;
   align-items: center;
-  padding: 0 1rem;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--app-border);
 }
 
+.main-tab-session-toggle {
+  align-self: center;
+}
+
+.main-tab-list {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
+}
+
 .main-tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
   font-size: 1rem;
-  padding: 0.5rem 2rem;
+  padding: 0.5rem 1.5rem;
   color: var(--app-text-primary);
   font-weight: 700;
   cursor: pointer;
   transition: color 0.2s ease;
+}
+
+.main-tab-item-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.main-tab-item-icon :deep(svg) {
+  display: block;
+}
+
+.main-tab-item-label {
+  line-height: 1.2;
 }
 
 .main-tab-item--active {

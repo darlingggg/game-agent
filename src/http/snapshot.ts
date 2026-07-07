@@ -9,6 +9,8 @@ export interface snapshotItem {
   fileContent: string // 文件内容
   bytes: number // 文件大小
   length: number // 文件行度
+  type: 0 | 1 // 0: 版本快照 1: 模板存档
+  tempVersion: string // 模板版本号
   createdAt: string // 创建时间
 }
 

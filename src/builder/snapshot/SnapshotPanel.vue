@@ -20,8 +20,23 @@ defineOptions({
   name: 'SnapshotPanel',
 })
 
-/** 版本快照最大保存数量 */
+/** 版本快照最大保存数量（按 type 分别计数） */
 const MAX_SNAPSHOT_COUNT = 5
+
+/** 快照类型：用户创建的版本快照 */
+const SNAPSHOT_TYPE_USER = 0
+
+/** 快照类型：模板更新前自动存档 */
+const SNAPSHOT_TYPE_TEMPLATE = 1
+
+/** 快照类型 */
+type SnapshotType = typeof SNAPSHOT_TYPE_USER | typeof SNAPSHOT_TYPE_TEMPLATE
+
+/** 快照类型 Tab 配置 */
+const SNAPSHOT_TYPE_TABS: { type: SnapshotType; label: string }[] = [
+  { type: SNAPSHOT_TYPE_USER, label: '版本快照' },
+  { type: SNAPSHOT_TYPE_TEMPLATE, label: '模板存档' },
+]
 
 /** 版本号最大字符数 */
 const MAX_SNAPSHOT_VERSION_LENGTH = 50
@@ -31,12 +46,16 @@ const MAX_SNAPSHOT_DESC_LENGTH = 100
 
 /** 按版本聚合后的快照 */
 interface SnapshotVersionGroup {
+  /** 快照类型 */
+  type: SnapshotType
   /** 版本号 */
   version: string
   /** 创建时间 */
   createdAt: string
   /** 版本描述 */
   desc: string
+  /** 创建快照时的模板版本号 */
+  tempVersion: string
   /** 该版本下的文件列表 */
   files: SnapshotFileItem[]
   /** 该版本下的文件树 */
@@ -73,8 +92,11 @@ const restorePreviewLoading = ref(false)
 /** 正在预览还原的版本号 */
 const restorePreviewVersion = ref('')
 
-/** 正在还原的版本号 */
+/** 正在还原的快照分组 key */
 const restoringVersion = ref('')
+
+/** 当前待还原的快照分组 key */
+const pendingRestoreGroupKey = ref('')
 
 /** 当前还原计划 */
 const restorePlan = ref<SnapshotRestorePlan | null>(null)
@@ -90,10 +112,14 @@ const editForm = ref({
   oldVersion: '',
   version: '',
   desc: '',
+  type: SNAPSHOT_TYPE_USER as SnapshotType,
 })
 
-/** 按版本聚合的快照列表 */
-const versionGroups = ref<SnapshotVersionGroup[]>([])
+/** 全部快照分组（含两种 type） */
+const allVersionGroups = ref<SnapshotVersionGroup[]>([])
+
+/** 当前选中的快照类型 Tab */
+const activeSnapshotType = ref<SnapshotType>(SNAPSHOT_TYPE_USER)
 
 /** 当前展开的版本号 */
 const expandedVersions = ref<Set<string>>(new Set())
@@ -104,11 +130,38 @@ const expandedDirs = ref<Record<string, boolean>>({})
 /** 当前项目 ID */
 const projectId = computed(() => projectStore.currentProject?.id ?? 0)
 
-/** 当前快照版本数量 */
-const currentSnapshotCount = computed(() => versionGroups.value.length)
+/** 当前 Tab 下展示的快照分组 */
+const displayedVersionGroups = computed(() =>
+  allVersionGroups.value.filter((group) => group.type === activeSnapshotType.value),
+)
 
-/** 是否已达版本快照数量上限 */
+/**
+ * 获取指定类型的快照数量
+ * @param type 快照类型
+ */
+function getSnapshotCountByType(type: SnapshotType) {
+  return allVersionGroups.value.filter((group) => group.type === type).length
+}
+
+/** 当前 Tab 快照版本数量 */
+const currentSnapshotCount = computed(() => getSnapshotCountByType(activeSnapshotType.value))
+
+/** 当前 Tab 是否已达数量上限 */
 const isSnapshotLimitReached = computed(() => currentSnapshotCount.value >= MAX_SNAPSHOT_COUNT)
+
+/** 当前 Tab 配置 */
+const activeSnapshotTab = computed(
+  () => SNAPSHOT_TYPE_TABS.find((tab) => tab.type === activeSnapshotType.value) ?? SNAPSHOT_TYPE_TABS[0]!,
+)
+
+/**
+ * 生成快照分组唯一 key（type + 版本号）
+ * @param type 快照类型
+ * @param version 版本号
+ */
+function getVersionGroupKey(type: SnapshotType, version: string) {
+  return `${type}:${version}`
+}
 
 /** 当前线上版本号 */
 const onlineVersion = ref('')
@@ -144,16 +197,19 @@ function groupSnapshotsByVersion(list: SnapshotFileItem[], projectDirPath: strin
   const map = new Map<string, SnapshotVersionGroup>()
 
   for (const item of list) {
-    const existing = map.get(item.version)
+    const mapKey = getVersionGroupKey(item.type, item.version)
+    const existing = map.get(mapKey)
     if (existing) {
       existing.files.push(item)
       continue
     }
 
-    map.set(item.version, {
+    map.set(mapKey, {
+      type: item.type,
       version: item.version,
       createdAt: item.createdAt,
       desc: item.desc,
+      tempVersion: item.tempVersion?.trim() ?? '',
       files: [item],
       fileTree: { name: '', path: '', type: 'directory', children: [] },
     })
@@ -170,54 +226,52 @@ function groupSnapshotsByVersion(list: SnapshotFileItem[], projectDirPath: strin
 
 /**
  * 初始化版本文件树的一级目录展开状态
- * @param version 版本号
+ * @param groupKey 快照分组 key
  * @param fileTree 文件树
  */
-function initVersionTreeExpanded(version: string, fileTree: SnapshotFileTreeNode) {
-  const hasInitialized = Object.keys(expandedDirs.value).some((key) => key.startsWith(`${version}:`))
+function initVersionTreeExpanded(groupKey: string, fileTree: SnapshotFileTreeNode) {
+  const hasInitialized = Object.keys(expandedDirs.value).some((key) => key.startsWith(`${groupKey}:`))
   if (hasInitialized) return
 
   for (const child of fileTree.children ?? []) {
     if (child.type === 'directory') {
-      expandedDirs.value[getSnapshotDirExpandKey(version, child.path)] = true
+      expandedDirs.value[getSnapshotDirExpandKey(groupKey, child.path)] = true
     }
   }
 }
 
 /**
  * 切换目录展开状态
- * @param version 版本号
+ * @param groupKey 快照分组 key
  * @param path 目录路径
  */
-function toggleDirectory(version: string, path: string) {
-  const key = getSnapshotDirExpandKey(version, path)
+function toggleDirectory(groupKey: string, path: string) {
+  const key = getSnapshotDirExpandKey(groupKey, path)
   expandedDirs.value[key] = !expandedDirs.value[key]
 }
 
 /**
  * 切换版本折叠面板
- * @param version 版本号
+ * @param group 快照分组
  */
-function toggleVersion(version: string) {
+function toggleVersion(group: SnapshotVersionGroup) {
+  const groupKey = getVersionGroupKey(group.type, group.version)
   const next = new Set(expandedVersions.value)
-  if (next.has(version)) {
-    next.delete(version)
+  if (next.has(groupKey)) {
+    next.delete(groupKey)
   } else {
-    next.add(version)
-    const group = versionGroups.value.find((item) => item.version === version)
-    if (group) {
-      initVersionTreeExpanded(version, group.fileTree)
-    }
+    next.add(groupKey)
+    initVersionTreeExpanded(groupKey, group.fileTree)
   }
   expandedVersions.value = next
 }
 
 /**
  * 判断版本是否展开
- * @param version 版本号
+ * @param group 快照分组
  */
-function isVersionExpanded(version: string) {
-  return expandedVersions.value.has(version)
+function isVersionExpanded(group: SnapshotVersionGroup) {
+  return expandedVersions.value.has(getVersionGroupKey(group.type, group.version))
 }
 
 /**
@@ -235,8 +289,8 @@ async function loadSnapshotList() {
       void fileContent
       return rest
     })
-    versionGroups.value = groupSnapshotsByVersion(files, projectStore.projectDirPath)
-    buildContext.setSnapshotVersionCount(versionGroups.value.length)
+    allVersionGroups.value = groupSnapshotsByVersion(files, projectStore.projectDirPath)
+    buildContext.setSnapshotVersionCount(getSnapshotCountByType(SNAPSHOT_TYPE_USER))
   } catch {
     // 错误提示由 axios 拦截器统一处理
   } finally {
@@ -268,11 +322,14 @@ async function loadOnlineVersion() {
 
 /**
  * 删除版本快照
- * @param version 版本号
+ * @param group 快照分组
  */
-async function handleDeleteVersion(version: string) {
+async function handleDeleteVersion(group: SnapshotVersionGroup) {
   const currentProjectId = projectId.value
   if (!currentProjectId) return
+
+  const { version, type } = group
+  const groupKey = getVersionGroupKey(type, version)
 
   if (isOnlineVersion(version)) {
     ElMessage.warning('已上线版本不可删除')
@@ -286,25 +343,25 @@ async function handleDeleteVersion(version: string) {
       type: 'warning',
     })
 
-    deletingVersion.value = version
+    deletingVersion.value = groupKey
     await deleteSnapshot({
       projectId: currentProjectId,
       version,
     })
 
     const nextExpandedVersions = new Set(expandedVersions.value)
-    nextExpandedVersions.delete(version)
+    nextExpandedVersions.delete(groupKey)
     expandedVersions.value = nextExpandedVersions
 
     const nextExpandedDirs = { ...expandedDirs.value }
     for (const key of Object.keys(nextExpandedDirs)) {
-      if (key.startsWith(`${version}:`)) {
+      if (key.startsWith(`${groupKey}:`)) {
         delete nextExpandedDirs[key]
       }
     }
     expandedDirs.value = nextExpandedDirs
 
-    ElMessage.success('版本快照删除成功')
+    ElMessage.success('删除成功')
     await loadSnapshotList()
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
@@ -316,26 +373,30 @@ async function handleDeleteVersion(version: string) {
 
 /**
  * 迁移版本展开状态（版本号变更时使用）
+ * @param type 快照类型
  * @param oldVersion 旧版本号
  * @param newVersion 新版本号
  */
-function migrateVersionState(oldVersion: string, newVersion: string) {
+function migrateVersionState(type: SnapshotType, oldVersion: string, newVersion: string) {
   if (oldVersion === newVersion) return
 
-  if (expandedVersions.value.has(oldVersion)) {
+  const oldKey = getVersionGroupKey(type, oldVersion)
+  const newKey = getVersionGroupKey(type, newVersion)
+
+  if (expandedVersions.value.has(oldKey)) {
     const nextExpandedVersions = new Set(expandedVersions.value)
-    nextExpandedVersions.delete(oldVersion)
-    nextExpandedVersions.add(newVersion)
+    nextExpandedVersions.delete(oldKey)
+    nextExpandedVersions.add(newKey)
     expandedVersions.value = nextExpandedVersions
   }
 
   const nextExpandedDirs = { ...expandedDirs.value }
   for (const key of Object.keys(nextExpandedDirs)) {
-    if (!key.startsWith(`${oldVersion}:`)) continue
-    const path = key.slice(oldVersion.length + 1)
+    if (!key.startsWith(`${oldKey}:`)) continue
+    const path = key.slice(oldKey.length + 1)
     const expanded = nextExpandedDirs[key]
     if (expanded === undefined) continue
-    nextExpandedDirs[getSnapshotDirExpandKey(newVersion, path)] = expanded
+    nextExpandedDirs[getSnapshotDirExpandKey(newKey, path)] = expanded
     delete nextExpandedDirs[key]
   }
   expandedDirs.value = nextExpandedDirs
@@ -350,6 +411,7 @@ function openEditDialog(group: SnapshotVersionGroup) {
     oldVersion: group.version,
     version: group.version,
     desc: group.desc,
+    type: group.type,
   }
   editDialogVisible.value = true
 }
@@ -366,7 +428,10 @@ async function handleUpdateSnapshot() {
     return
   }
 
-  if (version !== oldVersion && versionGroups.value.some((group) => group.version === version)) {
+  if (
+    version !== oldVersion
+    && allVersionGroups.value.some((group) => group.type === editForm.value.type && group.version === version)
+  ) {
     ElMessage.warning('该版本号已存在')
     return
   }
@@ -388,7 +453,7 @@ async function handleUpdateSnapshot() {
       desc,
     })
 
-    migrateVersionState(oldVersion, version)
+    migrateVersionState(editForm.value.type, oldVersion, version)
     editDialogVisible.value = false
     await loadSnapshotList()
     await loadOnlineVersion()
@@ -482,7 +547,8 @@ async function openRestoreDialog(group: SnapshotVersionGroup) {
   }
 
   restorePreviewLoading.value = true
-  restorePreviewVersion.value = group.version
+  restorePreviewVersion.value = getVersionGroupKey(group.type, group.version)
+  pendingRestoreGroupKey.value = restorePreviewVersion.value
   restorePlan.value = null
   restoreDialogVisible.value = true
 
@@ -492,7 +558,9 @@ async function openRestoreDialog(group: SnapshotVersionGroup) {
       fetchProjectTempFileList(),
     ])
 
-    const versionSnapshotFiles = snapshotList.filter((item) => item.version === group.version)
+    const versionSnapshotFiles = snapshotList.filter(
+      (item) => item.version === group.version && item.type === group.type,
+    )
     if (!versionSnapshotFiles.length) {
       ElMessage.warning('该版本快照不存在或已被删除')
       restoreDialogVisible.value = false
@@ -527,6 +595,12 @@ async function handleConfirmRestore() {
     return
   }
 
+  const project = projectStore.currentProject
+  if (!project) {
+    ElMessage.warning('当前项目未就绪')
+    return
+  }
+
   let projectDirPath = ''
   try {
     projectDirPath = projectStore.requireProjectDirPath()
@@ -535,9 +609,13 @@ async function handleConfirmRestore() {
     return
   }
 
-  restoringVersion.value = plan.version
+  restoringVersion.value = pendingRestoreGroupKey.value
   try {
-    await executeSnapshotRestore(plan, projectDirPath)
+    await executeSnapshotRestore(plan, projectDirPath, {
+      id: project.id,
+      title: project.title,
+      desc: project.desc,
+    })
     ElMessage.success(`版本「${plan.version}」还原成功`)
     restoreDialogVisible.value = false
     restorePlan.value = null
@@ -578,7 +656,7 @@ watch(
   <div v-loading="listLoading" class="snapshot-panel">
     <div class="snapshot-panel-header">
       <div class="snapshot-panel-title-group">
-        <h1 class="snapshot-panel-title">版本快照</h1>
+        <h1 class="snapshot-panel-title">版本</h1>
         <span
           class="snapshot-panel-count-tag"
           :class="{ 'snapshot-panel-count-tag--limit': isSnapshotLimitReached }"
@@ -588,11 +666,39 @@ watch(
           <span class="snapshot-panel-count-max">{{ MAX_SNAPSHOT_COUNT }}</span>
         </span>
       </div>
-      <button type="button" class="snapshot-panel-save-btn" @click="openSaveDialog">
-        <el-icon class="snapshot-panel-save-icon">
-          <Camera />
-        </el-icon>
-        <span class="snapshot-panel-save-text">保存当前版本</span>
+      <div class="snapshot-panel-header-action">
+        <button
+          type="button"
+          class="snapshot-panel-save-btn"
+          :class="{ 'snapshot-panel-save-btn--hidden': activeSnapshotType !== SNAPSHOT_TYPE_USER }"
+          :tabindex="activeSnapshotType === SNAPSHOT_TYPE_USER ? 0 : -1"
+          :aria-hidden="activeSnapshotType !== SNAPSHOT_TYPE_USER"
+          @click="openSaveDialog"
+        >
+          <el-icon class="snapshot-panel-save-icon">
+            <Camera />
+          </el-icon>
+          <span class="snapshot-panel-save-text">保存当前版本</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="snapshot-panel-type-tabs">
+      <button
+        v-for="tab in SNAPSHOT_TYPE_TABS"
+        :key="tab.type"
+        type="button"
+        class="snapshot-panel-type-tab"
+        :class="{ 'snapshot-panel-type-tab--active': activeSnapshotType === tab.type }"
+        @click="activeSnapshotType = tab.type"
+      >
+        <span class="snapshot-panel-type-tab-label">{{ tab.label }}</span>
+        <span
+          class="snapshot-panel-type-tab-count"
+          :class="{ 'snapshot-panel-type-tab-count--limit': getSnapshotCountByType(tab.type) >= MAX_SNAPSHOT_COUNT }"
+        >
+          {{ getSnapshotCountByType(tab.type) }}/{{ MAX_SNAPSHOT_COUNT }}
+        </span>
       </button>
     </div>
     <div v-if="onlineVersion" class="snapshot-panel-online">
@@ -603,15 +709,22 @@ watch(
       <span class="snapshot-panel-online-version">{{ onlineVersion }}</span>
       <p v-if="onlineVersionDesc" class="snapshot-panel-online-desc">{{ onlineVersionDesc }}</p>
     </div>
-    <div v-if="!listLoading && versionGroups.length === 0" class="snapshot-panel-empty">暂无版本快照</div>
+    <div v-if="!listLoading && displayedVersionGroups.length === 0" class="snapshot-panel-empty">
+      暂无{{ activeSnapshotTab.label }}
+    </div>
     <ul v-else class="snapshot-panel-list">
-      <li v-for="group in versionGroups" :key="group.version" class="snapshot-panel-group">
+      <li
+        v-for="group in displayedVersionGroups"
+        :key="getVersionGroupKey(group.type, group.version)"
+        class="snapshot-panel-group"
+      >
         <div class="snapshot-panel-toggle">
-          <button type="button" class="snapshot-panel-toggle-main" @click="toggleVersion(group.version)">
+          <button type="button" class="snapshot-panel-toggle-main" @click="toggleVersion(group)">
             <div class="snapshot-panel-summary">
               <div class="snapshot-panel-version-row">
                 <span class="snapshot-panel-version">{{ group.version }}</span>
                 <span v-if="isOnlineVersion(group.version)" class="snapshot-panel-online-tag">已上线</span>
+                <span v-if="group.tempVersion" class="snapshot-panel-temp-tag">模板 {{ group.tempVersion }}</span>
               </div>
               <span class="snapshot-panel-time">{{ formatCreatedAt(group.createdAt) }}</span>
             </div>
@@ -619,9 +732,16 @@ watch(
           <div class="snapshot-operation-container">
             <el-tooltip content="还原" placement="top" :show-after="200">
               <span class="snapshot-panel-tooltip-trigger">
-                <button type="button" class="snapshot-panel-restore-btn"
-                  :disabled="restorePreviewVersion === group.version || restoringVersion === group.version"
-                  aria-label="还原版本快照" @click="openRestoreDialog(group)">
+                <button
+                  type="button"
+                  class="snapshot-panel-restore-btn"
+                  :disabled="
+                    restorePreviewVersion === getVersionGroupKey(group.type, group.version)
+                    || restoringVersion === getVersionGroupKey(group.type, group.version)
+                  "
+                  aria-label="还原版本快照"
+                  @click="openRestoreDialog(group)"
+                >
                   <el-icon class="snapshot-panel-restore-icon">
                     <RefreshLeft />
                   </el-icon>
@@ -638,9 +758,16 @@ watch(
             <el-tooltip :content="isOnlineVersion(group.version) ? '已上线版本不可删除' : '删除'" placement="top"
               :show-after="200">
               <span class="snapshot-panel-tooltip-trigger">
-                <button type="button" class="snapshot-panel-delete-btn"
-                  :disabled="deletingVersion === group.version || isOnlineVersion(group.version)" aria-label="删除版本快照"
-                  @click="handleDeleteVersion(group.version)">
+                <button
+                  type="button"
+                  class="snapshot-panel-delete-btn"
+                  :disabled="
+                    deletingVersion === getVersionGroupKey(group.type, group.version)
+                    || isOnlineVersion(group.version)
+                  "
+                  aria-label="删除版本快照"
+                  @click="handleDeleteVersion(group)"
+                >
                   <el-icon class="snapshot-panel-delete-icon">
                     <Delete />
                   </el-icon>
@@ -648,9 +775,9 @@ watch(
               </span>
             </el-tooltip>
             <button type="button" class="snapshot-panel-expand-btn" aria-label="展开或收起版本快照"
-              @click="toggleVersion(group.version)">
+              @click="toggleVersion(group)">
               <svg class="snapshot-panel-arrow"
-                :class="{ 'snapshot-panel-arrow--expanded': isVersionExpanded(group.version) }" viewBox="0 0 24 24"
+                :class="{ 'snapshot-panel-arrow--expanded': isVersionExpanded(group) }" viewBox="0 0 24 24"
                 fill="none" aria-hidden="true">
                 <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                   stroke-linejoin="round" />
@@ -658,13 +785,18 @@ watch(
             </button>
           </div>
         </div>
-        <div v-show="isVersionExpanded(group.version)" class="snapshot-panel-detail">
+        <div v-show="isVersionExpanded(group)" class="snapshot-panel-detail">
           <p v-if="group.desc" class="snapshot-panel-desc">{{ group.desc }}</p>
           <div v-if="group.fileTree.children?.length" class="snapshot-panel-file-tree">
             <ul class="file-tree">
               <li v-for="node in group.fileTree.children" :key="node.path" class="file-tree-node">
-                <SnapshotFileTreeBranch :version="group.version" :node="node" :depth="0" :expanded-dirs="expandedDirs"
-                  @dir-toggle="toggleDirectory(group.version, $event)" />
+                <SnapshotFileTreeBranch
+                  :version="getVersionGroupKey(group.type, group.version)"
+                  :node="node"
+                  :depth="0"
+                  :expanded-dirs="expandedDirs"
+                  @dir-toggle="toggleDirectory(getVersionGroupKey(group.type, group.version), $event)"
+                />
               </li>
             </ul>
           </div>
@@ -772,6 +904,9 @@ watch(
 
 <style scoped>
 .snapshot-panel {
+  --snapshot-radius-sm: 2px;
+  --snapshot-radius-md: 4px;
+
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -790,7 +925,83 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  min-height: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.snapshot-panel-header-action {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 8.75rem;
+  height: 2rem;
+}
+
+.snapshot-panel-type-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.125rem;
   margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--snapshot-group-border);
+}
+
+.snapshot-panel-type-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--snapshot-radius-md);
+  background: transparent;
+  color: var(--snapshot-accent-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.snapshot-panel-type-tab:hover {
+  background: var(--snapshot-accent-bg);
+  color: var(--snapshot-accent-text);
+}
+
+.snapshot-panel-type-tab--active {
+  background: var(--snapshot-accent-bg);
+  border-color: var(--snapshot-accent-border);
+  color: var(--snapshot-accent-text);
+}
+
+.snapshot-panel-type-tab-label {
+  line-height: 1.2;
+}
+
+.snapshot-panel-type-tab-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--snapshot-radius-sm);
+  background: var(--snapshot-count-tag-bg);
+  border: 1px solid var(--snapshot-count-tag-border);
+  color: var(--snapshot-count-tag-current);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.snapshot-panel-type-tab-count--limit {
+  border-color: var(--snapshot-count-tag-limit-border);
+  background: var(--snapshot-count-tag-limit-bg);
+  color: var(--snapshot-count-tag-limit-current);
 }
 
 .snapshot-panel-online {
@@ -798,7 +1009,7 @@ watch(
   padding: 0.875rem 1rem;
   border: 1px solid var(--snapshot-online-border);
   border-left: 4px solid var(--snapshot-online-accent);
-  border-radius: 8px;
+  border-radius: var(--snapshot-radius-md);
   background: var(--snapshot-online-bg);
   box-shadow: var(--snapshot-online-shadow);
 }
@@ -813,7 +1024,7 @@ watch(
 .snapshot-panel-online-badge {
   flex-shrink: 0;
   padding: 0.125rem 0.4375rem;
-  border-radius: 999px;
+  border-radius: var(--snapshot-radius-sm);
   background-color: var(--snapshot-online-badge-bg);
   color: var(--snapshot-online-accent);
   font-size: 0.6875rem;
@@ -863,7 +1074,7 @@ watch(
   gap: 0.0625rem;
   padding: 0.1875rem 0.5625rem;
   border: 1px solid var(--snapshot-count-tag-border);
-  border-radius: 999px;
+  border-radius: var(--snapshot-radius-sm);
   background: var(--snapshot-count-tag-bg);
   color: var(--snapshot-count-tag-text);
   font-size: 0.6875rem;
@@ -909,21 +1120,30 @@ watch(
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
+  width: 100%;
   height: 2rem;
   padding: 0 0.625rem;
   border: 1px solid var(--snapshot-accent-border);
-  border-radius: 6px;
+  border-radius: var(--snapshot-radius-md);
   background: var(--snapshot-accent-bg);
   color: var(--snapshot-accent-text);
   font-size: 0.875rem;
   line-height: 1;
   cursor: pointer;
+  opacity: 1;
   transition:
     background-color 0.2s ease,
-    border-color 0.2s ease;
+    border-color 0.2s ease,
+    opacity 0.15s ease;
 }
 
-.snapshot-panel-save-btn:hover {
+.snapshot-panel-save-btn--hidden {
+  opacity: 0;
+  pointer-events: none;
+  cursor: default;
+}
+
+.snapshot-panel-save-btn:hover:not(.snapshot-panel-save-btn--hidden) {
   background: var(--snapshot-accent-bg-hover);
   border-color: var(--snapshot-accent-border-hover);
 }
@@ -954,7 +1174,7 @@ watch(
 
 .snapshot-panel-group {
   border: 1px solid var(--snapshot-group-border);
-  border-radius: 8px;
+  border-radius: var(--snapshot-radius-md);
   overflow: hidden;
 }
 
@@ -1005,9 +1225,22 @@ watch(
 .snapshot-panel-online-tag {
   flex-shrink: 0;
   padding: 0.125rem 0.5rem;
-  border-radius: 2px;
-  background-color: #e8f7ef;
-  color: #1a8f5c;
+  border-radius: var(--snapshot-radius-sm);
+  background-color: var(--snapshot-online-tag-bg);
+  color: var(--snapshot-online-tag-text);
+  border: 1px solid var(--snapshot-online-tag-border);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.snapshot-panel-temp-tag {
+  flex-shrink: 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--snapshot-radius-sm);
+  background-color: var(--snapshot-temp-tag-bg);
+  color: var(--snapshot-temp-tag-text);
+  border: 1px solid var(--snapshot-temp-tag-border);
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.2;
@@ -1038,7 +1271,7 @@ watch(
   height: 1.75rem;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--snapshot-radius-sm);
   background: transparent;
   color: var(--snapshot-accent-text-muted);
   cursor: pointer;
@@ -1132,7 +1365,7 @@ html.dark .snapshot-panel-expand-btn:hover {
 .snapshot-panel-file-tree {
   margin-top: 0.5rem;
   border: 1px solid var(--app-border);
-  border-radius: 4px;
+  border-radius: var(--snapshot-radius-sm);
   background-color: var(--app-bg-muted);
   overflow: auto;
   scrollbar-width: none;
@@ -1153,7 +1386,7 @@ html.dark .snapshot-panel-expand-btn:hover {
   margin-top: 0.5rem;
   padding: 0.75rem 1rem;
   border: 1px solid var(--app-border);
-  border-radius: 4px;
+  border-radius: var(--snapshot-radius-sm);
   background-color: var(--app-bg-muted);
   color: var(--app-text-muted);
   font-size: 0.8125rem;
@@ -1206,7 +1439,7 @@ html.dark .snapshot-panel-expand-btn:hover {
   max-height: 8rem;
   overflow-y: auto;
   border: 1px solid var(--app-border);
-  border-radius: 4px;
+  border-radius: var(--snapshot-radius-sm);
   background-color: var(--app-bg-muted);
   scrollbar-width: thin;
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
@@ -1218,12 +1451,12 @@ html.dark .snapshot-panel-expand-btn:hover {
 
 .snapshot-restore-file-list::-webkit-scrollbar-track {
   background: var(--app-scrollbar-track);
-  border-radius: 999px;
+  border-radius: var(--snapshot-radius-sm);
 }
 
 .snapshot-restore-file-list::-webkit-scrollbar-thumb {
   background-color: var(--app-scrollbar-thumb);
-  border-radius: 999px;
+  border-radius: var(--snapshot-radius-sm);
   border: 1px solid transparent;
   background-clip: padding-box;
 }
@@ -1262,6 +1495,9 @@ html.dark .snapshot-panel-expand-btn:hover {
   --snapshot-online-version: #0f5c3a;
   --snapshot-online-desc: #4a7a62;
   --snapshot-online-shadow: 0 2px 10px rgba(26, 143, 92, 0.1);
+  --snapshot-online-tag-bg: #e8f7ef;
+  --snapshot-online-tag-text: #0f6b42;
+  --snapshot-online-tag-border: #7dccaa;
   --snapshot-count-tag-bg: linear-gradient(135deg, #eef4ff 0%, #e4edff 100%);
   --snapshot-count-tag-border: #c7daff;
   --snapshot-count-tag-text: #5b7fc7;
@@ -1274,6 +1510,9 @@ html.dark .snapshot-panel-expand-btn:hover {
   --snapshot-count-tag-limit-text: #b8820a;
   --snapshot-count-tag-limit-current: #d48806;
   --snapshot-count-tag-limit-muted: #c9973a;
+  --snapshot-temp-tag-bg: #fff4e0;
+  --snapshot-temp-tag-text: #b45309;
+  --snapshot-temp-tag-border: #f0c060;
 }
 
 /* 深色主题：版本下拉浅蓝暗色适配 */
@@ -1294,6 +1533,9 @@ html.dark .snapshot-panel {
   --snapshot-online-version: #b8efd4;
   --snapshot-online-desc: #8fbaa8;
   --snapshot-online-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  --snapshot-online-tag-bg: rgba(62, 207, 142, 0.22);
+  --snapshot-online-tag-text: #3ecf8e;
+  --snapshot-online-tag-border: rgba(62, 207, 142, 0.45);
   --snapshot-count-tag-bg: linear-gradient(135deg, #1a2744 0%, #223358 100%);
   --snapshot-count-tag-border: #3d5a8c;
   --snapshot-count-tag-text: #7a9fd4;
@@ -1306,5 +1548,8 @@ html.dark .snapshot-panel {
   --snapshot-count-tag-limit-text: #e0b84a;
   --snapshot-count-tag-limit-current: #f5cc5c;
   --snapshot-count-tag-limit-muted: #c9a84a;
+  --snapshot-temp-tag-bg: rgba(255, 193, 94, 0.22);
+  --snapshot-temp-tag-text: #ffc15e;
+  --snapshot-temp-tag-border: rgba(255, 193, 94, 0.45);
 }
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Search, Sort } from '@element-plus/icons-vue'
+import { ChatLineRound, DArrowLeft, Delete, Edit, Search, Sort } from '@element-plus/icons-vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { deleteSession, getSessionList, updateSession, type sessionItem } from '@/http/session'
@@ -321,24 +321,37 @@ onUnmounted(() => {
 
 <template>
   <aside class="session-panel">
-    <header class="session-panel-header" @click="handleSwitchProject">
-      <div class="session-panel-logo">
-        <svg class="session-panel-logo-svg" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true">
-          <path
-            d="M128 448a96 96 0 0 1 28.032 187.84v63.232l0.256 4.288a32 32 0 0 0 15.68 23.424l324.032 187.072 3.84 1.856a32.128 32.128 0 0 0 28.16-1.92l323.968-187.008 3.52-2.368a32 32 0 0 0 12.416-25.344v-11.072a32 32 0 0 1 64 0v11.072a96 96 0 0 1-37.376 76.096l-10.56 7.04-323.968 187.072a96.128 96.128 0 0 1-84.544 5.632l-11.456-5.632-324.032-187.072a96 96 0 0 1-47.104-70.4l-0.896-12.736V632.96A96 96 0 0 1 128 448z m338.56-96c22.08 0 41.792 14.144 48.96 35.2l84.352 248.448a27.52 27.52 0 1 1-52.288 17.216L526.72 587.136H404.608l-21.76 66.432a26.752 26.752 0 1 1-50.752-16.96l85.376-249.6A51.84 51.84 0 0 1 466.56 352z m209.92 0a27.52 27.52 0 0 1 27.52 27.584v264.896a27.584 27.584 0 0 1-55.104 0V379.52a27.52 27.52 0 0 1 27.52-27.52zM128 512a32 32 0 1 0 0 64 32 32 0 0 0 0-64zM475.456 49.152A96 96 0 0 1 560 54.784l323.968 187.072 10.56 7.04a96 96 0 0 1 37.44 76.096v65.92a96 96 0 1 1-64-2.752v-63.168a32 32 0 0 0-12.48-25.344l-3.584-2.368L528 110.208a32 32 0 0 0-28.16-1.92l-3.84 1.92-324.032 187.072a32 32 0 0 0-16 27.712v11.008a32 32 0 0 1-64 0v-11.008a96 96 0 0 1 48-83.2L464 54.848l11.456-5.632z m-54.4 487.296h89.28l-41.728-130.496h-5.056l-42.496 130.56zM896 448a32 32 0 1 0 0 64 32 32 0 0 0 0-64z"
-            fill="#2463dc" />
-        </svg>
+    <header class="session-panel-header">
+      <div class="session-panel-header-brand" @click="handleSwitchProject">
+        <div class="session-panel-logo">
+          <svg class="session-panel-logo-svg" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true">
+            <path
+              d="M128 448a96 96 0 0 1 28.032 187.84v63.232l0.256 4.288a32 32 0 0 0 15.68 23.424l324.032 187.072 3.84 1.856a32.128 32.128 0 0 0 28.16-1.92l323.968-187.008 3.52-2.368a32 32 0 0 0 12.416-25.344v-11.072a32 32 0 0 1 64 0v11.072a96 96 0 0 1-37.376 76.096l-10.56 7.04-323.968 187.072a96.128 96.128 0 0 1-84.544 5.632l-11.456-5.632-324.032-187.072a96 96 0 0 1-47.104-70.4l-0.896-12.736V632.96A96 96 0 0 1 128 448z m338.56-96c22.08 0 41.792 14.144 48.96 35.2l84.352 248.448a27.52 27.52 0 1 1-52.288 17.216L526.72 587.136H404.608l-21.76 66.432a26.752 26.752 0 1 1-50.752-16.96l85.376-249.6A51.84 51.84 0 0 1 466.56 352z m209.92 0a27.52 27.52 0 0 1 27.52 27.584v264.896a27.584 27.584 0 0 1-55.104 0V379.52a27.52 27.52 0 0 1 27.52-27.52zM128 512a32 32 0 1 0 0 64 32 32 0 0 0 0-64zM475.456 49.152A96 96 0 0 1 560 54.784l323.968 187.072 10.56 7.04a96 96 0 0 1 37.44 76.096v65.92a96 96 0 1 1-64-2.752v-63.168a32 32 0 0 0-12.48-25.344l-3.584-2.368L528 110.208a32 32 0 0 0-28.16-1.92l-3.84 1.92-324.032 187.072a32 32 0 0 0-16 27.712v11.008a32 32 0 0 1-64 0v-11.008a96 96 0 0 1 48-83.2L464 54.848l11.456-5.632z m-54.4 487.296h89.28l-41.728-130.496h-5.056l-42.496 130.56zM896 448a32 32 0 1 0 0 64 32 32 0 0 0 0-64z"
+              fill="#2463dc" />
+          </svg>
+        </div>
+        <div class="session-panel-title">AI Agent</div>
       </div>
-      <div class="session-panel-title">GameAgent</div>
+      <button
+        type="button"
+        class="builder-session-toggle-btn"
+        title="收起会话栏"
+        aria-label="收起会话栏"
+        @click.stop="sessionContext.toggleSessionPanelCollapsed()"
+      >
+        <el-icon><DArrowLeft /></el-icon>
+      </button>
     </header>
 
     <section class="session-section">
-      <div class="session-section-header">
-        <span class="session-section-label">会话</span>
-        <button type="button" class="session-create-btn" :disabled="isPendingNewSession || !projectId"
-          @click="handleCreateSession">+ 新建会话</button>
-      </div>
+      <button type="button" class="session-create-btn" :disabled="isPendingNewSession || !projectId"
+        @click="handleCreateSession">
+        <el-icon class="session-create-icon" aria-hidden="true">
+          <ChatLineRound />
+        </el-icon>
+        <span style="white-space: nowrap;">新建会话</span>
+      </button>
 
       <el-input v-model="searchInput" class="session-search" placeholder="搜索会话" :prefix-icon="Search" clearable
         @input="handleSearchInput" />
@@ -417,10 +430,21 @@ onUnmounted(() => {
 .session-panel-header {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
+  justify-content: space-between;
   padding: 0 0.25rem 1rem;
   flex-shrink: 0;
+}
+
+.session-panel-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.session-panel-header-brand .session-panel-title {
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .session-panel-logo {
@@ -453,27 +477,36 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.session-section-header {
+.session-create-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 0.3125rem;
+  width: 100%;
+  height: 2rem;
   margin-bottom: 0.75rem;
-  padding: 0 0.25rem;
-}
-
-.session-section-label {
-  font-size: 0.875rem;
-  font-weight: 600;
+  padding: 0 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.375rem;
+  background-color: var(--app-bg-subtle);
   color: var(--app-text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 
-.session-create-btn {
-  padding: 0.125rem 0.375rem;
-  border: none;
-  background: none;
+.session-create-icon {
   font-size: 0.8125rem;
-  color: var(--app-accent);
-  cursor: pointer;
+}
+
+.session-create-icon :deep(svg) {
+  display: block;
 }
 
 .session-create-btn:disabled {
@@ -482,7 +515,9 @@ onUnmounted(() => {
 }
 
 .session-create-btn:not(:disabled):hover {
-  text-decoration: underline;
+  background-color: var(--app-border-strong);
+  border-color: var(--app-border-strong);
+  color: var(--app-text-primary);
 }
 
 .session-search {
@@ -638,6 +673,7 @@ onUnmounted(() => {
   font-size: 0.75rem;
   color: var(--app-text-muted);
   margin-bottom: 0.125rem;
+  white-space: nowrap;
 }
 
 .project-card-name {
@@ -647,6 +683,7 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-card-desc {

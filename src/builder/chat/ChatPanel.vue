@@ -540,6 +540,10 @@ function handleActionClick() {
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(36, 99, 220, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(155, 114, 203, 0.04) 0%, transparent 50%),
+    var(--app-surface);
   scrollbar-width: thin;
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
@@ -709,6 +713,13 @@ html.dark .chat-panel {
   --chat-input-shell-focus-shadow:
     0 0 0 3px rgba(91, 155, 248, 0.18),
     0 4px 24px rgba(176, 140, 240, 0.2);
+}
+
+html.dark .chat-panel-messages {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(91, 140, 255, 0.1) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(138, 180, 248, 0.05) 0%, transparent 50%),
+    linear-gradient(180deg, #12151c 0%, #0f1115 100%);
 }
 
 @media (prefers-reduced-motion: reduce) {

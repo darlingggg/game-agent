@@ -4,3 +4,34 @@
   padding: 0;
   box-sizing: border-box;
 }
+
+/** 会话栏收起/展开按钮（SessionPanel 与主 Tab 栏共用） */
+.builder-session-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 0.375rem;
+  background-color: var(--app-bg-subtle);
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  line-height: 1;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.builder-session-toggle-btn:hover {
+  background-color: var(--app-border-strong);
+  color: var(--app-text-primary);
+}
+
+.builder-session-toggle-btn svg {
+  display: block;
+}

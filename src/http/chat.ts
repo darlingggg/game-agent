@@ -1,4 +1,4 @@
-import { getToken, handleUnauthorized, showRequestError } from '@/ajax'
+import { fetchWithAuth, showRequestError } from '@/ajax'
 
 /** 聊天请求体 */
 export interface ChatBody {
@@ -27,25 +27,18 @@ export interface ChatSseOptions extends ChatBody {
  */
 export async function chatWithAI(options: ChatSseOptions) {
   const { prompt, projectId, title, onEvent, signal } = options
-  const token = getToken()
   const body: ChatBody = { prompt, projectId }
   if (title?.trim()) {
     body.title = title.trim()
   }
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/chat/stream`, {
+  const response = await fetchWithAuth(`${import.meta.env.VITE_API_URL}/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`, // 解决鉴权问题
     },
     body: JSON.stringify(body),
     signal,
   })
-
-  if (response.status === 401 || response.status === 403) {
-    handleUnauthorized()
-    throw new Error('登录已失效，请重新登录')
-  }
 
   if (!response.ok) {
     const message = `请求失败（${response.status}）`

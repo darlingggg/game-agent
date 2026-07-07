@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
+import { DArrowLeft, DArrowRight } from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useProjectStore } from '@/stores/project'
 import { syncPreviewFile } from '../preview/webcontainer'
 import FileEditor from './FileEditor.vue'
 import FileTreeBranch from './FileTreeBranch.vue'
-import {
-  fetchProjectTempFileContent,
-  loadProjectTempFileTree,
-  saveProjectTempFileContent,
-  type FileTreeNode,
-} from './projectTempFiles'
+import { fetchProjectTempFileContent, isAgentBaseReadOnlyPath, loadProjectTempFileTree, saveProjectTempFileContent, type FileTreeNode } from './projectTempFiles'
 import { PROJECT_FILES_CHANGED_EVENT } from '../snapshot/snapshotRestore'
 
 defineOptions({
@@ -52,6 +48,15 @@ const contentError = ref('')
 
 /** 文件保存中 */
 const saving = ref(false)
+
+/** 当前文件是否为 agent_base 只读文件 */
+const isCurrentFileReadOnly = computed(() => {
+  if (!selectedFilePath.value) return false
+  return isAgentBaseReadOnlyPath(selectedFilePath.value)
+})
+
+/** 左侧目录是否收起 */
+const treeCollapsed = ref(false)
 
 /** 切换文件时异步拉取文件内容，取消过期的请求结果 */
 watch(selectedFilePath, async (filePath, _, onCleanup) => {
@@ -103,7 +108,7 @@ function handleNodeClick(node: FileTreeNode) {
  */
 async function handleSave() {
   const filePath = selectedFilePath.value
-  if (!filePath || contentLoading.value || contentError.value || saving.value) {
+  if (!filePath || contentLoading.value || contentError.value || saving.value || isCurrentFileReadOnly.value) {
     return
   }
 
@@ -112,8 +117,8 @@ async function handleSave() {
     await saveProjectTempFileContent(filePath, editorContent.value)
     await syncPreviewFile(filePath, editorContent.value)
     ElMessage.success('保存成功')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '保存失败')
+  } catch {
+    // 统一处理异常
   } finally {
     saving.value = false
   }
@@ -125,6 +130,12 @@ async function handleSave() {
  */
 function handleSaveShortcut(event: KeyboardEvent) {
   if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') {
+    return
+  }
+
+  if (isCurrentFileReadOnly.value) {
+    event.preventDefault()
+    ElMessage.warning('该文件只能查看，不允许编辑')
     return
   }
 
@@ -169,6 +180,18 @@ async function handleProjectFilesChanged() {
     selectedFilePath.value = ''
     editorContent.value = ''
     contentError.value = ''
+    return
+  }
+
+  contentLoading.value = true
+  contentError.value = ''
+  try {
+    editorContent.value = await fetchProjectTempFileContent(previousSelectedPath)
+  } catch (error) {
+    editorContent.value = ''
+    contentError.value = error instanceof Error ? error.message : '文件内容加载失败'
+  } finally {
+    contentLoading.value = false
   }
 }
 
@@ -186,46 +209,58 @@ onUnmounted(() => {
 
 <template>
   <div class="file-panel">
-    <aside class="file-panel-tree">
-      <div class="file-panel-tree-title">{{ currentProject?.title ?? '项目文件' }}</div>
+    <aside v-show="!treeCollapsed" class="file-panel-tree">
+      <div class="file-panel-tree-header">
+        <div class="file-panel-tree-title">{{ currentProject?.title ?? '项目文件' }}</div>
+        <button
+          type="button"
+          class="file-panel-tree-toggle-btn"
+          title="收起目录"
+          aria-label="收起目录"
+          @click="treeCollapsed = true"
+        >
+          <el-icon><DArrowLeft /></el-icon>
+        </button>
+      </div>
       <div v-if="treeLoading" class="file-panel-tree-status">正在加载文件列表...</div>
-      <div
-        v-else-if="treeError && !fileTree"
-        class="file-panel-tree-status file-panel-tree-status--error"
-      >
+      <div v-else-if="treeError && !fileTree" class="file-panel-tree-status file-panel-tree-status--error">
         {{ treeError }}
       </div>
       <ul v-else-if="fileTree?.children?.length" class="file-tree">
         <li v-for="node in fileTree.children" :key="node.path" class="file-tree-node">
-          <FileTreeBranch
-            :node="node"
-            :depth="0"
-            :expanded-dirs="expandedDirs"
-            :selected-file-path="selectedFilePath"
-            @node-click="handleNodeClick"
-          />
+          <FileTreeBranch :node="node" :depth="0" :expanded-dirs="expandedDirs" :selected-file-path="selectedFilePath" @node-click="handleNodeClick" />
         </li>
       </ul>
       <div v-else class="file-panel-tree-status">暂无文件</div>
     </aside>
     <section class="file-panel-content">
-      <div v-if="selectedFilePath" class="file-panel-content-header">
-        <span class="file-panel-content-path">{{ selectedFilePath }}</span>
+      <div v-if="treeCollapsed || selectedFilePath" class="file-panel-content-header">
+        <div class="file-panel-content-header-left">
+          <button
+            v-if="treeCollapsed"
+            type="button"
+            class="file-panel-tree-toggle-btn"
+            title="展开目录"
+            aria-label="展开目录"
+            @click="treeCollapsed = false"
+          >
+            <el-icon><DArrowRight /></el-icon>
+          </button>
+          <span v-if="selectedFilePath" class="file-panel-content-path">{{ selectedFilePath }}</span>
+        </div>
         <button
+          v-if="selectedFilePath"
           type="button"
           class="file-panel-save-btn"
           :class="{ 'file-panel-save-btn--loading': saving }"
-          :disabled="contentLoading || !!contentError || saving"
+          :disabled="contentLoading || !!contentError || saving || isCurrentFileReadOnly"
           @click="handleSave"
         >
           保存
         </button>
       </div>
       <div v-if="contentLoading" class="file-panel-content-empty">正在加载文件内容...</div>
-      <div
-        v-else-if="contentError"
-        class="file-panel-content-empty file-panel-content-empty--error"
-      >
+      <div v-else-if="contentError" class="file-panel-content-empty file-panel-content-empty--error">
         {{ contentError }}
       </div>
       <FileEditor
@@ -233,8 +268,11 @@ onUnmounted(() => {
         v-model="editorContent"
         class="file-panel-editor"
         :file-path="selectedFilePath"
+        :read-only="isCurrentFileReadOnly"
       />
-      <div v-else class="file-panel-content-empty">请选择左侧文件查看内容</div>
+      <div v-else class="file-panel-content-empty">
+        {{ treeCollapsed ? '点击左上角按钮展开目录并选择文件' : '请选择左侧文件查看内容' }}
+      </div>
     </section>
   </div>
 </template>
@@ -258,12 +296,52 @@ onUnmounted(() => {
   overflow: auto;
 }
 
+.file-panel-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.625rem 0.75rem 1rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
 .file-panel-tree-title {
-  padding: 0.75rem 1rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.875rem;
   font-weight: 700;
   color: var(--app-accent);
-  border-bottom: 1px solid var(--app-border);
+}
+
+.file-panel-tree-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.625rem;
+  height: 1.625rem;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  background-color: var(--app-surface);
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.file-panel-tree-toggle-btn:hover {
+  color: var(--app-accent);
+  border-color: var(--app-accent);
+  background-color: var(--app-bg-muted);
+}
+
+.file-panel-tree-toggle-btn :deep(svg) {
+  display: block;
 }
 
 .file-panel-tree-status {
@@ -300,6 +378,13 @@ onUnmounted(() => {
   color: var(--app-text-secondary);
   border-bottom: 1px solid var(--app-border);
   background-color: var(--app-surface);
+}
+
+.file-panel-content-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .file-panel-content-path {
