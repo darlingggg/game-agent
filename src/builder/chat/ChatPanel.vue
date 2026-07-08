@@ -452,7 +452,7 @@ async function handleSend() {
 }
 
 /**
- * 输入框按键：Enter 发送，Shift+Enter 换行
+ * 输入框按键：Ctrl+Enter 发送，Enter 换行
  * @param event 键盘事件
  */
 function handleInputKeydown(event: KeyboardEvent) {
@@ -491,8 +491,13 @@ function handleActionClick() {
           :disabled="isStreaming"
           @keydown="handleInputKeydown"
         />
-        <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-          :title="isStreaming ? '终止' : '发送'" @click="handleActionClick">
+        <button
+          type="button"
+          class="chat-panel-action-btn"
+          :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+          :title="isStreaming ? '终止' : '发送'"
+          @click="handleActionClick"
+        >
           <!-- 发送图标 -->
           <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
@@ -512,18 +517,8 @@ function handleActionClick() {
 .chat-panel {
   --chat-input-bg: var(--app-surface);
   --chat-input-shell-border: var(--app-border-strong);
-  --chat-input-shell-focus-gradient: conic-gradient(
-    from 0deg,
-    #4285f4,
-    #9b72cb,
-    #d96570,
-    #f4b400,
-    #0f9d58,
-    #4285f4
-  );
-  --chat-input-shell-focus-shadow:
-    0 0 0 3px rgba(66, 133, 244, 0.12),
-    0 4px 20px rgba(155, 114, 203, 0.14);
+  --chat-input-shell-focus-gradient: conic-gradient(from 0deg, #4285f4, #9b72cb, #d96570, #f4b400, #0f9d58, #4285f4);
+  --chat-input-shell-focus-shadow: 0 0 0 3px rgba(66, 133, 244, 0.12), 0 4px 20px rgba(155, 114, 203, 0.14);
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -542,8 +537,7 @@ function handleActionClick() {
   padding: 1rem;
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(36, 99, 220, 0.06) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(155, 114, 203, 0.04) 0%, transparent 50%),
-    var(--app-surface);
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(155, 114, 203, 0.04) 0%, transparent 50%), var(--app-surface);
   scrollbar-width: thin;
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
@@ -701,25 +695,14 @@ function handleActionClick() {
 html.dark .chat-panel {
   --chat-input-bg: var(--app-surface);
   --chat-input-shell-border: var(--app-border-strong);
-  --chat-input-shell-focus-gradient: conic-gradient(
-    from 0deg,
-    #5b9bf8,
-    #b08cf0,
-    #e07a7f,
-    #f7c948,
-    #3ecf8e,
-    #5b9bf8
-  );
-  --chat-input-shell-focus-shadow:
-    0 0 0 3px rgba(91, 155, 248, 0.18),
-    0 4px 24px rgba(176, 140, 240, 0.2);
+  --chat-input-shell-focus-gradient: conic-gradient(from 0deg, #5b9bf8, #b08cf0, #e07a7f, #f7c948, #3ecf8e, #5b9bf8);
+  --chat-input-shell-focus-shadow: 0 0 0 3px rgba(91, 155, 248, 0.18), 0 4px 24px rgba(176, 140, 240, 0.2);
 }
 
 html.dark .chat-panel-messages {
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(91, 140, 255, 0.1) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(138, 180, 248, 0.05) 0%, transparent 50%),
-    linear-gradient(180deg, #12151c 0%, #0f1115 100%);
+    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(138, 180, 248, 0.05) 0%, transparent 50%), linear-gradient(180deg, #12151c 0%, #0f1115 100%);
 }
 
 @media (prefers-reduced-motion: reduce) {

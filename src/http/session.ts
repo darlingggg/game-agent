@@ -6,7 +6,7 @@ export interface sessionItem {
   projectId: number
   title: string
   account: string
-  role: 'user' | 'assistant' | 'tool'
+  role: 'user' | 'assistant' | 'tool' | 'vision'
   content?: string
   createdAt: string
 }
@@ -14,7 +14,7 @@ export interface sessionItem {
 export interface createSessionParams {
   projectId: number
   title?: string
-  role: 'user' | 'assistant' | 'tool'
+  role: 'user' | 'assistant' | 'tool' | 'vision'
   content: string
 }
 
