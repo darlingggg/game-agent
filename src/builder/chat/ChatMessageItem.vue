@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { getAiReply } from '@/http/session'
+import { computed, ref, watch } from 'vue'
 import { AI_AVATAR_SVG, USER_AVATAR_SVG } from './chatAvatars'
 import MarkdownContent from './MarkdownContent.vue'
 import type { ChatMessage } from './types'
@@ -32,37 +31,29 @@ const displayTime = computed(() => {
 /** 流式输出中且尚无内容时展示 loading */
 const showLoading = computed(() => props.message.streaming && !props.message.content)
 
-/** 是否需要点击后懒加载 AI 回复 */
-const needsLazyLoad = computed(() => !isUser.value && !props.message.streaming && !props.message.content && !!props.message.messageId)
+/** AI 回复是否可折叠（流式结束后且有正文） */
+const canCollapse = computed(() => !isUser.value && !props.message.streaming && !!props.message.content.trim())
 
-/** Agent 回复折叠面板是否展开 */
-const replyExpanded = ref(false)
+/** AI 回复折叠面板是否展开 */
+const replyExpanded = ref(!!props.message.streaming)
 
-/** 懒加载的 AI 回复正文 */
-const replyContent = ref('')
+/** 是否展示 AI 回复正文 */
+const showReplyContent = computed(() => props.message.streaming || replyExpanded.value)
 
-/** 懒加载中 */
-const replyLoading = ref(false)
+watch(
+  () => props.message.streaming,
+  (streaming) => {
+    if (streaming) {
+      replyExpanded.value = true
+    }
+  },
+)
 
 /**
- * 切换 Agent 回复折叠面板
+ * 切换 AI 回复折叠状态
  */
-async function toggleReply() {
+function toggleReply() {
   replyExpanded.value = !replyExpanded.value
-
-  if (!replyExpanded.value || replyContent.value || replyLoading.value || !props.message.messageId) {
-    return
-  }
-
-  replyLoading.value = true
-  try {
-    const result = await getAiReply({ id: props.message.messageId })
-    replyContent.value = result.content
-  } catch {
-    replyExpanded.value = false
-  } finally {
-    replyLoading.value = false
-  }
 }
 </script>
 
@@ -72,24 +63,20 @@ async function toggleReply() {
     <div class="chat-message-body">
       <div class="chat-message-bubble">
         <span v-if="showLoading" class="chat-message-loading" aria-label="加载中" />
-        <template v-else-if="needsLazyLoad">
-          <button type="button" class="chat-message-reply-toggle" @click="toggleReply">
+        <template v-else-if="isUser">
+          <MarkdownContent :content="message.content" />
+        </template>
+        <template v-else>
+          <button v-if="canCollapse" type="button" class="chat-message-reply-toggle" @click="toggleReply">
             <span>Agent 回复</span>
             <svg class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
-          <div v-show="replyExpanded" class="chat-message-reply-panel">
-            <span v-if="replyLoading" class="chat-message-loading" aria-label="加载中" />
-            <MarkdownContent v-else :content="replyContent" />
+          <div v-show="showReplyContent" class="chat-message-reply-panel" :class="{ 'chat-message-reply-panel--flat': !canCollapse }">
+            <MarkdownContent :content="message.content" />
+            <span v-if="message.streaming && message.content" class="chat-message-cursor" />
           </div>
-        </template>
-        <template v-else-if="isUser">
-          <span>{{ message.content }}</span>
-        </template>
-        <template v-else>
-          <MarkdownContent :content="message.content" />
-          <span v-if="message.streaming && message.content" class="chat-message-cursor" />
         </template>
         <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime }}</span>
       </div>
@@ -173,6 +160,7 @@ html.dark .chat-message--assistant .chat-message-avatar {
 .chat-message--user .chat-message-bubble {
   background-color: var(--app-bg-subtle);
   color: var(--app-text-primary);
+  white-space: normal;
 }
 
 .chat-message--assistant .chat-message-bubble {
@@ -218,6 +206,12 @@ html.dark .chat-message--user .chat-message-bubble {
   border-top: 1px solid var(--app-border);
   color: var(--app-text-primary);
   word-break: break-word;
+}
+
+.chat-message-reply-panel--flat {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .chat-message-time {

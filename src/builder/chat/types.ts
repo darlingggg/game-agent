@@ -9,8 +9,6 @@ export interface ChatMessage {
   role: ChatRole
   /** 消息正文 */
   content: string
-  /** AI 回复在 messages 表中的 id，content 为空时用于懒加载 */
-  messageId?: number
   /** 是否正在流式输出 */
   streaming?: boolean
   /** 消息创建时间 */

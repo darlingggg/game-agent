@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { createSession, getSessionList, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
 import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
 import type { ChatMessage } from './types'
 import { chatWithAI } from '@/http/chat'
+import { uploadImageToCos } from '@/http/cos'
+import { getUserInfo } from '@/http/user'
 import { useLogContext } from '@/builder/log/logContext'
 import { buildChatPrompt, getChatAppearanceContext } from '@/builder/config/appearanceConfig'
 import { useAppearanceStore } from '@/stores/appearance'
@@ -27,6 +30,39 @@ const messagesLoading = ref(false)
 
 /** 输入框内容 */
 const inputText = ref('')
+
+/** 待发送图片项 */
+interface PendingChatImage {
+  /** 本地唯一 id */
+  id: string
+  /** COS 访问地址，上传完成后赋值 */
+  cosUrl: string
+  /** 本地 blob 预览地址，上传完成后释放 */
+  blobUrl: string
+  /** 是否上传中 */
+  uploading: boolean
+}
+
+/** 待发送的图片列表 */
+const pendingImages = ref<PendingChatImage[]>([])
+
+/** 是否存在上传中的图片 */
+const hasUploadingImage = computed(() => pendingImages.value.some((item) => item.uploading))
+
+/** 待发送图片 id 自增 */
+let pendingImageIdSeed = 0
+
+/** 当前用户账号，用于 COS uploads/{account} 路径 */
+const userAccount = ref('')
+
+/** 隐藏的文件选择器 */
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+/** 允许上传的图片 MIME 类型 */
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
+/** 单张图片大小上限（10MB） */
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024
 
 /** 是否正在流式回复 */
 const isStreaming = ref(false)
@@ -59,7 +95,43 @@ const sessionTitle = ref('')
 const backendSessionTitle = ref('')
 
 /**
- * 获取会话去重键（与 SessionPanel 保持一致）
+ * 释放单张图片的 blob 预览地址
+ * @param image 待发送图片
+ */
+function revokePendingImageBlob(image: PendingChatImage) {
+  if (image.blobUrl) {
+    URL.revokeObjectURL(image.blobUrl)
+    image.blobUrl = ''
+  }
+}
+
+/**
+ * 释放待发送图片的 blob 预览地址
+ * @param images 待释放图片列表
+ */
+function revokePendingImagePreviews(images: PendingChatImage[]) {
+  for (const image of images) {
+    revokePendingImageBlob(image)
+  }
+}
+
+/**
+ * 生成待发送图片本地 id
+ */
+function createPendingImageId(): string {
+  pendingImageIdSeed += 1
+  return `pending-image-${pendingImageIdSeed}`
+}
+
+/**
+ * 清空待发送图片
+ */
+function clearPendingImages() {
+  revokePendingImagePreviews(pendingImages.value)
+  pendingImages.value = []
+}
+
+/**
  * @param item 会话项
  */
 function getSessionKey(item: sessionItem) {
@@ -86,27 +158,14 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
   }
 
   const content = item.content?.trim() ?? ''
-  if (content) {
-    return {
-      id: String(item.id),
-      role: 'assistant',
-      content,
-      createdAt: item.createdAt,
-    }
-  }
+  if (!content) return null
 
-  // assistant 正文存在 messages 表，列表里 content 为空，通过 messageId 懒加载
-  if (item.messageId) {
-    return {
-      id: String(item.id),
-      role: 'assistant',
-      content: '',
-      messageId: item.messageId,
-      createdAt: item.createdAt,
-    }
+  return {
+    id: String(item.id),
+    role: 'assistant',
+    content,
+    createdAt: item.createdAt,
   }
-
-  return null
 }
 
 /**
@@ -130,6 +189,7 @@ async function loadSessionMessages() {
     stopStreaming()
     messages.value = []
     inputText.value = ''
+    clearPendingImages()
     sessionTitle.value = ''
     backendSessionTitle.value = ''
     return
@@ -139,6 +199,8 @@ async function loadSessionMessages() {
   if (!sessionId || sessionId === PENDING_SESSION_ID) {
     stopStreaming()
     messages.value = []
+    inputText.value = ''
+    clearPendingImages()
     sessionTitle.value = ''
     backendSessionTitle.value = ''
     return
@@ -178,6 +240,109 @@ watch(
   },
   { immediate: true },
 )
+
+onMounted(async () => {
+  try {
+    const userInfo = await getUserInfo()
+    userAccount.value = userInfo.account
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
+  }
+})
+
+/**
+ * 将待发送图片转为 Markdown 片段
+ * @param urls 图片 URL 列表
+ */
+function buildImageMarkdown(urls: string[]): string {
+  return urls.map((url) => `![图片](${url})`).join('\n')
+}
+
+/**
+ * 拼接文本与图片 Markdown，作为最终发送内容
+ * @param text 用户输入文本
+ * @param imageUrls 已上传图片 URL
+ */
+function buildMessageContent(text: string, imageUrls: string[]): string {
+  const imageMarkdown = buildImageMarkdown(imageUrls)
+  return [text, imageMarkdown].filter(Boolean).join('\n\n')
+}
+
+/**
+ * 打开图片选择器
+ */
+function handleUploadClick() {
+  if (isStreaming.value) return
+  fileInputRef.value?.click()
+}
+
+/**
+ * 处理图片选择并上传到 COS
+ * @param event 文件选择事件
+ */
+async function handleImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+
+  if (!file) return
+
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    ElMessage.warning('仅支持 JPG、PNG、GIF、WebP 格式图片')
+    return
+  }
+
+  if (file.size > MAX_IMAGE_SIZE) {
+    ElMessage.warning('单张图片不能超过 10MB')
+    return
+  }
+
+  if (!userAccount.value) {
+    ElMessage.warning('用户信息未就绪，请稍后重试')
+    return
+  }
+
+  const pendingId = createPendingImageId()
+  const pendingItem: PendingChatImage = {
+    id: pendingId,
+    cosUrl: '',
+    blobUrl: URL.createObjectURL(file),
+    uploading: true,
+  }
+  pendingImages.value.push(pendingItem)
+
+  try {
+    const result = await uploadImageToCos(file, userAccount.value)
+    console.log('[COS Upload] 上传完成', {
+      url: result.url,
+      key: result.key,
+    })
+
+    const target = pendingImages.value.find((item) => item.id === pendingId)
+    if (!target) return
+
+    target.cosUrl = result.url
+    target.uploading = false
+    revokePendingImageBlob(target)
+  } catch (error) {
+    const failedIndex = pendingImages.value.findIndex((item) => item.id === pendingId)
+    if (failedIndex >= 0) {
+      removePendingImage(failedIndex)
+    }
+    ElMessage.error(error instanceof Error ? error.message : '图片上传失败，请重试')
+  }
+}
+
+/**
+ * 移除待发送图片
+ * @param index 图片索引
+ */
+function removePendingImage(index: number) {
+  const [removed] = pendingImages.value.splice(index, 1)
+  if (removed) {
+    revokePendingImageBlob(removed)
+  }
+}
 
 /**
  * 首条消息时创建会话（不传 title，后端取 content 前 30 字作为 title）
@@ -344,7 +509,10 @@ function handleSseEvent(assistantId: string, event: { event: string; data: strin
  */
 async function handleSend() {
   const text = inputText.value.trim()
-  if (!text || isStreaming.value) return
+  const imageUrls = pendingImages.value.filter((item) => item.cosUrl).map((item) => item.cosUrl)
+  const content = buildMessageContent(text, imageUrls)
+
+  if (!content || isStreaming.value || hasUploadingImage.value) return
 
   const isPending = sessionContext.isPendingNewSession.value
   const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
@@ -352,14 +520,14 @@ async function handleSend() {
 
   try {
     if (needsCreateSession) {
-      await createSessionOnFirstMessage(text)
+      await createSessionOnFirstMessage(content)
       await loadSessionMessages()
     } else {
-      await saveMessageToSession('user', text)
+      await saveMessageToSession('user', content)
       messages.value.push({
         id: createMessageId(),
         role: 'user',
-        content: text,
+        content,
         createdAt: new Date().toISOString(),
       })
     }
@@ -369,6 +537,7 @@ async function handleSend() {
   }
 
   inputText.value = ''
+  clearPendingImages()
   await scrollToBottom()
 
   const assistantId = createMessageId()
@@ -389,10 +558,10 @@ async function handleSend() {
   const chatTitle = backendSessionTitle.value.trim() || undefined
   const appearanceConfig = appearanceStore.config
   const appearanceContext = getChatAppearanceContext(appearanceConfig)
-  const finalPrompt = buildChatPrompt(text, appearanceConfig)
+  const finalPrompt = buildChatPrompt(content, appearanceConfig)
 
   console.log('[ChatPrompt]', {
-    userInput: text,
+    userInput: content,
     appearanceContext,
     finalPrompt,
     projectId: currentProjectId,
@@ -451,6 +620,10 @@ async function handleSend() {
   }
 }
 
+onUnmounted(() => {
+  clearPendingImages()
+})
+
 /**
  * 输入框按键：Ctrl+Enter 发送，Enter 换行
  * @param event 键盘事件
@@ -483,30 +656,81 @@ function handleActionClick() {
 
     <div class="chat-panel-input-area">
       <div class="chat-panel-input-shell">
-        <textarea
-          v-model="inputText"
-          class="chat-panel-input"
-          placeholder="输入消息，Enter 换行， Ctrl+Enter 发送"
-          rows="5"
-          :disabled="isStreaming"
-          @keydown="handleInputKeydown"
-        />
-        <button
-          type="button"
-          class="chat-panel-action-btn"
-          :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-          :title="isStreaming ? '终止' : '发送'"
-          @click="handleActionClick"
-        >
-          <!-- 发送图标 -->
-          <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
-          </svg>
-          <!-- 终止图标 -->
-          <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
-          </svg>
-        </button>
+        <div v-if="pendingImages.length > 0" class="chat-panel-image-preview">
+          <div
+            v-for="(image, index) in pendingImages"
+            :key="image.id"
+            class="chat-panel-image-preview-item"
+            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }"
+          >
+            <img
+              :src="image.uploading ? image.blobUrl : image.cosUrl"
+              :crossorigin="image.uploading ? undefined : 'anonymous'"
+              alt="待发送图片"
+            />
+            <div v-if="image.uploading" class="chat-panel-image-loading">
+              <span class="chat-panel-image-loading-spinner" aria-label="上传中" />
+            </div>
+            <button
+              type="button"
+              class="chat-panel-image-remove"
+              title="移除图片"
+              :disabled="isStreaming || image.uploading"
+              @click="removePendingImage(index)"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="chat-panel-file-input" @change="handleImageSelect" />
+        <div class="chat-panel-input-body">
+          <textarea
+            v-model="inputText"
+            class="chat-panel-input"
+            placeholder="输入消息，Enter 换行， Ctrl+Enter 发送"
+            rows="5"
+            :disabled="isStreaming"
+            @keydown="handleInputKeydown"
+          />
+          <div class="chat-panel-input-footer">
+            <button
+              type="button"
+              class="chat-panel-upload-btn"
+              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
+              title="上传图片"
+              :disabled="isStreaming"
+              @click="handleUploadClick"
+            >
+              <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
+              <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="chat-panel-action-btn"
+              :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+              :title="isStreaming ? '终止' : '发送'"
+              :disabled="hasUploadingImage"
+              @click="handleActionClick"
+            >
+              <!-- 发送图标 -->
+              <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
+              </svg>
+              <!-- 终止图标 -->
+              <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -591,6 +815,98 @@ function handleActionClick() {
     box-shadow 0.28s ease;
 }
 
+.chat-panel-file-input {
+  display: none;
+}
+
+.chat-panel-image-preview {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem 0;
+  border-radius: calc(1.125rem - 2px) calc(1.125rem - 2px) 0 0;
+  background-color: var(--chat-input-bg);
+}
+
+.chat-panel-input-body {
+  position: relative;
+  z-index: 1;
+  border-radius: calc(1.125rem - 2px);
+  background-color: var(--chat-input-bg);
+}
+
+.chat-panel-input-shell:has(.chat-panel-image-preview) .chat-panel-input-body {
+  border-radius: 0 0 calc(1.125rem - 2px) calc(1.125rem - 2px);
+}
+
+.chat-panel-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.625rem 0.625rem;
+}
+
+.chat-panel-image-preview-item {
+  position: relative;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+}
+
+.chat-panel-image-preview-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-panel-image-preview-item--uploading img {
+  opacity: 0.72;
+}
+
+.chat-panel-image-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.28);
+}
+
+.chat-panel-image-loading-spinner {
+  display: inline-block;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: chat-upload-spin 0.8s linear infinite;
+}
+
+.chat-panel-image-remove {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.125rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: none;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chat-panel-image-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .chat-panel-input-shell::before {
   content: '';
   position: absolute;
@@ -631,12 +947,12 @@ function handleActionClick() {
   margin: 0;
   resize: none;
   border: none;
-  border-radius: calc(1.125rem - 2px);
-  padding: 0.75rem 3rem 0.75rem 0.875rem;
+  border-radius: calc(1.125rem - 2px) calc(1.125rem - 2px) 0 0;
+  padding: 0.75rem 0.875rem 0.375rem;
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--app-text-primary);
-  background-color: var(--chat-input-bg);
+  background-color: transparent;
   outline: none;
   font-family: auto;
   overflow: auto;
@@ -645,22 +961,82 @@ function handleActionClick() {
   transition: background-color 0.2s ease;
 }
 
+.chat-panel-input-shell:has(.chat-panel-image-preview) .chat-panel-input {
+  border-radius: 0;
+  padding-top: 0.5rem;
+}
+
+.chat-panel-input-shell:not(:has(.chat-panel-image-preview)) .chat-panel-input {
+  border-radius: calc(1.125rem - 2px) calc(1.125rem - 2px) 0 0;
+}
+
 /* Chrome/Safari/Opera */
 .chat-panel-input::-webkit-scrollbar {
   display: none;
 }
 
 .chat-panel-input:disabled {
-  background-color: var(--app-bg-subtle);
   color: var(--app-text-secondary);
   cursor: not-allowed;
 }
 
+.chat-panel-input-body:has(.chat-panel-input:disabled) {
+  background-color: var(--app-bg-subtle);
+}
+
+.chat-panel-upload-btn {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.chat-panel-upload-btn svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.chat-panel-upload-btn:hover:not(:disabled) {
+  background-color: var(--app-bg-subtle);
+  color: var(--app-accent);
+}
+
+.chat-panel-upload-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.chat-panel-upload-btn--loading {
+  pointer-events: none;
+}
+
+.chat-panel-upload-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--app-border);
+  border-top-color: var(--app-accent);
+  border-radius: 50%;
+  animation: chat-upload-spin 0.8s linear infinite;
+}
+
+@keyframes chat-upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .chat-panel-action-btn {
-  position: absolute;
-  right: 0.625rem;
-  bottom: 0.625rem;
-  z-index: 2;
   width: 2rem;
   height: 2rem;
   border: none;
@@ -671,6 +1047,7 @@ function handleActionClick() {
   background-color: var(--app-accent);
   color: #fff;
   cursor: pointer;
+  flex-shrink: 0;
   transform: rotate(-90deg);
   transition: background-color 0.2s ease;
 }
@@ -682,6 +1059,11 @@ function handleActionClick() {
 
 .chat-panel-action-btn:hover {
   background-color: #1d4fb8;
+}
+
+.chat-panel-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .chat-panel-action-btn--stop {
