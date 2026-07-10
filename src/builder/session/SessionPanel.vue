@@ -118,6 +118,8 @@ async function fetchSessionList() {
       projectId: projectId.value,
       title: title || undefined,
     })
+    filterMap.clear()
+    sessions.value = []
     for (const item of list) {
       const mapKey = getFilterMapKey(item)
       if (filterMap.has(mapKey)) continue
@@ -149,7 +151,7 @@ function addCreatedSession(payload: { id: number; content: string; firstMessage:
   const newSession: sessionItem = {
     id: payload.id,
     projectId: projectId.value,
-    title: '',
+    title: payload.firstMessage.slice(0, 30),
     account: nickName.value,
     role: 'user',
     content: payload.firstMessage,

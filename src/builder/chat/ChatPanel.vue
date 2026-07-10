@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { createSession, getSessionList, type sessionItem } from '@/http/session'
+import { getSessionList, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
 import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
 import type { ChatMessage } from './types'
-import { chatWithAI } from '@/http/chat'
+import { chatWithAI, reconnectChatStream, type ChatSseEvent } from '@/http/chat'
 import { uploadImageToCos } from '@/http/cos'
 import { getUserInfo } from '@/http/user'
 import { useLogContext } from '@/builder/log/logContext'
-import { buildChatPrompt, getChatAppearanceContext } from '@/builder/config/appearanceConfig'
-import { useAppearanceStore } from '@/stores/appearance'
 
 defineOptions({
   name: 'ChatPanel',
@@ -20,7 +18,6 @@ defineOptions({
 const projectStore = useProjectStore()
 const sessionContext = useSessionContext()
 const logContext = useLogContext()
-const appearanceStore = useAppearanceStore()
 
 /** 消息列表 */
 const messages = ref<ChatMessage[]>([])
@@ -58,6 +55,9 @@ const userAccount = ref('')
 /** 隐藏的文件选择器 */
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
+/** 消息输入框 */
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+
 /** 允许上传的图片 MIME 类型 */
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 
@@ -78,6 +78,12 @@ let abortController: AbortController | null = null
 
 /** 当前流式回复中的 AI 消息 id */
 let streamingAssistantId: string | null = null
+
+/** 当前正在订阅的后端消息 id */
+let streamingBackendMessageId: number | null = null
+
+/** 新会话拿到后端 id 后，跳过一次由 activeSessionId 变更触发的重载 */
+let skipNextSessionLoad = false
 
 /** 消息 id 自增计数（本地临时消息） */
 let messageIdSeed = 0
@@ -158,12 +164,14 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
   }
 
   const content = item.content?.trim() ?? ''
-  if (!content) return null
+  if (!content && item.status !== 'streaming') return null
 
   return {
     id: String(item.id),
     role: 'assistant',
     content,
+    messageId: item.messageId,
+    streaming: item.status === 'streaming',
     createdAt: item.createdAt,
   }
 }
@@ -225,6 +233,11 @@ async function loadSessionMessages() {
 
     messages.value = sessionMessages
     await scrollToBottom()
+
+    const lastItem = sessionMessages[sessionMessages.length - 1]
+    if (lastItem?.messageId && lastItem.streaming) {
+      void reconnectStreamingAssistant(lastItem)
+    }
   } catch {
     // 错误提示由 axios 拦截器统一处理
   } finally {
@@ -235,7 +248,15 @@ async function loadSessionMessages() {
 /** 切换会话时加载历史消息 */
 watch(
   () => [sessionContext.activeSessionId.value, sessionContext.isPendingNewSession.value] as const,
-  () => {
+  ([nextSessionId], oldValue) => {
+    if (skipNextSessionLoad) {
+      skipNextSessionLoad = false
+      return
+    }
+    const prevSessionId = oldValue?.[0]
+    if (prevSessionId && nextSessionId !== prevSessionId) {
+      stopStreaming()
+    }
     void loadSessionMessages()
   },
   { immediate: true },
@@ -255,7 +276,7 @@ onMounted(async () => {
  * @param urls 图片 URL 列表
  */
 function buildImageMarkdown(urls: string[]): string {
-  return urls.map((url) => `![图片](${url})`).join('\n')
+  return urls.map((url) => `![图片](${url})`).join(' ')
 }
 
 /**
@@ -269,6 +290,16 @@ function buildMessageContent(text: string, imageUrls: string[]): string {
 }
 
 /**
+ * 将光标聚焦到消息输入框
+ */
+function focusInput() {
+  if (isStreaming.value) return
+  nextTick(() => {
+    inputRef.value?.focus()
+  })
+}
+
+/**
  * 打开图片选择器
  */
 function handleUploadClick() {
@@ -277,31 +308,10 @@ function handleUploadClick() {
 }
 
 /**
- * 处理图片选择并上传到 COS
- * @param event 文件选择事件
+ * 上传单张待发送图片到 COS
+ * @param file 图片文件
  */
-async function handleImageSelect(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-
-  if (!file) return
-
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-    ElMessage.warning('仅支持 JPG、PNG、GIF、WebP 格式图片')
-    return
-  }
-
-  if (file.size > MAX_IMAGE_SIZE) {
-    ElMessage.warning('单张图片不能超过 10MB')
-    return
-  }
-
-  if (!userAccount.value) {
-    ElMessage.warning('用户信息未就绪，请稍后重试')
-    return
-  }
-
+async function uploadPendingImage(file: File) {
   const pendingId = createPendingImageId()
   const pendingItem: PendingChatImage = {
     id: pendingId,
@@ -334,6 +344,44 @@ async function handleImageSelect(event: Event) {
 }
 
 /**
+ * 处理图片选择并上传到 COS（支持多选）
+ * @param event 文件选择事件
+ */
+async function handleImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+
+  try {
+    if (files.length === 0) return
+
+    if (!userAccount.value) {
+      ElMessage.warning('用户信息未就绪，请稍后重试')
+      return
+    }
+
+    const validFiles: File[] = []
+    for (const file of files) {
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        ElMessage.warning(`${file.name}：仅支持 JPG、PNG、GIF、WebP 格式图片`)
+        continue
+      }
+      if (file.size > MAX_IMAGE_SIZE) {
+        ElMessage.warning(`${file.name}：单张图片不能超过 10MB`)
+        continue
+      }
+      validFiles.push(file)
+    }
+
+    if (validFiles.length === 0) return
+
+    void Promise.all(validFiles.map((file) => uploadPendingImage(file)))
+  } finally {
+    focusInput()
+  }
+}
+
+/**
  * 移除待发送图片
  * @param index 图片索引
  */
@@ -341,33 +389,6 @@ function removePendingImage(index: number) {
   const [removed] = pendingImages.value.splice(index, 1)
   if (removed) {
     revokePendingImageBlob(removed)
-  }
-}
-
-/**
- * 首条消息时创建会话（不传 title，后端取 content 前 30 字作为 title）
- * @param text 用户首条消息
- */
-async function createSessionOnFirstMessage(text: string) {
-  const currentProjectId = projectId()
-  if (!currentProjectId) {
-    throw new Error('项目未就绪')
-  }
-
-  sessionTitle.value = text.slice(0, 30)
-
-  const result = await createSession({
-    projectId: currentProjectId,
-    role: 'user',
-    content: text,
-  })
-
-  sessionContext.isPendingNewSession.value = false
-  sessionContext.activeSessionId.value = result.id
-  sessionContext.lastCreatedSession.value = {
-    id: result.id,
-    content: result.content,
-    firstMessage: text,
   }
 }
 
@@ -419,6 +440,7 @@ function stopStreaming() {
   abortController?.abort()
   abortController = null
   isStreaming.value = false
+  streamingBackendMessageId = null
 
   if (streamingAssistantId) {
     finishAssistantStreaming(streamingAssistantId)
@@ -446,27 +468,6 @@ async function ensureSessionTitle() {
 }
 
 /**
- * 上传消息到会话
- * @param role 消息角色
- * @param content 消息内容
- */
-async function saveMessageToSession(role: 'user' | 'assistant', content: string) {
-  const currentProjectId = projectId()
-  const trimmed = content.trim()
-  if (!currentProjectId || !trimmed) return
-
-  const title = await ensureSessionTitle()
-  if (!title) return
-
-  await createSession({
-    projectId: currentProjectId,
-    role,
-    content: trimmed,
-    title,
-  })
-}
-
-/**
  * 将 AI 文本片段追加到消息气泡
  * @param assistantId AI 消息 id
  * @param text 文本片段
@@ -478,29 +479,149 @@ function appendTextToMessage(assistantId: string, text: string) {
   void scrollToBottom()
 }
 
+function ensureVisionMessage(assistantId: string) {
+  const assistantMessage = findMessageById(assistantId)
+  if (!assistantMessage) return null
+  if (!assistantMessage.vision) {
+    assistantMessage.vision = {
+      reasoning: '',
+      answer: '',
+      streaming: false,
+    }
+  }
+  return assistantMessage.vision
+}
+
+function updateAssistantBackendIds(assistantId: string, data: unknown) {
+  if (!data || typeof data !== 'object') return
+  const payload = data as {
+    userSessionId?: unknown
+    assistantSessionId?: unknown
+    assistantMessageId?: unknown
+  }
+  const assistantMessageId = Number(payload.assistantMessageId)
+  const userSessionId = Number(payload.userSessionId)
+
+  const assistantMessage = findMessageById(assistantId)
+  if (assistantMessage) {
+    if (Number.isFinite(assistantMessageId)) {
+      assistantMessage.messageId = assistantMessageId
+      streamingBackendMessageId = assistantMessageId
+    }
+  }
+
+  if (Number.isFinite(userSessionId) && sessionContext.isPendingNewSession.value) {
+    skipNextSessionLoad = true
+    sessionContext.isPendingNewSession.value = false
+    sessionContext.activeSessionId.value = userSessionId
+    sessionContext.lastCreatedSession.value = {
+      id: userSessionId,
+      content: '创建成功',
+      firstMessage: messages.value.find((item) => item.role === 'user')?.content ?? '',
+    }
+  }
+}
+
 /**
  * 处理 SSE 事件：对话区展示文本，日志区记录 AI/工具输出
  * @param assistantId AI 消息 id
  * @param event SSE 事件
  */
-function handleSseEvent(assistantId: string, event: { event: string; data: string | null }) {
-  if (!event.data) return
-
+function handleSseEvent(assistantId: string, event: ChatSseEvent) {
   const currentProjectId = projectId()
 
-  if (event.event === 'text') {
+  if (event.event === 'message') {
+    updateAssistantBackendIds(assistantId, event.data)
+    return
+  }
+
+  if (event.event === 'text' && typeof event.data === 'string') {
     appendTextToMessage(assistantId, event.data)
     logContext.appendAiText(event.data, currentProjectId)
     return
   }
 
-  if (event.event === 'tool_start') {
+  if (event.event === 'vision_start' || event.event === 'visual_start') {
+    const vision = ensureVisionMessage(assistantId)
+    if (vision) vision.streaming = true
+    void scrollToBottom()
+    return
+  }
+
+  if (event.event === 'visual_analysis' && typeof event.data === 'string') {
+    const vision = ensureVisionMessage(assistantId)
+    if (vision) {
+      vision.reasoning += event.data
+      vision.streaming = true
+    }
+    void scrollToBottom()
+    return
+  }
+
+  if (event.event === 'visual_answer' && typeof event.data === 'string') {
+    const vision = ensureVisionMessage(assistantId)
+    if (vision) {
+      vision.answer += event.data
+      vision.streaming = true
+    }
+    void scrollToBottom()
+    return
+  }
+
+  if (event.event === 'visual_done' || event.event === 'vision_done') {
+    const vision = ensureVisionMessage(assistantId)
+    if (vision) {
+      if (event.event === 'vision_done' && typeof event.data === 'string' && !vision.answer.trim()) {
+        vision.answer = event.data
+      }
+      vision.streaming = false
+    }
+    void scrollToBottom()
+    return
+  }
+
+  if (event.event === 'tool_start' && typeof event.data === 'string') {
     logContext.handleToolStart(event.data, currentProjectId)
     return
   }
 
-  if (event.event === 'tool_end') {
+  if (event.event === 'tool_end' && typeof event.data === 'string') {
     void logContext.handleToolEnd(event.data, currentProjectId)
+  }
+}
+
+async function reconnectStreamingAssistant(message: ChatMessage) {
+  if (!message.messageId || streamingBackendMessageId === message.messageId) return
+
+  stopStreaming()
+  message.streaming = true
+  streamingAssistantId = message.id
+  streamingBackendMessageId = message.messageId
+  isStreaming.value = true
+  userAborted.value = false
+  abortController = new AbortController()
+
+  try {
+    await reconnectChatStream({
+      messageId: message.messageId,
+      offset: message.content.length,
+      signal: abortController.signal,
+      onEvent: (event) => {
+        handleSseEvent(message.id, event)
+      },
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    if (!message.content) {
+      message.content = '回复失败，请重试'
+    }
+  } finally {
+    finishAssistantStreaming(message.id)
+    streamingAssistantId = null
+    streamingBackendMessageId = null
+    abortController = null
+    isStreaming.value = false
+    await scrollToBottom()
   }
 }
 
@@ -516,25 +637,14 @@ async function handleSend() {
 
   const isPending = sessionContext.isPendingNewSession.value
   const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
-  const needsCreateSession = isPending || hasNoSession
+  const needsNewBackendSession = isPending || hasNoSession
 
-  try {
-    if (needsCreateSession) {
-      await createSessionOnFirstMessage(content)
-      await loadSessionMessages()
-    } else {
-      await saveMessageToSession('user', content)
-      messages.value.push({
-        id: createMessageId(),
-        role: 'user',
-        content,
-        createdAt: new Date().toISOString(),
-      })
-    }
-  } catch {
-    // 错误提示由 axios 拦截器统一处理
-    return
-  }
+  messages.value.push({
+    id: createMessageId(),
+    role: 'user',
+    content,
+    createdAt: new Date().toISOString(),
+  })
 
   inputText.value = ''
   clearPendingImages()
@@ -555,15 +665,16 @@ async function handleSend() {
   await scrollToBottom()
 
   const currentProjectId = projectId()
-  const chatTitle = backendSessionTitle.value.trim() || undefined
-  const appearanceConfig = appearanceStore.config
-  const appearanceContext = getChatAppearanceContext(appearanceConfig)
-  const finalPrompt = buildChatPrompt(content, appearanceConfig)
-
+  const resolvedChatTitle = needsNewBackendSession
+    ? content.slice(0, 30)
+    : backendSessionTitle.value.trim() || (await ensureSessionTitle())
+  const chatTitle = resolvedChatTitle.trim() || undefined
+  if (needsNewBackendSession) {
+    sessionTitle.value = resolvedChatTitle
+    backendSessionTitle.value = resolvedChatTitle
+  }
   console.log('[ChatPrompt]', {
     userInput: content,
-    appearanceContext,
-    finalPrompt,
     projectId: currentProjectId,
     title: chatTitle,
   })
@@ -579,9 +690,10 @@ async function handleSend() {
 
   try {
     await chatWithAI({
-      prompt: finalPrompt,
+      prompt: content,
       projectId: currentProjectId,
       title: chatTitle,
+      imageUrls,
       signal: abortController.signal,
       onEvent: (event) => {
         handleSseEvent(assistantId, event)
@@ -605,15 +717,8 @@ async function handleSend() {
       await logContext.finalizeAiStream(currentProjectId)
     }
 
-    const assistantMessage = findMessageById(assistantId)
-    if (assistantMessage?.content.trim() && assistantMessage.content !== '回复失败，请重试') {
-      try {
-        await saveMessageToSession('assistant', assistantMessage.content)
-      } catch {
-        // 错误提示由 axios 拦截器统一处理
-      }
-    }
     streamingAssistantId = null
+    streamingBackendMessageId = null
     abortController = null
     isStreaming.value = false
     await scrollToBottom()
@@ -621,6 +726,7 @@ async function handleSend() {
 }
 
 onUnmounted(() => {
+  stopStreaming()
   clearPendingImages()
 })
 
@@ -682,9 +788,10 @@ function handleActionClick() {
             </button>
           </div>
         </div>
-        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="chat-panel-file-input" @change="handleImageSelect" />
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple class="chat-panel-file-input" @change="handleImageSelect" />
         <div class="chat-panel-input-body">
           <textarea
+            ref="inputRef"
             v-model="inputText"
             class="chat-panel-input"
             placeholder="输入消息，Enter 换行， Ctrl+Enter 发送"
@@ -697,7 +804,7 @@ function handleActionClick() {
               type="button"
               class="chat-panel-upload-btn"
               :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
-              title="上传图片"
+              title="上传图片（可多选）"
               :disabled="isStreaming"
               @click="handleUploadClick"
             >
