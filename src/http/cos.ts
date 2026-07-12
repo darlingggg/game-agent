@@ -144,14 +144,6 @@ export async function uploadImageToCos(file: File, account: string): Promise<Cos
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`
   const key = buildUploadKey(account, fileName, credential.uploadPrefix)
 
-  console.log('[COS Upload] 开始上传', {
-    bucket: credential.bucket,
-    region: credential.region,
-    key,
-    contentType: file.type,
-    uploadPrefix: credential.uploadPrefix,
-  })
-
   const uploadResult = await new Promise<{ Location: string }>((resolve, reject) => {
     cos.putObject(
       {
@@ -174,8 +166,6 @@ export async function uploadImageToCos(file: File, account: string): Promise<Cos
 
   const location = uploadResult.Location
   const url = location.startsWith('http') ? location : `https://${location}`
-
-  console.log('[COS Upload] 上传完成', { url, key })
 
   return { key, url }
 }

@@ -11,8 +11,16 @@ export interface LogContext {
   historyEntries: Ref<DisplayLogEntry[]>
   /** 实时日志条目 */
   liveEntries: Ref<LiveLogEntry[]>
-  /** 加载历史日志 */
-  loadHistory: (projectId: number) => Promise<void>
+  /** 当前会话 title，与 chat/stream 请求体一致 */
+  currentSessionTitle: Ref<string>
+  /** 加载指定会话的历史日志 */
+  loadHistory: (projectId: number, title?: string) => Promise<void>
+  /**
+   * 切换会话：更新 title、清空实时日志并加载历史
+   * @param projectId 项目 id
+   * @param title 会话标题
+   */
+  switchSession: (projectId: number, title: string) => Promise<void>
   /** 追加 AI 文本片段 */
   appendAiText: (text: string, projectId: number) => void
   /** 工具开始执行 */
@@ -47,6 +55,8 @@ function createLogId(): string {
 export function createLogContext(): LogContext {
   const historyEntries = ref<DisplayLogEntry[]>([])
   const liveEntries = ref<LiveLogEntry[]>([])
+  /** 当前会话 title，与 chat/stream 保持一致 */
+  const currentSessionTitle = ref('')
 
   /** 当前流式 AI 日志 id */
   let currentAiEntryId: string | null = null
@@ -59,9 +69,10 @@ export function createLogContext(): LogContext {
    * @param projectId 项目 id
    */
   async function persistLog(content: string, projectId: number) {
-    if (!projectId || !content.trim()) return
+    const title = currentSessionTitle.value.trim()
+    if (!projectId || !content.trim() || !title) return
     try {
-      await addLog({ content, projectId })
+      await addLog({ content, projectId, title })
     } catch {
       // 日志上报失败不阻断主流程
     }
@@ -91,17 +102,24 @@ export function createLogContext(): LogContext {
   }
 
   /**
-   * 加载项目历史日志
+   * 加载指定会话的历史日志
    * @param projectId 项目 id
+   * @param title 会话标题，不传时使用 currentSessionTitle
    */
-  async function loadHistory(projectId: number) {
+  async function loadHistory(projectId: number, title?: string) {
     if (!projectId) {
       historyEntries.value = []
       return
     }
 
+    const sessionTitle = (title ?? currentSessionTitle.value).trim()
+    if (!sessionTitle) {
+      historyEntries.value = []
+      return
+    }
+
     try {
-      const list = await getLogList({ projectId })
+      const list = await getLogList({ projectId, title: sessionTitle })
       historyEntries.value = list
         .slice()
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -109,6 +127,17 @@ export function createLogContext(): LogContext {
     } catch {
       historyEntries.value = []
     }
+  }
+
+  /**
+   * 切换会话时同步日志面板
+   * @param projectId 项目 id
+   * @param title 会话标题
+   */
+  async function switchSession(projectId: number, title: string) {
+    currentSessionTitle.value = title.trim()
+    clearLiveEntries()
+    await loadHistory(projectId, title.trim())
   }
 
   /**
@@ -281,7 +310,9 @@ export function createLogContext(): LogContext {
   return {
     historyEntries,
     liveEntries,
+    currentSessionTitle,
     loadHistory,
+    switchSession,
     appendAiText,
     handleToolStart,
     handleToolEnd,

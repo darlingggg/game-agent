@@ -300,25 +300,22 @@ async function handleBuild() {
       <div class="preview-toolbar-actions">
         <el-tooltip :content="buildTooltip" placement="top" :show-after="200">
           <span class="preview-toolbar-tooltip-trigger">
-            <button
-              type="button"
-              class="preview-toolbar-btn preview-toolbar-btn--build"
-              :disabled="isBuildDisabled"
-              title="构建部署"
-              aria-label="构建部署"
-              @click="handleBuildClick"
-            >
-              <span class="preview-toolbar-build-wrap" :class="{ 'preview-toolbar-build-wrap--building': isBuildAnimating }">
-                <svg class="preview-toolbar-build-icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <button type="button" class="preview-toolbar-btn preview-toolbar-btn--build" :disabled="isBuildDisabled"
+              title="构建部署" aria-label="构建部署" @click="handleBuildClick">
+              <span class="preview-toolbar-build-wrap"
+                :class="{ 'preview-toolbar-build-wrap--building': isBuildAnimating }">
+                <svg class="preview-toolbar-build-icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true">
                   <!-- 外层线框结构（底层） -->
-                  <path
-                    class="preview-toolbar-build-wireframe"
-                    d="M511.069091 0L46.545455 245.946182v494.638545l464.523636 245.946182 464.616727-245.946182V245.946182L511.069091 0z M869.096727 254.138182l-174.917818 92.904727-183.063273-103.796364L311.621818 357.934545 123.066182 270.522182 511.069091 65.629091l357.934545 188.555636z M103.889454 319.674181l188.555636 87.458909v210.385455l188.555637 106.589091v177.664l-377.111273-196.794182V319.767273z M535.64509 907.310545v-177.617455l194.048-112.034909V390.795636l188.509091-101.143272v412.672l-382.557091 204.939636z"
-                  />
+                  <path class="preview-toolbar-build-wireframe"
+                    d="M511.069091 0L46.545455 245.946182v494.638545l464.523636 245.946182 464.616727-245.946182V245.946182L511.069091 0z M869.096727 254.138182l-174.917818 92.904727-183.063273-103.796364L311.621818 357.934545 123.066182 270.522182 511.069091 65.629091l357.934545 188.555636z M103.889454 319.674181l188.555636 87.458909v210.385455l188.555637 106.589091v177.664l-377.111273-196.794182V319.767273z M535.64509 907.310545v-177.617455l194.048-112.034909V390.795636l188.509091-101.143272v412.672l-382.557091 204.939636z" />
                   <!-- 内层三个面（顶层，构建时变色） -->
-                  <path class="preview-toolbar-build-face" d="M347.136 434.501818l133.911273 62.836364v166.725818l-133.911273-76.520727V434.501818z" />
-                  <path class="preview-toolbar-build-face" d="M535.691636 494.638545l139.357091-73.82109v166.725818l-139.357091 79.220363v-172.125091z" />
-                  <path class="preview-toolbar-build-face" d="M505.623273 448.186182l-133.864728-62.836364L511.069091 306.036364l128.465454 73.774545-133.957818 68.328727z" />
+                  <path class="preview-toolbar-build-face"
+                    d="M347.136 434.501818l133.911273 62.836364v166.725818l-133.911273-76.520727V434.501818z" />
+                  <path class="preview-toolbar-build-face"
+                    d="M535.691636 494.638545l139.357091-73.82109v166.725818l-139.357091 79.220363v-172.125091z" />
+                  <path class="preview-toolbar-build-face"
+                    d="M505.623273 448.186182l-133.864728-62.836364L511.069091 306.036364l128.465454 73.774545-133.957818 68.328727z" />
                 </svg>
               </span>
             </button>
@@ -326,38 +323,24 @@ async function handleBuild() {
         </el-tooltip>
         <el-tooltip :content="canCopyDeployLink ? '复制部署链接' : '暂无部署链接'" placement="top" :show-after="200">
           <span class="preview-toolbar-tooltip-trigger">
-            <button
-              type="button"
-              class="preview-toolbar-btn"
-              :class="{ 'preview-toolbar-btn--disabled': !canCopyDeployLink }"
-              :disabled="!canCopyDeployLink"
-              title="复制部署链接"
-              aria-label="复制部署链接"
-              @click="handleShare"
-            >
-              <svg class="preview-toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M17 7h-4v2h4c1.65 0 3 1.35 3 3s-1.35 3-3 3h-4v2h4c2.76 0 5-2.24 5-5s-2.24-5-5-5zm-6 0H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-2H7c-1.65 0-3-1.35-3-3s1.35-3 3-3h4V7zm-3 4h8v2H8v-2z"
-                />
+            <button type="button" class="preview-toolbar-btn"
+              :class="{ 'preview-toolbar-btn--disabled': !canCopyDeployLink }" :disabled="!canCopyDeployLink"
+              title="复制部署链接" aria-label="复制部署链接" @click="handleShare">
+              <svg class="preview-toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true">
+                <path fill="currentColor"
+                  d="M17 7h-4v2h4c1.65 0 3 1.35 3 3s-1.35 3-3 3h-4v2h4c2.76 0 5-2.24 5-5s-2.24-5-5-5zm-6 0H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-2H7c-1.65 0-3-1.35-3-3s1.35-3 3-3h4V7zm-3 4h8v2H8v-2z" />
               </svg>
             </button>
           </span>
         </el-tooltip>
-        <button
-          type="button"
-          class="preview-toolbar-btn"
-          :class="{ 'preview-toolbar-btn--loading': refreshing }"
-          :disabled="refreshing"
-          title="刷新预览"
-          aria-label="刷新预览"
-          @click="handleRefresh"
-        >
-          <svg class="preview-toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <button type="button" class="preview-toolbar-btn" :class="{ 'preview-toolbar-btn--loading': refreshing }"
+          :disabled="refreshing" title="刷新预览" aria-label="刷新预览" @click="handleRefresh">
+          <svg class="preview-toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true">
             <path
               d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 9.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"
-              fill="currentColor"
-            />
+              fill="currentColor" />
           </svg>
         </button>
       </div>
@@ -494,6 +477,7 @@ html.dark .preview-toolbar-build-wrap {
 }
 
 @keyframes preview-build-scale {
+
   0%,
   100% {
     transform: scale(1);
@@ -505,6 +489,7 @@ html.dark .preview-toolbar-build-wrap {
 }
 
 @keyframes preview-build-face-color {
+
   0%,
   100% {
     fill: var(--build-icon-face-idle);
@@ -626,7 +611,7 @@ html.dark .preview-toolbar-build-wrap {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  color: var(--app-text-primary);
+  color: #1a1c1e;
   font-size: 0.85rem;
   text-align: center;
 }

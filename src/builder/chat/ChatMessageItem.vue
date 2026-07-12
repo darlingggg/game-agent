@@ -43,6 +43,9 @@ const canCollapse = computed(() => !isUser.value && !props.message.streaming && 
 /** AI 回复折叠面板是否展开 */
 const replyExpanded = ref(!!props.message.streaming)
 
+/** 图像思考区块是否展开，默认折叠 */
+const visionReasoningExpanded = ref(false)
+
 /** 是否展示 AI 回复正文 */
 const showReplyContent = computed(() => props.message.streaming || replyExpanded.value)
 
@@ -92,6 +95,13 @@ watch(
 function toggleReply() {
   replyExpanded.value = !replyExpanded.value
 }
+
+/**
+ * 切换图像思考折叠状态
+ */
+function toggleVisionReasoning() {
+  visionReasoningExpanded.value = !visionReasoningExpanded.value
+}
 </script>
 
 <template>
@@ -126,8 +136,21 @@ function toggleReply() {
           <div v-show="showReplyContent" class="chat-message-reply-panel" :class="{ 'chat-message-reply-panel--flat': !canCollapse }">
             <div v-if="hasVisionContent" class="chat-message-vision">
               <div v-if="hasVisionReasoning" class="chat-message-vision-section">
-                <div class="chat-message-vision-title">图像思考</div>
-                <MarkdownContent :content="message.vision?.reasoning ?? ''" />
+                <button type="button" class="chat-message-vision-toggle" @click="toggleVisionReasoning">
+                  <span>图像思考</span>
+                  <svg
+                    class="chat-message-reply-arrow"
+                    :class="{ 'chat-message-reply-arrow--expanded': visionReasoningExpanded }"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+                <div v-show="visionReasoningExpanded" class="chat-message-vision-content">
+                  <MarkdownContent :content="message.vision?.reasoning ?? ''" />
+                </div>
               </div>
               <div v-if="hasVisionAnswer" class="chat-message-vision-section">
                 <div class="chat-message-vision-title">图像理解</div>
@@ -337,12 +360,23 @@ html.dark .chat-message--user .chat-message-bubble {
   border-top: 1px solid var(--app-border);
 }
 
-.chat-message-vision-title {
-  margin-bottom: 0.25rem;
+.chat-message-vision-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
   color: var(--app-text-primary);
   font-size: 0.75rem;
   font-weight: 700;
   line-height: 1.4;
+  cursor: pointer;
+}
+
+.chat-message-vision-content {
+  margin-top: 0.25rem;
 }
 
 .chat-message-vision-running {

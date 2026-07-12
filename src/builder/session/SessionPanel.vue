@@ -335,14 +335,11 @@ onUnmounted(() => {
         </div>
         <div class="session-panel-title">AI Agent</div>
       </div>
-      <button
-        type="button"
-        class="builder-session-toggle-btn"
-        title="收起会话栏"
-        aria-label="收起会话栏"
-        @click.stop="sessionContext.toggleSessionPanelCollapsed()"
-      >
-        <el-icon><DArrowLeft /></el-icon>
+      <button type="button" class="builder-session-toggle-btn" title="收起会话栏" aria-label="收起会话栏"
+        @click.stop="sessionContext.toggleSessionPanelCollapsed()">
+        <el-icon>
+          <DArrowLeft />
+        </el-icon>
       </button>
     </header>
 
@@ -442,6 +439,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.625rem;
   min-width: 0;
+  cursor: pointer;
 }
 
 .session-panel-header-brand .session-panel-title {

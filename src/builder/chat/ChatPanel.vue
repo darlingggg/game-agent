@@ -62,7 +62,7 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 
 /** 单张图片大小上限（10MB） */
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024
 
 /** 是否正在流式回复 */
 const isStreaming = ref(false)
@@ -145,6 +145,22 @@ function getSessionKey(item: sessionItem) {
 }
 
 /**
+ * 获取当前会话用于日志接口的 title（与 chat/stream 保持一致）
+ */
+function getLogSessionTitle(): string {
+  return backendSessionTitle.value.trim() || sessionTitle.value.trim()
+}
+
+/**
+ * 同步日志面板到当前会话
+ * @param currentProjectId 项目 id
+ * @param title 会话标题
+ */
+function syncLogSession(currentProjectId: number, title: string) {
+  void logContext.switchSession(currentProjectId, title)
+}
+
+/**
  * 将接口数据转为聊天消息
  * @param item 会话项
  */
@@ -193,6 +209,8 @@ function pickSessionMessages(list: sessionItem[], sessionId: number) {
  * 加载当前会话的历史消息
  */
 async function loadSessionMessages() {
+  const currentProjectId = projectId()
+
   if (sessionContext.isPendingNewSession.value) {
     stopStreaming()
     messages.value = []
@@ -200,6 +218,9 @@ async function loadSessionMessages() {
     clearPendingImages()
     sessionTitle.value = ''
     backendSessionTitle.value = ''
+    if (currentProjectId) {
+      syncLogSession(currentProjectId, '')
+    }
     return
   }
 
@@ -211,10 +232,12 @@ async function loadSessionMessages() {
     clearPendingImages()
     sessionTitle.value = ''
     backendSessionTitle.value = ''
+    if (currentProjectId) {
+      syncLogSession(currentProjectId, '')
+    }
     return
   }
 
-  const currentProjectId = projectId()
   if (!currentProjectId) return
 
   messagesLoading.value = true
@@ -224,6 +247,9 @@ async function loadSessionMessages() {
     if (target) {
       sessionTitle.value = getSessionKey(target)
       backendSessionTitle.value = target.title.trim()
+    } else {
+      sessionTitle.value = ''
+      backendSessionTitle.value = ''
     }
 
     const sessionMessages = pickSessionMessages(list, sessionId)
@@ -238,6 +264,8 @@ async function loadSessionMessages() {
     if (lastItem?.messageId && lastItem.streaming) {
       void reconnectStreamingAssistant(lastItem)
     }
+
+    syncLogSession(currentProjectId, getLogSessionTitle())
   } catch {
     // 错误提示由 axios 拦截器统一处理
   } finally {
@@ -323,11 +351,6 @@ async function uploadPendingImage(file: File) {
 
   try {
     const result = await uploadImageToCos(file, userAccount.value)
-    console.log('[COS Upload] 上传完成', {
-      url: result.url,
-      key: result.key,
-    })
-
     const target = pendingImages.value.find((item) => item.id === pendingId)
     if (!target) return
 
@@ -344,6 +367,38 @@ async function uploadPendingImage(file: File) {
 }
 
 /**
+ * 校验并上传图片文件（文件选择、粘贴共用）
+ * @param files 待处理文件列表
+ */
+async function handleImageFiles(files: File[]) {
+  if (files.length === 0 || isStreaming.value) return
+
+  if (!userAccount.value) {
+    ElMessage.warning('用户信息未就绪，请稍后重试')
+    return
+  }
+
+  const maxSizeMb = MAX_IMAGE_SIZE / 1024 / 1024
+  const validFiles: File[] = []
+  for (const file of files) {
+    const name = file.name || '粘贴的图片'
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      ElMessage.warning(`${name}：仅支持 JPG、PNG、GIF、WebP 格式图片`)
+      continue
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      ElMessage.warning(`${name}：单张图片不能超过 ${maxSizeMb}MB`)
+      continue
+    }
+    validFiles.push(file)
+  }
+
+  if (validFiles.length === 0) return
+
+  void Promise.all(validFiles.map((file) => uploadPendingImage(file)))
+}
+
+/**
  * 处理图片选择并上传到 COS（支持多选）
  * @param event 文件选择事件
  */
@@ -353,32 +408,81 @@ async function handleImageSelect(event: Event) {
   input.value = ''
 
   try {
-    if (files.length === 0) return
-
-    if (!userAccount.value) {
-      ElMessage.warning('用户信息未就绪，请稍后重试')
-      return
-    }
-
-    const validFiles: File[] = []
-    for (const file of files) {
-      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-        ElMessage.warning(`${file.name}：仅支持 JPG、PNG、GIF、WebP 格式图片`)
-        continue
-      }
-      if (file.size > MAX_IMAGE_SIZE) {
-        ElMessage.warning(`${file.name}：单张图片不能超过 10MB`)
-        continue
-      }
-      validFiles.push(file)
-    }
-
-    if (validFiles.length === 0) return
-
-    void Promise.all(validFiles.map((file) => uploadPendingImage(file)))
+    await handleImageFiles(files)
   } finally {
     focusInput()
   }
+}
+
+/**
+ * 从粘贴事件中同步提取剪贴板图片
+ * 注意：clipboardData 仅在 paste 回调同步执行期间有效，不能 console.log 后再读
+ * @param event 粘贴事件
+ */
+function extractImagesFromPasteEvent(event: ClipboardEvent): File[] {
+  const clipboardData = event.clipboardData
+  if (!clipboardData) return []
+
+  const imageFiles: File[] = []
+
+  for (const item of clipboardData.items) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (file) imageFiles.push(file)
+  }
+
+  // items 与 files 常是同一图片的不同 File 引用，items 有结果时不再读 files
+  if (imageFiles.length > 0) return imageFiles
+
+  for (const file of clipboardData.files) {
+    if (file.type.startsWith('image/')) imageFiles.push(file)
+  }
+
+  return imageFiles
+}
+
+/**
+ * 通过 Async Clipboard API 读取图片（paste 事件 items 为空时的降级方案）
+ */
+async function readImagesFromClipboardApi(): Promise<File[]> {
+  if (!navigator.clipboard?.read) return []
+
+  try {
+    const items = await navigator.clipboard.read()
+    const imageFiles: File[] = []
+
+    for (const item of items) {
+      const imageType = item.types.find((type) => type.startsWith('image/'))
+      if (!imageType) continue
+      const blob = await item.getType(imageType)
+      const ext = imageType.split('/')[1] || 'png'
+      imageFiles.push(new File([blob], `clipboard_${Date.now()}.${ext}`, { type: imageType }))
+    }
+
+    return imageFiles
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 输入框粘贴：支持直接粘贴剪贴板中的图片
+ * @param event 粘贴事件
+ */
+async function handleInputPaste(event: ClipboardEvent) {
+  if (isStreaming.value) return
+
+  let imageFiles = extractImagesFromPasteEvent(event)
+
+  // Chrome 复制网页图片等场景下 items 可能同步为空，尝试 Async Clipboard API
+  if (imageFiles.length === 0) {
+    imageFiles = await readImagesFromClipboardApi()
+  }
+
+  if (imageFiles.length === 0) return
+
+  event.preventDefault()
+  void handleImageFiles(imageFiles).finally(() => focusInput())
 }
 
 /**
@@ -476,7 +580,6 @@ function appendTextToMessage(assistantId: string, text: string) {
   const assistantMessage = findMessageById(assistantId)
   if (!assistantMessage) return
   assistantMessage.content += text
-  void scrollToBottom()
 }
 
 function ensureVisionMessage(assistantId: string) {
@@ -544,7 +647,6 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
   if (event.event === 'vision_start' || event.event === 'visual_start') {
     const vision = ensureVisionMessage(assistantId)
     if (vision) vision.streaming = true
-    void scrollToBottom()
     return
   }
 
@@ -554,7 +656,6 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
       vision.reasoning += event.data
       vision.streaming = true
     }
-    void scrollToBottom()
     return
   }
 
@@ -564,7 +665,6 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
       vision.answer += event.data
       vision.streaming = true
     }
-    void scrollToBottom()
     return
   }
 
@@ -576,7 +676,6 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
       }
       vision.streaming = false
     }
-    void scrollToBottom()
     return
   }
 
@@ -587,6 +686,11 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
 
   if (event.event === 'tool_end' && typeof event.data === 'string') {
     void logContext.handleToolEnd(event.data, currentProjectId)
+    return
+  }
+
+  if (event.event === 'done') {
+    void scrollToBottom()
   }
 }
 
@@ -621,7 +725,6 @@ async function reconnectStreamingAssistant(message: ChatMessage) {
     streamingBackendMessageId = null
     abortController = null
     isStreaming.value = false
-    await scrollToBottom()
   }
 }
 
@@ -672,6 +775,7 @@ async function handleSend() {
   if (needsNewBackendSession) {
     sessionTitle.value = resolvedChatTitle
     backendSessionTitle.value = resolvedChatTitle
+    syncLogSession(currentProjectId, resolvedChatTitle.trim())
   }
   console.log('[ChatPrompt]', {
     userInput: content,
@@ -721,7 +825,6 @@ async function handleSend() {
     streamingBackendMessageId = null
     abortController = null
     isStreaming.value = false
-    await scrollToBottom()
   }
 }
 
@@ -763,70 +866,38 @@ function handleActionClick() {
     <div class="chat-panel-input-area">
       <div class="chat-panel-input-shell">
         <div v-if="pendingImages.length > 0" class="chat-panel-image-preview">
-          <div
-            v-for="(image, index) in pendingImages"
-            :key="image.id"
-            class="chat-panel-image-preview-item"
-            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }"
-          >
-            <img
-              :src="image.uploading ? image.blobUrl : image.cosUrl"
-              :crossorigin="image.uploading ? undefined : 'anonymous'"
-              alt="待发送图片"
-            />
+          <div v-for="(image, index) in pendingImages" :key="image.id" class="chat-panel-image-preview-item"
+            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }">
+            <img :src="image.uploading ? image.blobUrl : image.cosUrl"
+              :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
             <div v-if="image.uploading" class="chat-panel-image-loading">
               <span class="chat-panel-image-loading-spinner" aria-label="上传中" />
             </div>
-            <button
-              type="button"
-              class="chat-panel-image-remove"
-              title="移除图片"
-              :disabled="isStreaming || image.uploading"
-              @click="removePendingImage(index)"
-            >
+            <button type="button" class="chat-panel-image-remove" title="移除图片"
+              :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">
               ×
             </button>
           </div>
         </div>
-        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple class="chat-panel-file-input" @change="handleImageSelect" />
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple
+          class="chat-panel-file-input" @change="handleImageSelect" />
         <div class="chat-panel-input-body">
-          <textarea
-            ref="inputRef"
-            v-model="inputText"
-            class="chat-panel-input"
-            placeholder="输入消息，Enter 换行， Ctrl+Enter 发送"
-            rows="5"
-            :disabled="isStreaming"
-            @keydown="handleInputKeydown"
-          />
+          <textarea ref="inputRef" v-model="inputText" class="chat-panel-input"
+            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送" rows="5" :disabled="isStreaming"
+            @keydown="handleInputKeydown" @paste="handleInputPaste" />
           <div class="chat-panel-input-footer">
-            <button
-              type="button"
-              class="chat-panel-upload-btn"
-              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
-              title="上传图片（可多选）"
-              :disabled="isStreaming"
-              @click="handleUploadClick"
-            >
+            <button type="button" class="chat-panel-upload-btn"
+              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }" title="上传图片（可多选）" :disabled="isStreaming"
+              @click="handleUploadClick">
               <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
               <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path
                   d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
             </button>
-            <button
-              type="button"
-              class="chat-panel-action-btn"
-              :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-              :title="isStreaming ? '终止' : '发送'"
-              :disabled="hasUploadingImage"
-              @click="handleActionClick"
-            >
+            <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+              :title="isStreaming ? '终止' : '发送'" :disabled="hasUploadingImage" @click="handleActionClick">
               <!-- 发送图标 -->
               <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />

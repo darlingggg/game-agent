@@ -186,13 +186,12 @@ async function scrollBuildLogToBottom() {
   el.scrollTop = el.scrollHeight
 }
 
-/** 项目就绪后加载历史日志 */
+/** 项目或会话切换时刷新终端头部信息 */
 watch(
-  () => projectStore.currentProject?.id,
-  (projectId) => {
-    sessionBootAt.value = new Date()
+  () => [projectStore.currentProject?.id, logContext.currentSessionTitle.value] as const,
+  ([projectId]) => {
     if (projectId) {
-      void logContext.loadHistory(projectId)
+      sessionBootAt.value = new Date()
     }
   },
   { immediate: true },
