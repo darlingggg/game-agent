@@ -118,6 +118,8 @@ async function fetchSessionList() {
       projectId: projectId.value,
       title: title || undefined,
     })
+    filterMap.clear()
+    sessions.value = []
     for (const item of list) {
       const mapKey = getFilterMapKey(item)
       if (filterMap.has(mapKey)) continue
@@ -149,7 +151,7 @@ function addCreatedSession(payload: { id: number; content: string; firstMessage:
   const newSession: sessionItem = {
     id: payload.id,
     projectId: projectId.value,
-    title: '',
+    title: payload.firstMessage.slice(0, 30),
     account: nickName.value,
     role: 'user',
     content: payload.firstMessage,
@@ -333,14 +335,11 @@ onUnmounted(() => {
         </div>
         <div class="session-panel-title">AI Agent</div>
       </div>
-      <button
-        type="button"
-        class="builder-session-toggle-btn"
-        title="收起会话栏"
-        aria-label="收起会话栏"
-        @click.stop="sessionContext.toggleSessionPanelCollapsed()"
-      >
-        <el-icon><DArrowLeft /></el-icon>
+      <button type="button" class="builder-session-toggle-btn" title="收起会话栏" aria-label="收起会话栏"
+        @click.stop="sessionContext.toggleSessionPanelCollapsed()">
+        <el-icon>
+          <DArrowLeft />
+        </el-icon>
       </button>
     </header>
 
@@ -440,6 +439,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.625rem;
   min-width: 0;
+  cursor: pointer;
 }
 
 .session-panel-header-brand .session-panel-title {

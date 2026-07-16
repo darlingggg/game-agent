@@ -2,4 +2,5 @@ packages:
   - '.'
 
 allowBuilds:
+  cos-js-sdk-v5: true
   vue-demi: true

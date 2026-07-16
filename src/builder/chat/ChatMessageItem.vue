@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { getAiReply } from '@/http/session'
+import { computed, ref, watch } from 'vue'
 import { AI_AVATAR_SVG, USER_AVATAR_SVG } from './chatAvatars'
 import MarkdownContent from './MarkdownContent.vue'
 import type { ChatMessage } from './types'
@@ -25,44 +24,83 @@ const avatarSvg = computed(() => (isUser.value ? USER_AVATAR_SVG : AI_AVATAR_SVG
 const displayTime = computed(() => {
   if (!props.message.createdAt) return ''
   const date = new Date(props.message.createdAt)
-  if (Number.isNaN(date.getTime())) return props.message.createdAt
+  if (isNaN(date.getTime())) return props.message.createdAt
   return date.toLocaleString('zh-CN', { hour12: false })
 })
 
+const hasVisionReasoning = computed(() => !!props.message.vision?.reasoning.trim())
+
+const hasVisionAnswer = computed(() => !!props.message.vision?.answer.trim())
+
+const hasVisionContent = computed(() => hasVisionReasoning.value || hasVisionAnswer.value || !!props.message.vision?.streaming)
+
 /** 流式输出中且尚无内容时展示 loading */
-const showLoading = computed(() => props.message.streaming && !props.message.content)
+const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value)
 
-/** 是否需要点击后懒加载 AI 回复 */
-const needsLazyLoad = computed(() => !isUser.value && !props.message.streaming && !props.message.content && !!props.message.messageId)
+/** AI 回复是否可折叠（流式结束后且有正文） */
+const canCollapse = computed(() => !isUser.value && !props.message.streaming && (!!props.message.content.trim() || hasVisionContent.value))
 
-/** Agent 回复折叠面板是否展开 */
-const replyExpanded = ref(false)
+/** AI 回复折叠面板是否展开 */
+const replyExpanded = ref(!!props.message.streaming)
 
-/** 懒加载的 AI 回复正文 */
-const replyContent = ref('')
+/** 图像思考区块是否展开，默认折叠 */
+const visionReasoningExpanded = ref(false)
 
-/** 懒加载中 */
-const replyLoading = ref(false)
+/** 是否展示 AI 回复正文 */
+const showReplyContent = computed(() => props.message.streaming || replyExpanded.value)
+
+/** 用户消息 Markdown 图片语法 */
+const USER_IMAGE_MARKDOWN_RE = /!\[[^\]]*\]\(([^)]+)\)/g
 
 /**
- * 切换 Agent 回复折叠面板
+ * 从用户消息正文中拆分文本与图片 URL
+ * @param content 消息正文
  */
-async function toggleReply() {
+function parseUserMessageContent(content: string): { text: string; imageUrls: string[] } {
+  const imageUrls: string[] = []
+  const text = content
+    .replace(USER_IMAGE_MARKDOWN_RE, (_, url: string) => {
+      imageUrls.push(url.trim())
+      return ''
+    })
+    .replace(/\n{2,}/g, '\n\n')
+    .trim()
+
+  return { text, imageUrls }
+}
+
+/** 用户消息拆分结果（文本 + 图片 URL） */
+const userMessageParts = computed(() => {
+  if (!isUser.value) {
+    return { text: '', imageUrls: [] as string[] }
+  }
+  return parseUserMessageContent(props.message.content)
+})
+
+/** 用户消息是否包含图片 */
+const hasUserImages = computed(() => userMessageParts.value.imageUrls.length > 0)
+
+watch(
+  () => props.message.streaming,
+  (streaming) => {
+    if (streaming) {
+      replyExpanded.value = true
+    }
+  },
+)
+
+/**
+ * 切换 AI 回复折叠状态
+ */
+function toggleReply() {
   replyExpanded.value = !replyExpanded.value
+}
 
-  if (!replyExpanded.value || replyContent.value || replyLoading.value || !props.message.messageId) {
-    return
-  }
-
-  replyLoading.value = true
-  try {
-    const result = await getAiReply({ id: props.message.messageId })
-    replyContent.value = result.content
-  } catch {
-    replyExpanded.value = false
-  } finally {
-    replyLoading.value = false
-  }
+/**
+ * 切换图像思考折叠状态
+ */
+function toggleVisionReasoning() {
+  visionReasoningExpanded.value = !visionReasoningExpanded.value
 }
 </script>
 
@@ -72,24 +110,60 @@ async function toggleReply() {
     <div class="chat-message-body">
       <div class="chat-message-bubble">
         <span v-if="showLoading" class="chat-message-loading" aria-label="加载中" />
-        <template v-else-if="needsLazyLoad">
-          <button type="button" class="chat-message-reply-toggle" @click="toggleReply">
+        <template v-else-if="isUser">
+          <div class="chat-message-user-content">
+            <div v-if="userMessageParts.text" class="chat-message-user-text">
+              <MarkdownContent :content="userMessageParts.text" />
+            </div>
+            <div v-if="hasUserImages" class="chat-message-user-images">
+              <img
+                v-for="(url, index) in userMessageParts.imageUrls"
+                :key="`${url}-${index}`"
+                :src="url"
+                crossorigin="anonymous"
+                alt="图片"
+              />
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <button v-if="canCollapse" type="button" class="chat-message-reply-toggle" @click="toggleReply">
             <span>Agent 回复</span>
             <svg class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
-          <div v-show="replyExpanded" class="chat-message-reply-panel">
-            <span v-if="replyLoading" class="chat-message-loading" aria-label="加载中" />
-            <MarkdownContent v-else :content="replyContent" />
+          <div v-show="showReplyContent" class="chat-message-reply-panel" :class="{ 'chat-message-reply-panel--flat': !canCollapse }">
+            <div v-if="hasVisionContent" class="chat-message-vision">
+              <div v-if="hasVisionReasoning" class="chat-message-vision-section">
+                <button type="button" class="chat-message-vision-toggle" @click="toggleVisionReasoning">
+                  <span>图像思考</span>
+                  <svg
+                    class="chat-message-reply-arrow"
+                    :class="{ 'chat-message-reply-arrow--expanded': visionReasoningExpanded }"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+                <div v-show="visionReasoningExpanded" class="chat-message-vision-content">
+                  <MarkdownContent :content="message.vision?.reasoning ?? ''" />
+                </div>
+              </div>
+              <div v-if="hasVisionAnswer" class="chat-message-vision-section">
+                <div class="chat-message-vision-title">图像理解</div>
+                <MarkdownContent :content="message.vision?.answer ?? ''" />
+              </div>
+              <div v-if="message.vision?.streaming" class="chat-message-vision-running">
+                <span class="chat-message-loading chat-message-loading--small" aria-label="识别中" />
+                <span>图像识别中</span>
+              </div>
+            </div>
+            <MarkdownContent v-if="message.content" :content="message.content" />
+            <span v-if="message.streaming && message.content" class="chat-message-cursor" />
           </div>
-        </template>
-        <template v-else-if="isUser">
-          <span>{{ message.content }}</span>
-        </template>
-        <template v-else>
-          <MarkdownContent :content="message.content" />
-          <span v-if="message.streaming && message.content" class="chat-message-cursor" />
         </template>
         <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime }}</span>
       </div>
@@ -173,6 +247,49 @@ html.dark .chat-message--assistant .chat-message-avatar {
 .chat-message--user .chat-message-bubble {
   background-color: var(--app-bg-subtle);
   color: var(--app-text-primary);
+  white-space: normal;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.chat-message-user-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.375rem;
+  max-width: 100%;
+}
+
+.chat-message-user-text {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.chat-message-user-text :deep(.markdown-content p) {
+  margin: 0;
+}
+
+.chat-message-user-images {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+.chat-message-user-images img {
+  display: block;
+  width: 3.5rem;
+  height: 3.5rem;
+  object-fit: cover;
+  border-radius: 0.625rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+html.dark .chat-message-user-images img {
+  border-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 .chat-message--assistant .chat-message-bubble {
@@ -220,6 +337,56 @@ html.dark .chat-message--user .chat-message-bubble {
   word-break: break-word;
 }
 
+.chat-message-reply-panel--flat {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.chat-message-vision {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-bottom: 0.625rem;
+  padding: 0.625rem;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background-color: var(--app-bg-subtle);
+  color: var(--app-text-secondary);
+}
+
+.chat-message-vision-section + .chat-message-vision-section {
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--app-border);
+}
+
+.chat-message-vision-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--app-text-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.chat-message-vision-content {
+  margin-top: 0.25rem;
+}
+
+.chat-message-vision-running {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+}
+
 .chat-message-time {
   position: absolute;
   right: 0;
@@ -258,6 +425,12 @@ html.dark .chat-message--user .chat-message-bubble {
   border-top-color: #2463dc;
   border-radius: 50%;
   animation: chat-message-spin 0.8s linear infinite;
+}
+
+.chat-message-loading--small {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-width: 1.5px;
 }
 
 @keyframes chat-message-spin {

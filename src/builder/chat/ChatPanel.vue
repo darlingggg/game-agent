@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
-import { createSession, getSessionList, type sessionItem } from '@/http/session'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { getSessionList, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
 import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
 import type { ChatMessage } from './types'
-import { chatWithAI } from '@/http/chat'
+import { chatWithAI, reconnectChatStream, type ChatSseEvent } from '@/http/chat'
+import { uploadImageToCos } from '@/http/cos'
+import { getUserInfo } from '@/http/user'
 import { useLogContext } from '@/builder/log/logContext'
-import { buildChatPrompt, getChatAppearanceContext } from '@/builder/config/appearanceConfig'
-import { useAppearanceStore } from '@/stores/appearance'
 
 defineOptions({
   name: 'ChatPanel',
@@ -17,7 +18,6 @@ defineOptions({
 const projectStore = useProjectStore()
 const sessionContext = useSessionContext()
 const logContext = useLogContext()
-const appearanceStore = useAppearanceStore()
 
 /** 消息列表 */
 const messages = ref<ChatMessage[]>([])
@@ -27,6 +27,42 @@ const messagesLoading = ref(false)
 
 /** 输入框内容 */
 const inputText = ref('')
+
+/** 待发送图片项 */
+interface PendingChatImage {
+  /** 本地唯一 id */
+  id: string
+  /** COS 访问地址，上传完成后赋值 */
+  cosUrl: string
+  /** 本地 blob 预览地址，上传完成后释放 */
+  blobUrl: string
+  /** 是否上传中 */
+  uploading: boolean
+}
+
+/** 待发送的图片列表 */
+const pendingImages = ref<PendingChatImage[]>([])
+
+/** 是否存在上传中的图片 */
+const hasUploadingImage = computed(() => pendingImages.value.some((item) => item.uploading))
+
+/** 待发送图片 id 自增 */
+let pendingImageIdSeed = 0
+
+/** 当前用户账号，用于 COS uploads/{account} 路径 */
+const userAccount = ref('')
+
+/** 隐藏的文件选择器 */
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+/** 消息输入框 */
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+/** 允许上传的图片 MIME 类型 */
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
+/** 单张图片大小上限（10MB） */
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024
 
 /** 是否正在流式回复 */
 const isStreaming = ref(false)
@@ -42,6 +78,12 @@ let abortController: AbortController | null = null
 
 /** 当前流式回复中的 AI 消息 id */
 let streamingAssistantId: string | null = null
+
+/** 当前正在订阅的后端消息 id */
+let streamingBackendMessageId: number | null = null
+
+/** 新会话拿到后端 id 后，跳过一次由 activeSessionId 变更触发的重载 */
+let skipNextSessionLoad = false
 
 /** 消息 id 自增计数（本地临时消息） */
 let messageIdSeed = 0
@@ -59,11 +101,63 @@ const sessionTitle = ref('')
 const backendSessionTitle = ref('')
 
 /**
- * 获取会话去重键（与 SessionPanel 保持一致）
+ * 释放单张图片的 blob 预览地址
+ * @param image 待发送图片
+ */
+function revokePendingImageBlob(image: PendingChatImage) {
+  if (image.blobUrl) {
+    URL.revokeObjectURL(image.blobUrl)
+    image.blobUrl = ''
+  }
+}
+
+/**
+ * 释放待发送图片的 blob 预览地址
+ * @param images 待释放图片列表
+ */
+function revokePendingImagePreviews(images: PendingChatImage[]) {
+  for (const image of images) {
+    revokePendingImageBlob(image)
+  }
+}
+
+/**
+ * 生成待发送图片本地 id
+ */
+function createPendingImageId(): string {
+  pendingImageIdSeed += 1
+  return `pending-image-${pendingImageIdSeed}`
+}
+
+/**
+ * 清空待发送图片
+ */
+function clearPendingImages() {
+  revokePendingImagePreviews(pendingImages.value)
+  pendingImages.value = []
+}
+
+/**
  * @param item 会话项
  */
 function getSessionKey(item: sessionItem) {
   return item.title.trim() || item.content?.trim() || String(item.id)
+}
+
+/**
+ * 获取当前会话用于日志接口的 title（与 chat/stream 保持一致）
+ */
+function getLogSessionTitle(): string {
+  return backendSessionTitle.value.trim() || sessionTitle.value.trim()
+}
+
+/**
+ * 同步日志面板到当前会话
+ * @param currentProjectId 项目 id
+ * @param title 会话标题
+ */
+function syncLogSession(currentProjectId: number, title: string) {
+  void logContext.switchSession(currentProjectId, title)
 }
 
 /**
@@ -86,27 +180,16 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
   }
 
   const content = item.content?.trim() ?? ''
-  if (content) {
-    return {
-      id: String(item.id),
-      role: 'assistant',
-      content,
-      createdAt: item.createdAt,
-    }
-  }
+  if (!content && item.status !== 'streaming') return null
 
-  // assistant 正文存在 messages 表，列表里 content 为空，通过 messageId 懒加载
-  if (item.messageId) {
-    return {
-      id: String(item.id),
-      role: 'assistant',
-      content: '',
-      messageId: item.messageId,
-      createdAt: item.createdAt,
-    }
+  return {
+    id: String(item.id),
+    role: 'assistant',
+    content,
+    messageId: item.messageId,
+    streaming: item.status === 'streaming',
+    createdAt: item.createdAt,
   }
-
-  return null
 }
 
 /**
@@ -126,12 +209,18 @@ function pickSessionMessages(list: sessionItem[], sessionId: number) {
  * 加载当前会话的历史消息
  */
 async function loadSessionMessages() {
+  const currentProjectId = projectId()
+
   if (sessionContext.isPendingNewSession.value) {
     stopStreaming()
     messages.value = []
     inputText.value = ''
+    clearPendingImages()
     sessionTitle.value = ''
     backendSessionTitle.value = ''
+    if (currentProjectId) {
+      syncLogSession(currentProjectId, '')
+    }
     return
   }
 
@@ -139,12 +228,16 @@ async function loadSessionMessages() {
   if (!sessionId || sessionId === PENDING_SESSION_ID) {
     stopStreaming()
     messages.value = []
+    inputText.value = ''
+    clearPendingImages()
     sessionTitle.value = ''
     backendSessionTitle.value = ''
+    if (currentProjectId) {
+      syncLogSession(currentProjectId, '')
+    }
     return
   }
 
-  const currentProjectId = projectId()
   if (!currentProjectId) return
 
   messagesLoading.value = true
@@ -154,6 +247,9 @@ async function loadSessionMessages() {
     if (target) {
       sessionTitle.value = getSessionKey(target)
       backendSessionTitle.value = target.title.trim()
+    } else {
+      sessionTitle.value = ''
+      backendSessionTitle.value = ''
     }
 
     const sessionMessages = pickSessionMessages(list, sessionId)
@@ -163,6 +259,13 @@ async function loadSessionMessages() {
 
     messages.value = sessionMessages
     await scrollToBottom()
+
+    const lastItem = sessionMessages[sessionMessages.length - 1]
+    if (lastItem?.messageId && lastItem.streaming) {
+      void reconnectStreamingAssistant(lastItem)
+    }
+
+    syncLogSession(currentProjectId, getLogSessionTitle())
   } catch {
     // 错误提示由 axios 拦截器统一处理
   } finally {
@@ -173,36 +276,223 @@ async function loadSessionMessages() {
 /** 切换会话时加载历史消息 */
 watch(
   () => [sessionContext.activeSessionId.value, sessionContext.isPendingNewSession.value] as const,
-  () => {
+  ([nextSessionId], oldValue) => {
+    if (skipNextSessionLoad) {
+      skipNextSessionLoad = false
+      return
+    }
+    const prevSessionId = oldValue?.[0]
+    if (prevSessionId && nextSessionId !== prevSessionId) {
+      stopStreaming()
+    }
     void loadSessionMessages()
   },
   { immediate: true },
 )
 
+onMounted(async () => {
+  try {
+    const userInfo = await getUserInfo()
+    userAccount.value = userInfo.account
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
+  }
+})
+
 /**
- * 首条消息时创建会话（不传 title，后端取 content 前 30 字作为 title）
- * @param text 用户首条消息
+ * 将待发送图片转为 Markdown 片段
+ * @param urls 图片 URL 列表
  */
-async function createSessionOnFirstMessage(text: string) {
-  const currentProjectId = projectId()
-  if (!currentProjectId) {
-    throw new Error('项目未就绪')
+function buildImageMarkdown(urls: string[]): string {
+  return urls.map((url) => `![图片](${url})`).join(' ')
+}
+
+/**
+ * 拼接文本与图片 Markdown，作为最终发送内容
+ * @param text 用户输入文本
+ * @param imageUrls 已上传图片 URL
+ */
+function buildMessageContent(text: string, imageUrls: string[]): string {
+  const imageMarkdown = buildImageMarkdown(imageUrls)
+  return [text, imageMarkdown].filter(Boolean).join('\n\n')
+}
+
+/**
+ * 将光标聚焦到消息输入框
+ */
+function focusInput() {
+  if (isStreaming.value) return
+  nextTick(() => {
+    inputRef.value?.focus()
+  })
+}
+
+/**
+ * 打开图片选择器
+ */
+function handleUploadClick() {
+  if (isStreaming.value) return
+  fileInputRef.value?.click()
+}
+
+/**
+ * 上传单张待发送图片到 COS
+ * @param file 图片文件
+ */
+async function uploadPendingImage(file: File) {
+  const pendingId = createPendingImageId()
+  const pendingItem: PendingChatImage = {
+    id: pendingId,
+    cosUrl: '',
+    blobUrl: URL.createObjectURL(file),
+    uploading: true,
+  }
+  pendingImages.value.push(pendingItem)
+
+  try {
+    const result = await uploadImageToCos(file, userAccount.value)
+    const target = pendingImages.value.find((item) => item.id === pendingId)
+    if (!target) return
+
+    target.cosUrl = result.url
+    target.uploading = false
+    revokePendingImageBlob(target)
+  } catch (error) {
+    const failedIndex = pendingImages.value.findIndex((item) => item.id === pendingId)
+    if (failedIndex >= 0) {
+      removePendingImage(failedIndex)
+    }
+    ElMessage.error(error instanceof Error ? error.message : '图片上传失败，请重试')
+  }
+}
+
+/**
+ * 校验并上传图片文件（文件选择、粘贴共用）
+ * @param files 待处理文件列表
+ */
+async function handleImageFiles(files: File[]) {
+  if (files.length === 0 || isStreaming.value) return
+
+  if (!userAccount.value) {
+    ElMessage.warning('用户信息未就绪，请稍后重试')
+    return
   }
 
-  sessionTitle.value = text.slice(0, 30)
+  const maxSizeMb = MAX_IMAGE_SIZE / 1024 / 1024
+  const validFiles: File[] = []
+  for (const file of files) {
+    const name = file.name || '粘贴的图片'
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      ElMessage.warning(`${name}：仅支持 JPG、PNG、GIF、WebP 格式图片`)
+      continue
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      ElMessage.warning(`${name}：单张图片不能超过 ${maxSizeMb}MB`)
+      continue
+    }
+    validFiles.push(file)
+  }
 
-  const result = await createSession({
-    projectId: currentProjectId,
-    role: 'user',
-    content: text,
-  })
+  if (validFiles.length === 0) return
 
-  sessionContext.isPendingNewSession.value = false
-  sessionContext.activeSessionId.value = result.id
-  sessionContext.lastCreatedSession.value = {
-    id: result.id,
-    content: result.content,
-    firstMessage: text,
+  void Promise.all(validFiles.map((file) => uploadPendingImage(file)))
+}
+
+/**
+ * 处理图片选择并上传到 COS（支持多选）
+ * @param event 文件选择事件
+ */
+async function handleImageSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+
+  try {
+    await handleImageFiles(files)
+  } finally {
+    focusInput()
+  }
+}
+
+/**
+ * 从粘贴事件中同步提取剪贴板图片
+ * 注意：clipboardData 仅在 paste 回调同步执行期间有效，不能 console.log 后再读
+ * @param event 粘贴事件
+ */
+function extractImagesFromPasteEvent(event: ClipboardEvent): File[] {
+  const clipboardData = event.clipboardData
+  if (!clipboardData) return []
+
+  const imageFiles: File[] = []
+
+  for (const item of clipboardData.items) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (file) imageFiles.push(file)
+  }
+
+  // items 与 files 常是同一图片的不同 File 引用，items 有结果时不再读 files
+  if (imageFiles.length > 0) return imageFiles
+
+  for (const file of clipboardData.files) {
+    if (file.type.startsWith('image/')) imageFiles.push(file)
+  }
+
+  return imageFiles
+}
+
+/**
+ * 通过 Async Clipboard API 读取图片（paste 事件 items 为空时的降级方案）
+ */
+async function readImagesFromClipboardApi(): Promise<File[]> {
+  if (!navigator.clipboard?.read) return []
+
+  try {
+    const items = await navigator.clipboard.read()
+    const imageFiles: File[] = []
+
+    for (const item of items) {
+      const imageType = item.types.find((type) => type.startsWith('image/'))
+      if (!imageType) continue
+      const blob = await item.getType(imageType)
+      const ext = imageType.split('/')[1] || 'png'
+      imageFiles.push(new File([blob], `clipboard_${Date.now()}.${ext}`, { type: imageType }))
+    }
+
+    return imageFiles
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 输入框粘贴：支持直接粘贴剪贴板中的图片
+ * @param event 粘贴事件
+ */
+async function handleInputPaste(event: ClipboardEvent) {
+  if (isStreaming.value) return
+
+  let imageFiles = extractImagesFromPasteEvent(event)
+
+  // Chrome 复制网页图片等场景下 items 可能同步为空，尝试 Async Clipboard API
+  if (imageFiles.length === 0) {
+    imageFiles = await readImagesFromClipboardApi()
+  }
+
+  if (imageFiles.length === 0) return
+
+  event.preventDefault()
+  void handleImageFiles(imageFiles).finally(() => focusInput())
+}
+
+/**
+ * 移除待发送图片
+ * @param index 图片索引
+ */
+function removePendingImage(index: number) {
+  const [removed] = pendingImages.value.splice(index, 1)
+  if (removed) {
+    revokePendingImageBlob(removed)
   }
 }
 
@@ -254,6 +544,7 @@ function stopStreaming() {
   abortController?.abort()
   abortController = null
   isStreaming.value = false
+  streamingBackendMessageId = null
 
   if (streamingAssistantId) {
     finishAssistantStreaming(streamingAssistantId)
@@ -281,27 +572,6 @@ async function ensureSessionTitle() {
 }
 
 /**
- * 上传消息到会话
- * @param role 消息角色
- * @param content 消息内容
- */
-async function saveMessageToSession(role: 'user' | 'assistant', content: string) {
-  const currentProjectId = projectId()
-  const trimmed = content.trim()
-  if (!currentProjectId || !trimmed) return
-
-  const title = await ensureSessionTitle()
-  if (!title) return
-
-  await createSession({
-    projectId: currentProjectId,
-    role,
-    content: trimmed,
-    title,
-  })
-}
-
-/**
  * 将 AI 文本片段追加到消息气泡
  * @param assistantId AI 消息 id
  * @param text 文本片段
@@ -310,7 +580,49 @@ function appendTextToMessage(assistantId: string, text: string) {
   const assistantMessage = findMessageById(assistantId)
   if (!assistantMessage) return
   assistantMessage.content += text
-  void scrollToBottom()
+}
+
+function ensureVisionMessage(assistantId: string) {
+  const assistantMessage = findMessageById(assistantId)
+  if (!assistantMessage) return null
+  if (!assistantMessage.vision) {
+    assistantMessage.vision = {
+      reasoning: '',
+      answer: '',
+      streaming: false,
+    }
+  }
+  return assistantMessage.vision
+}
+
+function updateAssistantBackendIds(assistantId: string, data: unknown) {
+  if (!data || typeof data !== 'object') return
+  const payload = data as {
+    userSessionId?: unknown
+    assistantSessionId?: unknown
+    assistantMessageId?: unknown
+  }
+  const assistantMessageId = Number(payload.assistantMessageId)
+  const userSessionId = Number(payload.userSessionId)
+
+  const assistantMessage = findMessageById(assistantId)
+  if (assistantMessage) {
+    if (Number.isFinite(assistantMessageId)) {
+      assistantMessage.messageId = assistantMessageId
+      streamingBackendMessageId = assistantMessageId
+    }
+  }
+
+  if (Number.isFinite(userSessionId) && sessionContext.isPendingNewSession.value) {
+    skipNextSessionLoad = true
+    sessionContext.isPendingNewSession.value = false
+    sessionContext.activeSessionId.value = userSessionId
+    sessionContext.lastCreatedSession.value = {
+      id: userSessionId,
+      content: '创建成功',
+      firstMessage: messages.value.find((item) => item.role === 'user')?.content ?? '',
+    }
+  }
 }
 
 /**
@@ -318,24 +630,101 @@ function appendTextToMessage(assistantId: string, text: string) {
  * @param assistantId AI 消息 id
  * @param event SSE 事件
  */
-function handleSseEvent(assistantId: string, event: { event: string; data: string | null }) {
-  if (!event.data) return
-
+function handleSseEvent(assistantId: string, event: ChatSseEvent) {
   const currentProjectId = projectId()
 
-  if (event.event === 'text') {
+  if (event.event === 'message') {
+    updateAssistantBackendIds(assistantId, event.data)
+    return
+  }
+
+  if (event.event === 'text' && typeof event.data === 'string') {
     appendTextToMessage(assistantId, event.data)
     logContext.appendAiText(event.data, currentProjectId)
     return
   }
 
-  if (event.event === 'tool_start') {
+  if (event.event === 'vision_start' || event.event === 'visual_start') {
+    const vision = ensureVisionMessage(assistantId)
+    if (vision) vision.streaming = true
+    return
+  }
+
+  if (event.event === 'visual_analysis' && typeof event.data === 'string') {
+    const vision = ensureVisionMessage(assistantId)
+    if (vision) {
+      vision.reasoning += event.data
+      vision.streaming = true
+    }
+    return
+  }
+
+  if (event.event === 'visual_answer' && typeof event.data === 'string') {
+    const vision = ensureVisionMessage(assistantId)
+    if (vision) {
+      vision.answer += event.data
+      vision.streaming = true
+    }
+    return
+  }
+
+  if (event.event === 'visual_done' || event.event === 'vision_done') {
+    const vision = ensureVisionMessage(assistantId)
+    if (vision) {
+      if (event.event === 'vision_done' && typeof event.data === 'string' && !vision.answer.trim()) {
+        vision.answer = event.data
+      }
+      vision.streaming = false
+    }
+    return
+  }
+
+  if (event.event === 'tool_start' && typeof event.data === 'string') {
     logContext.handleToolStart(event.data, currentProjectId)
     return
   }
 
-  if (event.event === 'tool_end') {
+  if (event.event === 'tool_end' && typeof event.data === 'string') {
     void logContext.handleToolEnd(event.data, currentProjectId)
+    return
+  }
+
+  if (event.event === 'done') {
+    void scrollToBottom()
+  }
+}
+
+async function reconnectStreamingAssistant(message: ChatMessage) {
+  if (!message.messageId || streamingBackendMessageId === message.messageId) return
+
+  stopStreaming()
+  message.streaming = true
+  streamingAssistantId = message.id
+  streamingBackendMessageId = message.messageId
+  isStreaming.value = true
+  userAborted.value = false
+  abortController = new AbortController()
+
+  try {
+    await reconnectChatStream({
+      messageId: message.messageId,
+      offset: message.content.length,
+      signal: abortController.signal,
+      onEvent: (event) => {
+        handleSseEvent(message.id, event)
+      },
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    if (!message.content) {
+      message.content = '回复失败，请重试'
+    }
+  } finally {
+    finishAssistantStreaming(message.id)
+    streamingAssistantId = null
+    streamingBackendMessageId = null
+    abortController = null
+    isStreaming.value = false
   }
 }
 
@@ -344,31 +733,24 @@ function handleSseEvent(assistantId: string, event: { event: string; data: strin
  */
 async function handleSend() {
   const text = inputText.value.trim()
-  if (!text || isStreaming.value) return
+  const imageUrls = pendingImages.value.filter((item) => item.cosUrl).map((item) => item.cosUrl)
+  const content = buildMessageContent(text, imageUrls)
+
+  if (!content || isStreaming.value || hasUploadingImage.value) return
 
   const isPending = sessionContext.isPendingNewSession.value
   const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
-  const needsCreateSession = isPending || hasNoSession
+  const needsNewBackendSession = isPending || hasNoSession
 
-  try {
-    if (needsCreateSession) {
-      await createSessionOnFirstMessage(text)
-      await loadSessionMessages()
-    } else {
-      await saveMessageToSession('user', text)
-      messages.value.push({
-        id: createMessageId(),
-        role: 'user',
-        content: text,
-        createdAt: new Date().toISOString(),
-      })
-    }
-  } catch {
-    // 错误提示由 axios 拦截器统一处理
-    return
-  }
+  messages.value.push({
+    id: createMessageId(),
+    role: 'user',
+    content,
+    createdAt: new Date().toISOString(),
+  })
 
   inputText.value = ''
+  clearPendingImages()
   await scrollToBottom()
 
   const assistantId = createMessageId()
@@ -386,15 +768,17 @@ async function handleSend() {
   await scrollToBottom()
 
   const currentProjectId = projectId()
-  const chatTitle = backendSessionTitle.value.trim() || undefined
-  const appearanceConfig = appearanceStore.config
-  const appearanceContext = getChatAppearanceContext(appearanceConfig)
-  const finalPrompt = buildChatPrompt(text, appearanceConfig)
-
+  const resolvedChatTitle = needsNewBackendSession
+    ? content.slice(0, 30)
+    : backendSessionTitle.value.trim() || (await ensureSessionTitle())
+  const chatTitle = resolvedChatTitle.trim() || undefined
+  if (needsNewBackendSession) {
+    sessionTitle.value = resolvedChatTitle
+    backendSessionTitle.value = resolvedChatTitle
+    syncLogSession(currentProjectId, resolvedChatTitle.trim())
+  }
   console.log('[ChatPrompt]', {
-    userInput: text,
-    appearanceContext,
-    finalPrompt,
+    userInput: content,
     projectId: currentProjectId,
     title: chatTitle,
   })
@@ -410,9 +794,10 @@ async function handleSend() {
 
   try {
     await chatWithAI({
-      prompt: finalPrompt,
+      prompt: content,
       projectId: currentProjectId,
       title: chatTitle,
+      imageUrls,
       signal: abortController.signal,
       onEvent: (event) => {
         handleSseEvent(assistantId, event)
@@ -436,23 +821,20 @@ async function handleSend() {
       await logContext.finalizeAiStream(currentProjectId)
     }
 
-    const assistantMessage = findMessageById(assistantId)
-    if (assistantMessage?.content.trim() && assistantMessage.content !== '回复失败，请重试') {
-      try {
-        await saveMessageToSession('assistant', assistantMessage.content)
-      } catch {
-        // 错误提示由 axios 拦截器统一处理
-      }
-    }
     streamingAssistantId = null
+    streamingBackendMessageId = null
     abortController = null
     isStreaming.value = false
-    await scrollToBottom()
   }
 }
 
+onUnmounted(() => {
+  stopStreaming()
+  clearPendingImages()
+})
+
 /**
- * 输入框按键：Enter 发送，Shift+Enter 换行
+ * 输入框按键：Ctrl+Enter 发送，Enter 换行
  * @param event 键盘事件
  */
 function handleInputKeydown(event: KeyboardEvent) {
@@ -483,25 +865,50 @@ function handleActionClick() {
 
     <div class="chat-panel-input-area">
       <div class="chat-panel-input-shell">
-        <textarea
-          v-model="inputText"
-          class="chat-panel-input"
-          placeholder="输入消息，Enter 换行， Ctrl+Enter 发送"
-          rows="5"
-          :disabled="isStreaming"
-          @keydown="handleInputKeydown"
-        />
-        <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-          :title="isStreaming ? '终止' : '发送'" @click="handleActionClick">
-          <!-- 发送图标 -->
-          <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
-          </svg>
-          <!-- 终止图标 -->
-          <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
-          </svg>
-        </button>
+        <div v-if="pendingImages.length > 0" class="chat-panel-image-preview">
+          <div v-for="(image, index) in pendingImages" :key="image.id" class="chat-panel-image-preview-item"
+            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }">
+            <img :src="image.uploading ? image.blobUrl : image.cosUrl"
+              :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
+            <div v-if="image.uploading" class="chat-panel-image-loading">
+              <span class="chat-panel-image-loading-spinner" aria-label="上传中" />
+            </div>
+            <button type="button" class="chat-panel-image-remove" title="移除图片"
+              :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">
+              ×
+            </button>
+          </div>
+        </div>
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple
+          class="chat-panel-file-input" @change="handleImageSelect" />
+        <div class="chat-panel-input-body">
+          <textarea ref="inputRef" v-model="inputText" class="chat-panel-input"
+            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送" rows="5" :disabled="isStreaming"
+            @keydown="handleInputKeydown" @paste="handleInputPaste" />
+          <div class="chat-panel-input-footer">
+            <button type="button" class="chat-panel-upload-btn"
+              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }" title="上传图片（可多选）" :disabled="isStreaming"
+              @click="handleUploadClick">
+              <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
+              <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+              :title="isStreaming ? '终止' : '发送'" :disabled="hasUploadingImage" @click="handleActionClick">
+              <!-- 发送图标 -->
+              <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
+              </svg>
+              <!-- 终止图标 -->
+              <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -512,18 +919,8 @@ function handleActionClick() {
 .chat-panel {
   --chat-input-bg: var(--app-surface);
   --chat-input-shell-border: var(--app-border-strong);
-  --chat-input-shell-focus-gradient: conic-gradient(
-    from 0deg,
-    #4285f4,
-    #9b72cb,
-    #d96570,
-    #f4b400,
-    #0f9d58,
-    #4285f4
-  );
-  --chat-input-shell-focus-shadow:
-    0 0 0 3px rgba(66, 133, 244, 0.12),
-    0 4px 20px rgba(155, 114, 203, 0.14);
+  --chat-input-shell-focus-gradient: conic-gradient(from 0deg, #4285f4, #9b72cb, #d96570, #f4b400, #0f9d58, #4285f4);
+  --chat-input-shell-focus-shadow: 0 0 0 3px rgba(66, 133, 244, 0.12), 0 4px 20px rgba(155, 114, 203, 0.14);
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -542,8 +939,7 @@ function handleActionClick() {
   padding: 1rem;
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(36, 99, 220, 0.06) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(155, 114, 203, 0.04) 0%, transparent 50%),
-    var(--app-surface);
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(155, 114, 203, 0.04) 0%, transparent 50%), var(--app-surface);
   scrollbar-width: thin;
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
@@ -597,6 +993,98 @@ function handleActionClick() {
     box-shadow 0.28s ease;
 }
 
+.chat-panel-file-input {
+  display: none;
+}
+
+.chat-panel-image-preview {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem 0;
+  border-radius: calc(1.125rem - 2px) calc(1.125rem - 2px) 0 0;
+  background-color: var(--chat-input-bg);
+}
+
+.chat-panel-input-body {
+  position: relative;
+  z-index: 1;
+  border-radius: calc(1.125rem - 2px);
+  background-color: var(--chat-input-bg);
+}
+
+.chat-panel-input-shell:has(.chat-panel-image-preview) .chat-panel-input-body {
+  border-radius: 0 0 calc(1.125rem - 2px) calc(1.125rem - 2px);
+}
+
+.chat-panel-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.625rem 0.625rem;
+}
+
+.chat-panel-image-preview-item {
+  position: relative;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+}
+
+.chat-panel-image-preview-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-panel-image-preview-item--uploading img {
+  opacity: 0.72;
+}
+
+.chat-panel-image-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.28);
+}
+
+.chat-panel-image-loading-spinner {
+  display: inline-block;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: chat-upload-spin 0.8s linear infinite;
+}
+
+.chat-panel-image-remove {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.125rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: none;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chat-panel-image-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .chat-panel-input-shell::before {
   content: '';
   position: absolute;
@@ -637,12 +1125,12 @@ function handleActionClick() {
   margin: 0;
   resize: none;
   border: none;
-  border-radius: calc(1.125rem - 2px);
-  padding: 0.75rem 3rem 0.75rem 0.875rem;
+  border-radius: calc(1.125rem - 2px) calc(1.125rem - 2px) 0 0;
+  padding: 0.75rem 0.875rem 0.375rem;
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--app-text-primary);
-  background-color: var(--chat-input-bg);
+  background-color: transparent;
   outline: none;
   font-family: auto;
   overflow: auto;
@@ -651,22 +1139,82 @@ function handleActionClick() {
   transition: background-color 0.2s ease;
 }
 
+.chat-panel-input-shell:has(.chat-panel-image-preview) .chat-panel-input {
+  border-radius: 0;
+  padding-top: 0.5rem;
+}
+
+.chat-panel-input-shell:not(:has(.chat-panel-image-preview)) .chat-panel-input {
+  border-radius: calc(1.125rem - 2px) calc(1.125rem - 2px) 0 0;
+}
+
 /* Chrome/Safari/Opera */
 .chat-panel-input::-webkit-scrollbar {
   display: none;
 }
 
 .chat-panel-input:disabled {
-  background-color: var(--app-bg-subtle);
   color: var(--app-text-secondary);
   cursor: not-allowed;
 }
 
+.chat-panel-input-body:has(.chat-panel-input:disabled) {
+  background-color: var(--app-bg-subtle);
+}
+
+.chat-panel-upload-btn {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.chat-panel-upload-btn svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.chat-panel-upload-btn:hover:not(:disabled) {
+  background-color: var(--app-bg-subtle);
+  color: var(--app-accent);
+}
+
+.chat-panel-upload-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.chat-panel-upload-btn--loading {
+  pointer-events: none;
+}
+
+.chat-panel-upload-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--app-border);
+  border-top-color: var(--app-accent);
+  border-radius: 50%;
+  animation: chat-upload-spin 0.8s linear infinite;
+}
+
+@keyframes chat-upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .chat-panel-action-btn {
-  position: absolute;
-  right: 0.625rem;
-  bottom: 0.625rem;
-  z-index: 2;
   width: 2rem;
   height: 2rem;
   border: none;
@@ -677,6 +1225,7 @@ function handleActionClick() {
   background-color: var(--app-accent);
   color: #fff;
   cursor: pointer;
+  flex-shrink: 0;
   transform: rotate(-90deg);
   transition: background-color 0.2s ease;
 }
@@ -690,6 +1239,11 @@ function handleActionClick() {
   background-color: #1d4fb8;
 }
 
+.chat-panel-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .chat-panel-action-btn--stop {
   background-color: #ef4444;
 }
@@ -701,25 +1255,14 @@ function handleActionClick() {
 html.dark .chat-panel {
   --chat-input-bg: var(--app-surface);
   --chat-input-shell-border: var(--app-border-strong);
-  --chat-input-shell-focus-gradient: conic-gradient(
-    from 0deg,
-    #5b9bf8,
-    #b08cf0,
-    #e07a7f,
-    #f7c948,
-    #3ecf8e,
-    #5b9bf8
-  );
-  --chat-input-shell-focus-shadow:
-    0 0 0 3px rgba(91, 155, 248, 0.18),
-    0 4px 24px rgba(176, 140, 240, 0.2);
+  --chat-input-shell-focus-gradient: conic-gradient(from 0deg, #5b9bf8, #b08cf0, #e07a7f, #f7c948, #3ecf8e, #5b9bf8);
+  --chat-input-shell-focus-shadow: 0 0 0 3px rgba(91, 155, 248, 0.18), 0 4px 24px rgba(176, 140, 240, 0.2);
 }
 
 html.dark .chat-panel-messages {
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(91, 140, 255, 0.1) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(138, 180, 248, 0.05) 0%, transparent 50%),
-    linear-gradient(180deg, #12151c 0%, #0f1115 100%);
+    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(138, 180, 248, 0.05) 0%, transparent 50%), linear-gradient(180deg, #12151c 0%, #0f1115 100%);
 }
 
 @media (prefers-reduced-motion: reduce) {
