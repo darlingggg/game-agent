@@ -31,6 +31,16 @@ const BINARY_FILE_EXTENSIONS = new Set([
   '.woff2',
 ])
 
+/**
+ * 判断相对路径是否为不支持文本预览的二进制文件
+ * @param relativePath 相对 projectTemp 根目录的路径
+ */
+export function isBinaryRelativePath(relativePath: string): boolean {
+  const normalized = normalizeRelativePath(relativePath)
+  const extension = normalized.slice(normalized.lastIndexOf('.')).toLowerCase()
+  return BINARY_FILE_EXTENSIONS.has(extension)
+}
+
 /** 文件树节点类型 */
 export type FileTreeNodeType = 'file' | 'directory'
 
@@ -146,6 +156,10 @@ export async function fetchProjectTempFileList(): Promise<ProjectTempFileItem[]>
  * @param relativePath 相对 projectTemp 根目录的路径
  */
 export async function fetchProjectTempFileContent(relativePath: string): Promise<string> {
+  if (isBinaryRelativePath(relativePath)) {
+    throw new Error('二进制文件不支持文本预览，请在「配置 → 项目素材」中查看')
+  }
+
   const content = await getFileContent({
     dir: getProjectDirPath(),
     path: relativePath,
@@ -193,8 +207,6 @@ export function buildProjectTempFileTree(files: ProjectTempFileItem[], rootName 
 
   files.forEach((file) => {
     const relativePath = normalizeRelativePath(file.relativePath)
-    const extension = relativePath.slice(relativePath.lastIndexOf('.')).toLowerCase()
-    if (BINARY_FILE_EXTENSIONS.has(extension)) return
     insertPath(root, relativePath)
   })
 
