@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "description": "ai构建器 3d版 模板初始化",
+  "createdAt": "2026-07-03 10:00:00",
+  "files": [
+    { "path": "agent_base/skills/system-prompt.md", "description": "系统提示词", "action": "add" },
+    { "path": "public/favicon.ico", "description": "项目ico图标", "action": "update" }
+  ]
+}

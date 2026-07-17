@@ -15,6 +15,7 @@ import {
 } from '@/http/temp'
 import { getSnapshotList } from '@/http/snapshot'
 import { useProjectStore } from '@/stores/project'
+import { resolveProjectType } from '@/utils/projectType'
 
 defineOptions({
   name: 'TempPanel',
@@ -61,6 +62,9 @@ const templateArchiveCount = ref(0)
 
 /** 当前项目 ID */
 const projectId = computed(() => projectStore.currentProject?.id ?? 0)
+
+/** 当前项目类型（缺省 tool） */
+const projectType = computed(() => resolveProjectType(projectStore.currentProject?.type))
 
 /** 是否已是最新版本 */
 const isLatestVersion = computed(() => {
@@ -280,8 +284,8 @@ async function loadTempData() {
   try {
     const [currentRes, latestRes, listRes] = await Promise.all([
       getTempCurrentVersion({ projectId: currentProjectId }),
-      getTempLatestVersion(),
-      getTempVersionList(),
+      getTempLatestVersion({ type: projectType.value }),
+      getTempVersionList({ type: projectType.value }),
       loadTemplateArchiveCount(),
     ])
 

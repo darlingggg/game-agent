@@ -3,11 +3,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { createProject, getProjectList, deleteProject, type projectItem } from '@/http/project'
+import { createProject, getProjectList, deleteProject, type projectItem, type ProjectType } from '@/http/project'
 import { getUserInfo } from '@/http/user'
 import { Delete, Edit, Search } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 import { saveProjectConfig } from '@/utils/projectConfig'
+import { PROJECT_TYPE_CLASS, PROJECT_TYPE_LABEL, resolveProjectType } from '@/utils/projectType'
 import UserMenu from '@/components/UserMenu.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 
@@ -52,11 +53,13 @@ const createFormRef = ref<FormInstance>()
 const createForm = reactive({
   title: '',
   desc: '',
+  type: 'tool' as ProjectType,
 })
 
 /** 新建项目校验规则 */
 const createRules: FormRules = {
   title: [{ required: true, message: '请输入项目名称', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择项目类型', trigger: 'change' }],
 }
 
 /** 编辑项目弹窗 */
@@ -155,6 +158,7 @@ async function fetchProjectList() {
 function openCreateDialog() {
   createForm.title = ''
   createForm.desc = ''
+  createForm.type = 'tool'
   createDialogVisible.value = true
 }
 
@@ -170,6 +174,7 @@ async function handleCreateProject() {
     await createProject({
       title: createForm.title.trim(),
       desc: createForm.desc.trim(),
+      type: createForm.type,
     })
     ElMessage.success('项目创建成功')
     createDialogVisible.value = false
@@ -303,13 +308,43 @@ onUnmounted(() => {
         </div>
 
         <div v-loading="listLoading" class="project-grid">
-          <article v-for="project in displayedProjects" :key="project.id" class="project-card">
+          <article v-for="project in displayedProjects" :key="project.id" class="project-card" :class="PROJECT_TYPE_CLASS[resolveProjectType(project.type)]">
+            <div class="project-card-stripe" aria-hidden="true" />
             <el-button class="card-delete" type="danger" :icon="Delete" dashed @click="handleDeletePro(project.id)" />
             <el-button class="card-edit" type="primary" :icon="Edit" dashed @click="handleEditPro(project.id)" />
             <div class="project-card-top">
               <div class="project-card-icon">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M3 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                <!-- tool：扳手 -->
+                <svg
+                  v-if="resolveProjectType(project.type) === 'tool'"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
+                  />
+                </svg>
+                <!-- 2d：手柄 -->
+                <svg
+                  v-else-if="resolveProjectType(project.type) === '2d'"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="2" y="6" width="20" height="12" rx="2" />
+                  <path d="M6 12h4M8 10v4M15 11h.01M18 13h.01" />
+                </svg>
+                <!-- 3d：包裹盒 -->
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                  <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
                 </svg>
               </div>
             </div>
@@ -318,12 +353,15 @@ onUnmounted(() => {
             <p class="project-card-desc">{{ getProjectDesc(project.desc) }}</p>
 
             <div class="project-card-footer">
-              <div class="project-card-time">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M8 3v4M16 3v4M3 10h18" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-                <span>{{ formatProjectTime(project.createdAt) }}</span>
+              <div class="project-card-meta">
+                <span class="project-type-badge">{{ PROJECT_TYPE_LABEL[resolveProjectType(project.type)] }}</span>
+                <div class="project-card-time">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M8 3v4M16 3v4M3 10h18" stroke="currentColor" stroke-width="1.5" />
+                  </svg>
+                  <span>{{ formatProjectTime(project.createdAt) }}</span>
+                </div>
               </div>
               <button type="button" class="project-card-enter" @click="handleEnterProject(project)">进入项目 →</button>
             </div>
@@ -345,6 +383,13 @@ onUnmounted(() => {
         <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-position="top">
           <el-form-item label="项目名称" prop="title">
             <el-input v-model="createForm.title" placeholder="请输入项目名称" maxlength="20" show-word-limit clearable />
+          </el-form-item>
+          <el-form-item label="项目类型" prop="type">
+            <el-radio-group v-model="createForm.type">
+              <el-radio value="tool">通用工具</el-radio>
+              <el-radio value="2d">2D游戏</el-radio>
+              <el-radio value="3d">3D游戏</el-radio>
+            </el-radio-group>
           </el-form-item>
           <el-form-item label="项目描述">
             <el-input v-model="createForm.desc" type="textarea" :rows="3" placeholder="请输入项目描述（选填）" />
@@ -511,10 +556,72 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: 1.25rem;
+  padding-left: 1.4rem;
   background-color: var(--app-surface);
   border: 1px solid var(--app-card-border);
   border-radius: 0.35rem;
   box-shadow: 0 3px 5px var(--app-shadow);
+  overflow: hidden;
+}
+
+.project-card-stripe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0.28rem;
+}
+.project-card.project-type--tool .project-card-stripe {
+  background: #6366f1;
+}
+.project-card.project-type--2d .project-card-stripe {
+  background: #10b981;
+}
+.project-card.project-type--3d .project-card-stripe {
+  background: #f97316;
+}
+
+.project-card.project-type--tool .project-card-icon {
+  background: #eef2ff;
+  color: #4338ca;
+}
+.project-card.project-type--2d .project-card-icon {
+  background: #ecfdf5;
+  color: #047857;
+}
+.project-card.project-type--3d .project-card-icon {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.project-type-badge {
+  display: inline-flex;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.project-type--tool .project-type-badge {
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+}
+.project-type--2d .project-type-badge {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.project-type--3d .project-type-badge {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+
+.project-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
 }
 
 .project-card-top {
