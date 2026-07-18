@@ -20,13 +20,30 @@ const projectStore = useProjectStore()
 const logContext = useLogContext()
 const buildContext = useBuildContext()
 
+/**
+ * 解构为顶层 ref，避免模板把 useXxx() 返回值当成 MaybeRef
+ * 而编译成 buildContext.value.visible 导致报错
+ */
+const buildVisible = buildContext.visible
+const buildCollapsed = buildContext.collapsed
+const buildRunning = buildContext.running
+const buildContent = buildContext.content
+const buildSteps = buildContext.steps
+const buildSummary = buildContext.summary
+const buildResultLink = buildContext.resultLink
+const buildDurationText = buildContext.durationText
+const buildDeploymentId = buildContext.deploymentId
+const toggleBuildCollapsed = buildContext.toggleCollapsed
+const closeBuildPanel = buildContext.closePanel
+const toggleBuildStepExpand = buildContext.toggleStepExpand
+
 /** 构建日志滚动容器 */
 const buildLogRef = ref<HTMLElement | null>(null)
 const buildBodyRef = ref<HTMLElement | null>(null)
 
 /** 已完成步骤数 */
 const completedStepCount = computed(() =>
-  buildContext.steps.value.filter((item) => item.status === 'done').length,
+  buildSteps.value.filter((item) => item.status === 'done').length,
 )
 
 /**
@@ -43,12 +60,12 @@ function getBuildStepStatusMark(status: BuildStepStatus): string {
  * 获取构建进度文案
  */
 function getBuildProgressText(): string {
-  const total = buildContext.steps.value.length
+  const total = buildSteps.value.length
   if (!total) return '准备中...'
-  if (buildContext.running.value) {
+  if (buildRunning.value) {
     return `${completedStepCount.value}/${total} 步骤`
   }
-  if (buildContext.summary.value) return '已完成'
+  if (buildSummary.value) return '已完成'
   return '构建结束'
 }
 
@@ -215,7 +232,7 @@ watch(
 
 /** 构建日志变化时自动滚动 */
 watch(
-  () => [buildContext.content.value, buildContext.steps.value.map((item) => item.status).join(',')].join('|'),
+  () => [buildContent.value, buildSteps.value.map((item) => item.status).join(',')].join('|'),
   () => {
     void scrollBuildLogToBottom()
   },
@@ -228,51 +245,51 @@ onMounted(() => {
 
 <template>
   <div class="log-panel-wrapper">
-    <div v-if="buildContext.visible.value" class="log-panel-build-float"
-      :class="{ 'log-panel-build-float--collapsed': buildContext.collapsed.value }">
+    <div v-if="buildVisible" class="log-panel-build-float"
+      :class="{ 'log-panel-build-float--collapsed': buildCollapsed }">
       <header class="log-panel-build-header">
         <div class="log-panel-build-heading">
           <span class="log-panel-build-title">项目构建</span>
           <span class="log-panel-build-status">{{ getBuildProgressText() }}</span>
         </div>
         <div class="log-panel-build-actions">
-          <button type="button" class="log-panel-build-btn" :title="buildContext.collapsed.value ? '展开' : '收起'"
-            :aria-label="buildContext.collapsed.value ? '展开' : '收起'" @click="buildContext.toggleCollapsed">
-            <svg class="log-panel-build-btn-icon" :class="{ 'log-panel-build-btn-icon--expanded': !buildContext.collapsed.value }"
+          <button type="button" class="log-panel-build-btn" :title="buildCollapsed ? '展开' : '收起'"
+            :aria-label="buildCollapsed ? '展开' : '收起'" @click="toggleBuildCollapsed">
+            <svg class="log-panel-build-btn-icon" :class="{ 'log-panel-build-btn-icon--expanded': !buildCollapsed }"
               viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                 stroke-linejoin="round" />
             </svg>
           </button>
-          <button v-if="!buildContext.running.value" type="button" class="log-panel-build-btn" title="关闭"
-            aria-label="关闭" @click="buildContext.closePanel">
+          <button v-if="!buildRunning" type="button" class="log-panel-build-btn" title="关闭"
+            aria-label="关闭" @click="closeBuildPanel">
             <svg class="log-panel-build-btn-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             </svg>
           </button>
         </div>
       </header>
-      <div v-show="!buildContext.collapsed.value" ref="buildBodyRef" class="log-panel-build-body">
-        <div v-if="buildContext.summary.value" class="log-panel-build-summary">
-          <p class="log-panel-build-summary-text">{{ buildContext.summary.value }}</p>
-          <p v-if="buildContext.durationText.value" class="log-panel-build-summary-meta">
-            总耗时 {{ buildContext.durationText.value }}
+      <div v-show="!buildCollapsed" ref="buildBodyRef" class="log-panel-build-body">
+        <div v-if="buildSummary" class="log-panel-build-summary">
+          <p class="log-panel-build-summary-text">{{ buildSummary }}</p>
+          <p v-if="buildDurationText" class="log-panel-build-summary-meta">
+            总耗时 {{ buildDurationText }}
           </p>
-          <a v-if="buildContext.resultLink.value" class="log-panel-build-link" :href="buildContext.resultLink.value"
+          <a v-if="buildResultLink" class="log-panel-build-link" :href="buildResultLink"
             target="_blank" rel="noopener noreferrer">
-            {{ buildContext.resultLink.value }}
+            {{ buildResultLink }}
           </a>
-          <p v-if="buildContext.deploymentId.value" class="log-panel-build-summary-meta">
-            Deployment ID：{{ buildContext.deploymentId.value }}
+          <p v-if="buildDeploymentId" class="log-panel-build-summary-meta">
+            Deployment ID：{{ buildDeploymentId }}
           </p>
         </div>
 
-        <ul v-if="buildContext.steps.value.length" class="log-panel-build-steps">
-          <li v-for="step in buildContext.steps.value" :key="step.key"
+        <ul v-if="buildSteps.length" class="log-panel-build-steps">
+          <li v-for="step in buildSteps" :key="step.key"
             class="log-panel-build-step" :class="`log-panel-build-step--${step.status}`">
             <button type="button" class="log-panel-build-step-main"
               :class="{ 'log-panel-build-step-main--clickable': hasBuildStepDetail(step) }"
-              :disabled="!hasBuildStepDetail(step)" @click="buildContext.toggleStepExpand(step.key)">
+              :disabled="!hasBuildStepDetail(step)" @click="toggleBuildStepExpand(step.key)">
               <span class="log-panel-build-step-mark">{{ getBuildStepStatusMark(step.status) }}</span>
               <span class="log-panel-build-step-title">{{ step.title }}</span>
               <span v-if="step.durationText" class="log-panel-build-step-duration">{{ step.durationText }}</span>
@@ -290,9 +307,9 @@ onMounted(() => {
           </li>
         </ul>
 
-        <div v-if="buildContext.content.value" class="log-panel-build-log-section">
+        <div v-if="buildContent" class="log-panel-build-log-section">
           <div class="log-panel-build-log-label">构建日志</div>
-          <pre ref="buildLogRef" class="log-panel-build-content">{{ buildContext.content.value }}</pre>
+          <pre ref="buildLogRef" class="log-panel-build-content">{{ buildContent }}</pre>
         </div>
       </div>
     </div>
