@@ -1,6 +1,13 @@
 import { inject, ref, type InjectionKey, type Ref } from 'vue'
 import { addLog, getLogList } from '@/http/log'
-import { syncWriteFileContentToPreview, WRITE_FILE_CONTENT_TOOL } from '../preview/previewSync'
+import {
+  DELETE_FILE_TOOL,
+  UPSERT_FILE_TOOL,
+  WRITE_FILE_CONTENT_TOOL,
+  syncDeleteFileToPreview,
+  syncUpsertFileToPreview,
+  syncWriteFileContentToPreview,
+} from '../preview/previewSync'
 import { buildToolLogContent, parseToolEnd, parseToolStart } from './logParser'
 import { parsePersistedLogLine } from './parsePersistedLog'
 import type { DisplayLogEntry, LiveLogEntry, ToolLogEntry } from './logTypes'
@@ -246,9 +253,15 @@ export function createLogContext(): LogContext {
     const logContent = buildToolLogContent(parsed.toolName, targetEntry.params, parsed.result, parsed.success)
     await persistLog(logContent, projectId)
 
-    // write_file_content 成功后同步到 WebContainer 预览
-    if (parsed.toolName === WRITE_FILE_CONTENT_TOOL && parsed.success) {
-      await syncWriteFileContentToPreview(targetEntry.params)
+    // 文件写入/删除类工具成功后同步到 WebContainer 预览
+    if (parsed.success) {
+      if (parsed.toolName === WRITE_FILE_CONTENT_TOOL) {
+        await syncWriteFileContentToPreview(targetEntry.params)
+      } else if (parsed.toolName === UPSERT_FILE_TOOL) {
+        await syncUpsertFileToPreview(parsed.result)
+      } else if (parsed.toolName === DELETE_FILE_TOOL) {
+        await syncDeleteFileToPreview(targetEntry.params)
+      }
     }
   }
 
