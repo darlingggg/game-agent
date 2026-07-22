@@ -613,7 +613,14 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
     }
   }
 
-  if (Number.isFinite(userSessionId) && sessionContext.isPendingNewSession.value) {
+  // 待创建，或无选中会话时直接首聊：绑定返回的会话 id，避免后续消息反复新建
+  const hasNoSession =
+    !sessionContext.activeSessionId.value ||
+    sessionContext.activeSessionId.value === PENDING_SESSION_ID
+  if (
+    Number.isFinite(userSessionId) &&
+    (sessionContext.isPendingNewSession.value || hasNoSession)
+  ) {
     skipNextSessionLoad = true
     sessionContext.isPendingNewSession.value = false
     sessionContext.activeSessionId.value = userSessionId

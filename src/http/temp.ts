@@ -1,4 +1,5 @@
 import axios from '@/ajax'
+import type { ProjectType } from '@/http/project'
 
 export interface fileItem {
   path: string // 具体修改的文件的相对路径(相对于项目根)
@@ -30,9 +31,11 @@ export const getTempCurrentVersion = async (params: { projectId: number }): Prom
   return axios.get('/temp/current', { params })
 }
 
-// 获取模板的最新项目
-export const getTempLatestVersion = async (): Promise<{ version: string; fileContent: string }> => {
-  return axios.get('/temp/latest')
+/** 获取模板最新版本 */
+export const getTempLatestVersion = async (params: {
+  type: ProjectType
+}): Promise<{ version: string; fileContent: string }> => {
+  return axios.get('/temp/latest', { params })
 }
 
 // 更新模板
@@ -40,7 +43,7 @@ export const updateTemp = async (body: updateTempBody): Promise<{ content: strin
   return axios.post('/temp/update', body)
 }
 
-// 获取模板版本列表
-export const getTempVersionList = async (): Promise<versionItem[]> => {
-  return axios.get('/temp/list')
+/** 获取模板版本列表 */
+export const getTempVersionList = async (params: { type: ProjectType }): Promise<versionItem[]> => {
+  return axios.get('/temp/list', { params })
 }

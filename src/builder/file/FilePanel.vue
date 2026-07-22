@@ -7,7 +7,7 @@ import { useProjectStore } from '@/stores/project'
 import { syncPreviewFile } from '../preview/webcontainer'
 import FileEditor from './FileEditor.vue'
 import FileTreeBranch from './FileTreeBranch.vue'
-import { fetchProjectTempFileContent, isAgentBaseReadOnlyPath, loadProjectTempFileTree, saveProjectTempFileContent, type FileTreeNode } from './projectTempFiles'
+import { fetchProjectTempFileContent, isAgentBaseReadOnlyPath, isBinaryRelativePath, loadProjectTempFileTree, saveProjectTempFileContent, type FileTreeNode } from './projectTempFiles'
 import { PROJECT_FILES_CHANGED_EVENT } from '../snapshot/snapshotRestore'
 
 defineOptions({
@@ -55,6 +55,12 @@ const isCurrentFileReadOnly = computed(() => {
   return isAgentBaseReadOnlyPath(selectedFilePath.value)
 })
 
+/** 当前文件是否为二进制（不支持文本编辑） */
+const isCurrentFileBinary = computed(() => {
+  if (!selectedFilePath.value) return false
+  return isBinaryRelativePath(selectedFilePath.value)
+})
+
 /** 左侧目录是否收起 */
 const treeCollapsed = ref(false)
 
@@ -68,6 +74,13 @@ watch(selectedFilePath, async (filePath, _, onCleanup) => {
   if (!filePath) {
     editorContent.value = ''
     contentError.value = ''
+    contentLoading.value = false
+    return
+  }
+
+  if (isBinaryRelativePath(filePath)) {
+    editorContent.value = ''
+    contentError.value = '二进制文件不支持文本预览，请在「配置 → 项目素材」中查看'
     contentLoading.value = false
     return
   }
@@ -253,7 +266,7 @@ onUnmounted(() => {
           type="button"
           class="file-panel-save-btn"
           :class="{ 'file-panel-save-btn--loading': saving }"
-          :disabled="contentLoading || !!contentError || saving || isCurrentFileReadOnly"
+          :disabled="contentLoading || !!contentError || saving || isCurrentFileReadOnly || isCurrentFileBinary"
           @click="handleSave"
         >
           保存

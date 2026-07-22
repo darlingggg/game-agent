@@ -2,9 +2,14 @@ import axios, { fetchWithAuth, showRequestError } from '@/ajax'
 import type { BuildDoneResult } from '@/builder/build/buildTypes'
 import { consumeSseResponse, type SseEvent } from '@/http/sse'
 
+/** 项目类型：工具 / 2D 游戏 / 3D 游戏 */
+export type ProjectType = 'tool' | '2d' | '3d'
+
 interface createProjectParams {
   title: string
   desc: string
+  /** 项目类型 */
+  type: ProjectType
 }
 
 export interface projectItem {
@@ -13,6 +18,8 @@ export interface projectItem {
   dirPath: string
   title: string
   desc: string
+  /** 项目类型 */
+  type: ProjectType
   link: string
   currentVersion: string
   createdAt: string
