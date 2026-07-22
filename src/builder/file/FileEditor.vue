@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { VueMonacoEditor } from '@guolao/vue-monaco-editor'
-import { computed } from 'vue'
+import { computed, onMounted, ref, shallowRef, type Component } from 'vue'
 import { getMonacoLanguage } from './fileLanguage'
+import { setupMonacoEditor } from './monacoSetup'
 
 defineOptions({
   name: 'FileEditor',
@@ -16,6 +16,15 @@ const props = defineProps<{
 
 /** 编辑器内容，双向绑定 */
 const editorContent = defineModel<string>({ required: true })
+
+/** Monaco 是否已完成懒加载初始化 */
+const editorReady = ref(false)
+
+/** Monaco 初始化失败信息 */
+const editorError = ref('')
+
+/** 懒加载后的 VueMonacoEditor 组件 */
+const VueMonacoEditor = shallowRef<Component | null>(null)
 
 /** 当前文件对应的语法高亮语言 */
 const language = computed(() => getMonacoLanguage(props.filePath))
@@ -57,12 +66,34 @@ const editorOptions = computed(() => ({
   ...BASE_EDITOR_OPTIONS,
   readOnly: props.readOnly ?? false,
 }))
+
+onMounted(async () => {
+  try {
+    await setupMonacoEditor()
+    const mod = await import('@guolao/vue-monaco-editor')
+    VueMonacoEditor.value = mod.VueMonacoEditor
+    editorReady.value = true
+  } catch (error) {
+    editorError.value = error instanceof Error ? error.message : '编辑器加载失败'
+  }
+})
 </script>
 
 <template>
   <div class="file-editor-wrap">
     <div v-if="readOnly" class="file-editor-readonly-bar">当前文件只能查看，不允许编辑</div>
-    <VueMonacoEditor :key="filePath" v-model:value="editorContent" class="file-editor" theme="vs-dark" :language="language" :options="editorOptions" />
+    <div v-if="editorError" class="file-editor-status file-editor-status--error">{{ editorError }}</div>
+    <div v-else-if="!editorReady" class="file-editor-status">编辑器加载中...</div>
+    <component
+      :is="VueMonacoEditor"
+      v-else
+      :key="filePath"
+      v-model:value="editorContent"
+      class="file-editor"
+      theme="vs-dark"
+      :language="language"
+      :options="editorOptions"
+    />
   </div>
 </template>
 
@@ -84,6 +115,20 @@ const editorOptions = computed(() => ({
   font-weight: 600;
   line-height: 1.4;
   text-align: center;
+}
+
+.file-editor-status {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.875rem;
+  background-color: #1e1e1e;
+}
+
+.file-editor-status--error {
+  color: #f87171;
 }
 
 .file-editor {
