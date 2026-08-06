@@ -20,10 +20,14 @@ interface LoginUserParams {
   password: string
 }
 
-interface UserInfoResponse {
+export interface UserInfoResponse {
   id: string
   account: string
   nickname: string
+  bindings?: {
+    qq: boolean
+    wechat: boolean
+  }
 }
 
 /** 注册用户 */
