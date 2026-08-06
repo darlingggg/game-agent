@@ -11,6 +11,7 @@ import { saveProjectConfig } from '@/utils/projectConfig'
 import { PROJECT_TYPE_CLASS, PROJECT_TYPE_LABEL, resolveProjectType } from '@/utils/projectType'
 import UserMenu from '@/components/UserMenu.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import SvgIcon from '@/components/SvgIcon.vue'
 
 const projectStore = useProjectStore()
 
@@ -279,12 +280,7 @@ onUnmounted(() => {
       <header class="header">
         <div class="header-left">
           <div class="icon">
-            <svg t="1781413035262" class="icon-svg" viewBox="0 0 1024 1024" version="1.1"
-              xmlns="http://www.w3.org/2000/svg" p-id="5716" width="200" height="200">
-              <path
-                d="M128 448a96 96 0 0 1 28.032 187.84v63.232l0.256 4.288a32 32 0 0 0 15.68 23.424l324.032 187.072 3.84 1.856a32.128 32.128 0 0 0 28.16-1.92l323.968-187.008 3.52-2.368a32 32 0 0 0 12.416-25.344v-11.072a32 32 0 0 1 64 0v11.072a96 96 0 0 1-37.376 76.096l-10.56 7.04-323.968 187.072a96.128 96.128 0 0 1-84.544 5.632l-11.456-5.632-324.032-187.072a96 96 0 0 1-47.104-70.4l-0.896-12.736V632.96A96 96 0 0 1 128 448z m338.56-96c22.08 0 41.792 14.144 48.96 35.2l84.352 248.448a27.52 27.52 0 1 1-52.288 17.216L526.72 587.136H404.608l-21.76 66.432a26.752 26.752 0 1 1-50.752-16.96l85.376-249.6A51.84 51.84 0 0 1 466.56 352z m209.92 0a27.52 27.52 0 0 1 27.52 27.584v264.896a27.584 27.584 0 0 1-55.104 0V379.52a27.52 27.52 0 0 1 27.52-27.52zM128 512a32 32 0 1 0 0 64 32 32 0 0 0 0-64zM475.456 49.152A96 96 0 0 1 560 54.784l323.968 187.072 10.56 7.04a96 96 0 0 1 37.44 76.096v65.92a96 96 0 1 1-64-2.752v-63.168a32 32 0 0 0-12.48-25.344l-3.584-2.368L528 110.208a32 32 0 0 0-28.16-1.92l-3.84 1.92-324.032 187.072a32 32 0 0 0-16 27.712v11.008a32 32 0 0 1-64 0v-11.008a96 96 0 0 1 48-83.2L464 54.848l11.456-5.632z m-54.4 487.296h89.28l-41.728-130.496h-5.056l-42.496 130.56zM896 448a32 32 0 1 0 0 64 32 32 0 0 0 0-64z"
-                p-id="5717" fill="var(--app-icon-fill)"></path>
-            </svg>
+            <span class="icon-svg" aria-hidden="true" />
           </div>
           <div class="title">
             <span>AI Agent</span>
@@ -315,25 +311,7 @@ onUnmounted(() => {
             <el-button class="card-edit" type="primary" :icon="Edit" dashed @click="handleEditPro(project.id)" />
             <div class="project-card-top">
               <div class="project-card-icon">
-                <!-- tool：扳手 -->
-                <svg v-if="resolveProjectType(project.type) === 'tool'" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path
-                    d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-                </svg>
-                <!-- 2d：手柄 -->
-                <svg v-else-if="resolveProjectType(project.type) === '2d'" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="6" width="20" height="12" rx="2" />
-                  <path d="M6 12h4M8 10v4M15 11h.01M18 13h.01" />
-                </svg>
-                <!-- 3d：包裹盒 -->
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <path
-                    d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                  <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
-                </svg>
+                <SvgIcon :name="`project-${resolveProjectType(project.type)}`" />
               </div>
             </div>
 
@@ -344,10 +322,7 @@ onUnmounted(() => {
               <div class="project-card-meta">
                 <span class="project-type-badge">{{ PROJECT_TYPE_LABEL[resolveProjectType(project.type)] }}</span>
                 <div class="project-card-time">
-                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5" />
-                    <path d="M8 3v4M16 3v4M3 10h18" stroke="currentColor" stroke-width="1.5" />
-                  </svg>
+                  <SvgIcon name="calendar" />
                   <span>{{ formatProjectTime(project.createdAt) }}</span>
                 </div>
               </div>
@@ -357,9 +332,7 @@ onUnmounted(() => {
 
           <button type="button" class="project-card project-card--create" @click="openCreateDialog">
             <div class="project-create-icon">
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" />
-              </svg>
+              <SvgIcon name="plus" />
             </div>
             <h3 class="project-create-title">新建项目</h3>
             <p class="project-create-desc">创建一个新的创作项目。</p>
@@ -448,8 +421,11 @@ onUnmounted(() => {
 }
 
 .icon-svg {
+  display: block;
   width: 2.5rem;
   height: 2.5rem;
+  background: var(--app-icon-fill);
+  mask: url('/svgs/ai-agent.svg') center / contain no-repeat;
 }
 
 .header-actions {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SvgIcon from '@/components/SvgIcon.vue'
 import { Loading, QuestionFilled, Top } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, ref, watch } from 'vue'
@@ -541,15 +542,11 @@ watch(
               <span class="temp-panel-files-toggle-label">文件变更</span>
               <span class="temp-panel-files-count">{{ card.files.length }}</span>
             </span>
-            <svg
+            <SvgIcon
+              name="chevron-down"
               class="temp-panel-files-arrow"
               :class="{ 'temp-panel-files-arrow--expanded': isFilesExpanded(card.version) }"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+            />
           </button>
           <div v-show="isFilesExpanded(card.version)" class="temp-panel-file-list">
             <div v-for="file in card.files" :key="`${card.version}-${file.path}`" class="temp-panel-file-item">

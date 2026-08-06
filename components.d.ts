@@ -29,6 +29,7 @@ declare module 'vue' {
     OAuthScanDialog: typeof import('./src/components/OAuthScanDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SvgIcon: typeof import('./src/components/SvgIcon.vue')['default']
     ThemeToggle: typeof import('./src/components/ThemeToggle.vue')['default']
     UserMenu: typeof import('./src/components/UserMenu.vue')['default']
   }
@@ -56,6 +57,7 @@ declare global {
   const OAuthScanDialog: typeof import('./src/components/OAuthScanDialog.vue')['default']
   const RouterLink: typeof import('vue-router')['RouterLink']
   const RouterView: typeof import('vue-router')['RouterView']
+  const SvgIcon: typeof import('./src/components/SvgIcon.vue')['default']
   const ThemeToggle: typeof import('./src/components/ThemeToggle.vue')['default']
   const UserMenu: typeof import('./src/components/UserMenu.vue')['default']
 }

@@ -3,7 +3,7 @@ import { ArrowDown, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { reactive, ref } from 'vue'
 import { setTokens } from '@/ajax'
-import { USER_AVATAR_SVG } from '@/builder/chat/chatAvatars'
+import { USER_AVATAR_URL } from '@/builder/chat/chatAvatars'
 import { useLogout } from '@/composables/useLogout'
 import { getUserInfo } from '@/http/user'
 import type { OAuthLoginResult, OAuthProvider } from '@/http/oauth'
@@ -70,7 +70,7 @@ function handleDropdownVisible(visible: boolean) {
 <template>
   <el-dropdown trigger="click" @command="handleMenuCommand" @visible-change="handleDropdownVisible">
     <button type="button" class="user-menu-trigger" :class="{ 'user-menu-trigger--compact': compact }">
-      <span class="user-menu-avatar" aria-hidden="true" v-html="USER_AVATAR_SVG" />
+      <img class="user-menu-avatar" :src="USER_AVATAR_URL" alt="" />
       <span v-if="nickname" class="user-menu-name">{{ nickname }}</span>
       <el-icon v-if="!compact" class="user-menu-arrow"><ArrowDown /></el-icon>
     </button>
@@ -128,10 +128,8 @@ function handleDropdownVisible(visible: boolean) {
   line-height: 0;
 }
 
-.user-menu-avatar :deep(svg) {
-  display: block;
-  width: 100%;
-  height: 100%;
+html.dark .user-menu-avatar {
+  filter: invert(1);
 }
 
 .user-menu-name {

@@ -112,22 +112,14 @@ onBeforeUnmount(() => {
     <section class="auth-visual" aria-label="AI Agent">
       <div class="auth-grid" aria-hidden="true" />
       <header class="auth-brand">
-        <span class="auth-brand-mark">
-          <svg viewBox="0 0 1024 1024" aria-hidden="true">
-            <path d="M128 448a96 96 0 0 1 28.032 187.84v63.232l.256 4.288a32 32 0 0 0 15.68 23.424l324.032 187.072 3.84 1.856a32.128 32.128 0 0 0 28.16-1.92l323.968-187.008 3.52-2.368a32 32 0 0 0 12.416-25.344v-11.072a32 32 0 0 1 64 0v11.072a96 96 0 0 1-37.376 76.096l-10.56 7.04-323.968 187.072a96.128 96.128 0 0 1-84.544 5.632l-11.456-5.632-324.032-187.072a96 96 0 0 1-47.104-70.4l-.896-12.736V632.96A96 96 0 0 1 128 448Zm338.56-96c22.08 0 41.792 14.144 48.96 35.2l84.352 248.448a27.52 27.52 0 1 1-52.288 17.216l-20.864-65.728H404.608l-21.76 66.432a26.752 26.752 0 1 1-50.752-16.96l85.376-249.6A51.84 51.84 0 0 1 466.56 352Zm209.92 0A27.52 27.52 0 0 1 704 379.584V644.48a27.584 27.584 0 0 1-55.104 0V379.52A27.52 27.52 0 0 1 676.416 352ZM128 512a32 32 0 1 0 0 64 32 32 0 0 0 0-64ZM475.456 49.152A96 96 0 0 1 560 54.784l323.968 187.072 10.56 7.04a96 96 0 0 1 37.44 76.096v65.92a96 96 0 1 1-64-2.752v-63.168a32 32 0 0 0-12.48-25.344l-3.584-2.368L528 110.208a32 32 0 0 0-28.16-1.92l-3.84 1.92-324.032 187.072a32 32 0 0 0-16 27.712v11.008a32 32 0 0 1-64 0v-11.008a96 96 0 0 1 48-83.2L464 54.848l11.456-5.632Zm-54.4 487.296h89.28l-41.728-130.496h-5.056l-42.496 130.56ZM896 448a32 32 0 1 0 0 64 32 32 0 0 0 0-64Z" />
-          </svg>
-        </span>
+        <span class="auth-brand-mark" aria-hidden="true" />
         <span>AI AGENT</span>
       </header>
 
       <div class="auth-orbit" aria-hidden="true">
         <span class="auth-orbit-ring auth-orbit-ring--outer" />
         <span class="auth-orbit-ring auth-orbit-ring--inner" />
-        <span class="auth-orbit-core">
-          <svg viewBox="0 0 1024 1024">
-            <path d="M128 448a96 96 0 0 1 28.032 187.84v63.232l.256 4.288a32 32 0 0 0 15.68 23.424l324.032 187.072 3.84 1.856a32.128 32.128 0 0 0 28.16-1.92l323.968-187.008 3.52-2.368a32 32 0 0 0 12.416-25.344v-11.072a32 32 0 0 1 64 0v11.072a96 96 0 0 1-37.376 76.096l-10.56 7.04-323.968 187.072a96.128 96.128 0 0 1-84.544 5.632l-11.456-5.632-324.032-187.072a96 96 0 0 1-47.104-70.4l-.896-12.736V632.96A96 96 0 0 1 128 448Zm338.56-96c22.08 0 41.792 14.144 48.96 35.2l84.352 248.448a27.52 27.52 0 1 1-52.288 17.216l-20.864-65.728H404.608l-21.76 66.432a26.752 26.752 0 1 1-50.752-16.96l85.376-249.6A51.84 51.84 0 0 1 466.56 352Zm209.92 0A27.52 27.52 0 0 1 704 379.584V644.48a27.584 27.584 0 0 1-55.104 0V379.52A27.52 27.52 0 0 1 676.416 352ZM128 512a32 32 0 1 0 0 64 32 32 0 0 0 0-64ZM475.456 49.152A96 96 0 0 1 560 54.784l323.968 187.072 10.56 7.04a96 96 0 0 1 37.44 76.096v65.92a96 96 0 1 1-64-2.752v-63.168a32 32 0 0 0-12.48-25.344l-3.584-2.368L528 110.208a32 32 0 0 0-28.16-1.92l-3.84 1.92-324.032 187.072a32 32 0 0 0-16 27.712v11.008a32 32 0 0 1-64 0v-11.008a96 96 0 0 1 48-83.2L464 54.848l11.456-5.632Zm-54.4 487.296h89.28l-41.728-130.496h-5.056l-42.496 130.56ZM896 448a32 32 0 1 0 0 64 32 32 0 0 0 0-64Z" />
-          </svg>
-        </span>
+        <span class="auth-orbit-core" />
         <span class="auth-orbit-node auth-orbit-node--one" />
         <span class="auth-orbit-node auth-orbit-node--two" />
       </div>
@@ -239,10 +231,13 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 255, 255, 0.24);
 }
 
-.auth-brand-mark svg {
+.auth-brand-mark::before {
+  display: block;
   width: 1.35rem;
   height: 1.35rem;
-  fill: currentColor;
+  background: currentColor;
+  content: '';
+  mask: url('/svgs/ai-agent.svg') center / contain no-repeat;
 }
 
 .auth-orbit {
@@ -296,9 +291,12 @@ onBeforeUnmount(() => {
   box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.35);
 }
 
-.auth-orbit-core svg {
+.auth-orbit-core::before {
   width: 46%;
-  fill: #fff;
+  height: 46%;
+  background: #fff;
+  content: '';
+  mask: url('/svgs/ai-agent.svg') center / contain no-repeat;
 }
 
 .auth-orbit-node {
@@ -559,7 +557,7 @@ onBeforeUnmount(() => {
     height: 32px;
   }
 
-  .auth-brand-mark svg {
+  .auth-brand-mark::before {
     width: 19px;
     height: 19px;
   }
