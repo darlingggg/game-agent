@@ -122,6 +122,7 @@ onBeforeUnmount(() => {
         <span class="auth-orbit-core" />
         <span class="auth-orbit-node auth-orbit-node--one" />
         <span class="auth-orbit-node auth-orbit-node--two" />
+        <span class="auth-orbit-node auth-orbit-node--three" />
       </div>
 
       <div class="auth-visual-copy">
@@ -263,18 +264,6 @@ onBeforeUnmount(() => {
 
 .auth-orbit-ring--outer {
   inset: 0;
-  animation: orbit-spin 24s linear infinite;
-}
-
-.auth-orbit-ring--outer::after {
-  position: absolute;
-  top: 8%;
-  left: 18%;
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: #ff5b45;
-  content: '';
 }
 
 .auth-orbit-ring--inner {
@@ -300,20 +289,42 @@ onBeforeUnmount(() => {
 }
 
 .auth-orbit-node {
+  animation: orbit-spin linear infinite;
+}
+
+.auth-orbit-node::after {
+  position: absolute;
+  top: 50%;
+  left: 0;
   width: 0.7rem;
   height: 0.7rem;
   border: 2px solid #131518;
+  border-radius: 50%;
   background: #f8f8f4;
+  content: '';
+  transform: translate(-50%, -50%);
 }
 
 .auth-orbit-node--one {
-  top: 49%;
-  left: 16.6%;
+  inset: 17%;
+  animation-duration: 11s;
+  animation-delay: -5.5s;
 }
 
 .auth-orbit-node--two {
-  right: 2%;
-  bottom: 29%;
+  inset: 0;
+  animation-duration: 17s;
+  animation-delay: -1.4s;
+}
+
+.auth-orbit-node--three {
+  inset: 0;
+  animation-duration: 23s;
+  animation-delay: -8.6s;
+}
+
+.auth-orbit-node--two::after,
+.auth-orbit-node--three::after {
   background: #ff5b45;
 }
 
@@ -489,6 +500,17 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 1px #2673ff inset, 0 0 0 3px rgba(38, 115, 255, 0.1);
 }
 
+.auth-form :deep(.el-input__inner) {
+  color: #20242b;
+  caret-color: #2673ff;
+  -webkit-text-fill-color: #20242b;
+}
+
+.auth-form :deep(.el-input__inner::placeholder) {
+  color: #989ea8;
+  -webkit-text-fill-color: #989ea8;
+}
+
 .auth-submit {
   width: 100%;
   height: 3rem;
@@ -621,11 +643,11 @@ onBeforeUnmount(() => {
   }
 
   .oauth-option :deep(.provider-beta) {
-    top: -5px;
-    right: -8px;
-    min-width: 28px;
-    padding: 2px 4px;
-    font-size: 7px;
+    top: -3px;
+    right: -5px;
+    min-width: 20px;
+    padding: 1px 3px;
+    font-size: 5.5px;
   }
 
   .oauth-option strong {
@@ -688,7 +710,7 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-orbit-ring--outer {
+  .auth-orbit-node {
     animation: none;
   }
 

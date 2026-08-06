@@ -84,7 +84,7 @@ function handleDropdownVisible(visible: boolean) {
           <OAuthProviderIcon provider="wechat" beta />
           <span class="user-bind-copy"><strong>绑定微信</strong><small>扫码关联当前账号</small></span>
         </el-dropdown-item>
-        <el-dropdown-item divided command="logout">
+        <el-dropdown-item divided command="logout" class="user-logout-item">
           <el-icon><SwitchButton /></el-icon>
           退出登录
         </el-dropdown-item>
@@ -99,7 +99,7 @@ function handleDropdownVisible(visible: boolean) {
 .user-menu-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
   padding: 0.5rem 0.8rem;
   border: 1px solid var(--app-border);
   border-radius: 0.375rem;
@@ -112,6 +112,7 @@ function handleDropdownVisible(visible: boolean) {
 .user-menu-trigger--compact {
   width: 100%;
   justify-content: flex-start;
+  gap: 0.5rem;
   padding: 0.625rem 0.75rem;
 }
 
@@ -122,10 +123,15 @@ function handleDropdownVisible(visible: boolean) {
 
 .user-menu-avatar {
   display: inline-flex;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1rem;
+  height: 1rem;
   flex-shrink: 0;
   line-height: 0;
+}
+
+.user-menu-trigger--compact .user-menu-avatar {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 html.dark .user-menu-avatar {
@@ -187,5 +193,27 @@ html.dark .user-menu-avatar {
   width: 1.9rem;
   height: 1.9rem;
   flex-basis: 1.9rem;
+}
+
+.user-account-menu .user-logout-item {
+  background-color: #fff1f1;
+  color: #c93636;
+}
+
+.user-account-menu .user-logout-item:not(.is-disabled):hover,
+.user-account-menu .user-logout-item:not(.is-disabled):focus {
+  background-color: #ffe2e2;
+  color: #b42323;
+}
+
+html.dark .user-account-menu .user-logout-item {
+  background-color: rgba(255, 92, 92, 0.12);
+  color: #ff8e8e;
+}
+
+html.dark .user-account-menu .user-logout-item:not(.is-disabled):hover,
+html.dark .user-account-menu .user-logout-item:not(.is-disabled):focus {
+  background-color: rgba(255, 92, 92, 0.2);
+  color: #ffaaaa;
 }
 </style>
