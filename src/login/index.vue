@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules } from 'element-plus'
-import { ArrowRight } from '@element-plus/icons-vue'
+import { ArrowRight, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { setTokens } from '@/ajax'
 import OAuthProviderIcon from '@/components/OAuthProviderIcon.vue'
 import OAuthScanDialog from '@/components/OAuthScanDialog.vue'
-import type { OAuthLoginResult, OAuthProvider } from '@/http/oauth'
+import { createOAuthSession, resolveOAuthEventsUrl, type OAuthLoginResult, type OAuthProvider, type OAuthSseMessage } from '@/http/oauth'
 import { loginUser, registerUser } from '@/http/user'
 
 defineOptions({ name: 'AuthPage' })
@@ -19,6 +19,17 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 const oauthDialogVisible = ref(false)
 const activeProvider = ref<OAuthProvider>('qq')
+const qqRedirecting = ref(false)
+
+const QQ_LOGIN_SESSION_KEY = 'qq-oauth-login-session'
+
+interface PendingQQLogin {
+  eventsUrl: string
+  expiresAt: string
+  redirectPath: string
+}
+
+let qqEventSource: EventSource | null = null
 
 const form = reactive({
   account: '',
@@ -90,7 +101,99 @@ function handleSwitchMode() {
   })
 }
 
+function clearPendingQQLogin() {
+  qqEventSource?.close()
+  qqEventSource = null
+  sessionStorage.removeItem(QQ_LOGIN_SESSION_KEY)
+}
+
+function removeOAuthQuery() {
+  const query = { ...route.query }
+  delete query.oauth
+  void router.replace({ path: '/login', query })
+}
+
+async function completeQQLogin(result: OAuthLoginResult, redirectPath: string) {
+  clearPendingQQLogin()
+  setTokens(result.accessToken, result.refreshToken)
+  ElMessage.success('QQ 登录成功')
+  await router.replace(redirectPath)
+}
+
+function resumeQQLogin() {
+  if (route.query.oauth !== 'qq') return
+
+  const serialized = sessionStorage.getItem(QQ_LOGIN_SESSION_KEY)
+  if (!serialized) {
+    ElMessage.warning('QQ 授权会话已失效，请重新登录')
+    removeOAuthQuery()
+    return
+  }
+
+  let pending: PendingQQLogin
+  try {
+    pending = JSON.parse(serialized) as PendingQQLogin
+  } catch {
+    clearPendingQQLogin()
+    ElMessage.warning('QQ 授权会话已失效，请重新登录')
+    removeOAuthQuery()
+    return
+  }
+
+  qqRedirecting.value = true
+  const source = new EventSource(resolveOAuthEventsUrl(pending.eventsUrl))
+  qqEventSource = source
+  source.onmessage = (event) => {
+    try {
+      const message = JSON.parse(event.data) as OAuthSseMessage
+      if (message.event === 'login_success' && message.data.result) {
+        void completeQQLogin(message.data.result, pending.redirectPath)
+        return
+      }
+      if (message.event === 'login_error' || message.event === 'auth_expired') {
+        clearPendingQQLogin()
+        qqRedirecting.value = false
+        ElMessage.error(message.data.message)
+        removeOAuthQuery()
+      }
+    } catch {
+      clearPendingQQLogin()
+      qqRedirecting.value = false
+      ElMessage.error('QQ 登录结果解析失败，请重试')
+      removeOAuthQuery()
+    }
+  }
+}
+
+async function redirectToQQ() {
+  if (qqRedirecting.value) return
+
+  qqRedirecting.value = true
+  clearPendingQQLogin()
+  try {
+    const redirectPath = getRedirectPath()
+    const returnUrl = new URL('/login', window.location.origin)
+    returnUrl.searchParams.set('oauth', 'qq')
+    if (redirectPath !== '/') returnUrl.searchParams.set('redirect', redirectPath)
+
+    const session = await createOAuthSession('qq', 'login', returnUrl.toString())
+    const pending: PendingQQLogin = {
+      eventsUrl: session.eventsUrl,
+      expiresAt: session.expiresAt,
+      redirectPath,
+    }
+    sessionStorage.setItem(QQ_LOGIN_SESSION_KEY, JSON.stringify(pending))
+    window.location.assign(session.authorizeUrl)
+  } catch {
+    qqRedirecting.value = false
+  }
+}
+
 function openOAuth(provider: OAuthProvider) {
+  if (provider === 'qq') {
+    void redirectToQQ()
+    return
+  }
   activeProvider.value = provider
   oauthDialogVisible.value = true
 }
@@ -104,7 +207,11 @@ async function handleOAuthSuccess(result: OAuthLoginResult) {
 
 onBeforeUnmount(() => {
   oauthDialogVisible.value = false
+  qqEventSource?.close()
+  qqEventSource = null
 })
+
+onMounted(resumeQQLogin)
 </script>
 
 <template>
@@ -142,10 +249,10 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="oauth-options">
-          <button type="button" class="oauth-option" @click="openOAuth('qq')">
+          <button type="button" class="oauth-option" :disabled="qqRedirecting" :aria-busy="qqRedirecting" @click="openOAuth('qq')">
             <OAuthProviderIcon provider="qq" beta />
-            <span><strong>QQ</strong><small>扫码{{ isRegisterMode ? '注册或' : '' }}登录</small></span>
-            <el-icon><ArrowRight /></el-icon>
+            <span><strong>QQ</strong><small>QQ 授权{{ isRegisterMode ? '注册或' : '' }}登录</small></span>
+            <el-icon :class="{ 'is-loading': qqRedirecting }"><component :is="qqRedirecting ? Loading : ArrowRight" /></el-icon>
           </button>
           <button type="button" class="oauth-option" @click="openOAuth('wechat')">
             <OAuthProviderIcon provider="wechat" beta />
@@ -432,6 +539,12 @@ onBeforeUnmount(() => {
   border-color: #9aa3af;
   box-shadow: 0 0.8rem 1.8rem rgba(17, 19, 24, 0.08);
   transform: translateY(-2px);
+}
+
+.oauth-option:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
 }
 
 .oauth-option > span:not(.provider-icon) {

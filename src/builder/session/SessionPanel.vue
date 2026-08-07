@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ChatLineRound, DArrowLeft, Delete, Edit, Search, Sort } from '@element-plus/icons-vue'
+import { DArrowLeft, Delete, Edit, Plus, Search, Sort } from '@element-plus/icons-vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { deleteSession, getSessionList, updateSession, type sessionItem } from '@/http/session'
-import { getUserInfo } from '@/http/user'
+import { getUserInfo, type UpdateUserProfileResponse } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import UserMenu from '@/components/UserMenu.vue'
@@ -15,12 +15,18 @@ defineOptions({
   name: 'SessionPanel',
 })
 
+const emit = defineEmits<{
+  'profile-updated': [profile: UpdateUserProfileResponse]
+}>()
+
 const router = useRouter()
 const projectStore = useProjectStore()
 const sessionContext = useSessionContext()
 
 /** 用户昵称 */
 const nickName = ref('')
+/** 用户头像 */
+const userAvatar = ref('')
 
 /** 会话列表 */
 const sessions = ref<sessionItem[]>([])
@@ -281,6 +287,12 @@ function handleSwitchProject() {
   router.push('/')
 }
 
+function handleProfileUpdated(profile: UpdateUserProfileResponse) {
+  nickName.value = profile.nickname
+  userAvatar.value = profile.avatar?.trim() ?? ''
+  emit('profile-updated', profile)
+}
+
 watch(searchKeyword, () => {
   void fetchSessionList()
 })
@@ -304,6 +316,7 @@ onMounted(async () => {
   try {
     const res = await getUserInfo()
     nickName.value = res.nickname
+    userAvatar.value = res.avatar?.trim() ?? ''
   } catch {
     // 错误提示由 axios 拦截器统一处理
   }
@@ -330,8 +343,7 @@ onUnmounted(() => {
         </div>
         <div class="session-panel-title">AI Agent</div>
       </div>
-      <button type="button" class="builder-session-toggle-btn" title="收起会话栏" aria-label="收起会话栏"
-        @click.stop="sessionContext.toggleSessionPanelCollapsed()">
+      <button type="button" class="builder-session-toggle-btn" title="收起会话栏" aria-label="收起会话栏" @click.stop="sessionContext.toggleSessionPanelCollapsed()">
         <el-icon>
           <DArrowLeft />
         </el-icon>
@@ -339,16 +351,14 @@ onUnmounted(() => {
     </header>
 
     <section class="session-section">
-      <button type="button" class="session-create-btn" :disabled="isPendingNewSession || !projectId"
-        @click="handleCreateSession">
+      <button type="button" class="session-create-btn" :disabled="isPendingNewSession || !projectId" @click="handleCreateSession">
         <el-icon class="session-create-icon" aria-hidden="true">
-          <ChatLineRound />
+          <Plus />
         </el-icon>
-        <span style="white-space: nowrap;">新建会话</span>
+        <span style="white-space: nowrap">新建会话</span>
       </button>
 
-      <el-input v-model="searchInput" class="session-search" placeholder="搜索会话" :prefix-icon="Search" clearable
-        @input="handleSearchInput" />
+      <el-input v-model="searchInput" class="session-search" placeholder="搜索会话" :prefix-icon="Search" clearable @input="handleSearchInput" />
 
       <div v-loading="listLoading" class="session-list">
         <div v-if="isPendingNewSession" class="session-item session-item--active" @click="handleCreateSession">
@@ -360,8 +370,13 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-for="session in sessions" :key="session.id" class="session-item"
-          :class="{ 'session-item--active': session.id === activeSessionId }" @click="handleSelectSession(session.id)">
+        <div
+          v-for="session in sessions"
+          :key="session.id"
+          class="session-item"
+          :class="{ 'session-item--active': session.id === activeSessionId }"
+          @click="handleSelectSession(session.id)"
+        >
           <div class="session-item-row">
             <span class="session-item-title">{{ getSessionTitle(session) }}</span>
             <span class="session-item-time">{{ formatSessionTime(session.createdAt) }}</span>
@@ -374,8 +389,7 @@ onUnmounted(() => {
                   <Edit />
                 </el-icon>
               </button>
-              <button type="button" class="session-item-action session-item-action--delete" title="删除会话"
-                @click.stop="handleDeleteSession(session)">
+              <button type="button" class="session-item-action session-item-action--delete" title="删除会话" @click.stop="handleDeleteSession(session)">
                 <el-icon>
                   <Delete />
                 </el-icon>
@@ -403,7 +417,7 @@ onUnmounted(() => {
       </div>
 
       <div class="user-bar">
-        <UserMenu :nickname="nickName" compact />
+        <UserMenu :nickname="nickName" :avatar="userAvatar" compact @profile-updated="handleProfileUpdated" />
         <ThemeToggle />
       </div>
     </footer>

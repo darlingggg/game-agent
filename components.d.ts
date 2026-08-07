@@ -13,6 +13,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ElButton: typeof import('element-plus/es')['ElButton']
+    ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElColorPicker: typeof import('element-plus/es')['ElColorPicker']
     ElDialog: typeof import('element-plus/es')['ElDialog']
     ElDropdown: typeof import('element-plus/es')['ElDropdown']
@@ -22,7 +23,7 @@ declare module 'vue' {
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
     ElIcon: typeof import('element-plus/es')['ElIcon']
     ElInput: typeof import('element-plus/es')['ElInput']
-    ElRadio: typeof import('element-plus/es')['ElRadio']
+    ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     OAuthProviderIcon: typeof import('./src/components/OAuthProviderIcon.vue')['default']
@@ -31,7 +32,9 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SvgIcon: typeof import('./src/components/SvgIcon.vue')['default']
     ThemeToggle: typeof import('./src/components/ThemeToggle.vue')['default']
+    UserAvatar: typeof import('./src/components/UserAvatar.vue')['default']
     UserMenu: typeof import('./src/components/UserMenu.vue')['default']
+    UserProfileDialog: typeof import('./src/components/UserProfileDialog.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']
@@ -41,6 +44,7 @@ declare module 'vue' {
 // For TSX support
 declare global {
   const ElButton: typeof import('element-plus/es')['ElButton']
+  const ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
   const ElColorPicker: typeof import('element-plus/es')['ElColorPicker']
   const ElDialog: typeof import('element-plus/es')['ElDialog']
   const ElDropdown: typeof import('element-plus/es')['ElDropdown']
@@ -50,7 +54,7 @@ declare global {
   const ElFormItem: typeof import('element-plus/es')['ElFormItem']
   const ElIcon: typeof import('element-plus/es')['ElIcon']
   const ElInput: typeof import('element-plus/es')['ElInput']
-  const ElRadio: typeof import('element-plus/es')['ElRadio']
+  const ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
   const ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
   const ElTooltip: typeof import('element-plus/es')['ElTooltip']
   const OAuthProviderIcon: typeof import('./src/components/OAuthProviderIcon.vue')['default']
@@ -59,5 +63,7 @@ declare global {
   const RouterView: typeof import('vue-router')['RouterView']
   const SvgIcon: typeof import('./src/components/SvgIcon.vue')['default']
   const ThemeToggle: typeof import('./src/components/ThemeToggle.vue')['default']
+  const UserAvatar: typeof import('./src/components/UserAvatar.vue')['default']
   const UserMenu: typeof import('./src/components/UserMenu.vue')['default']
+  const UserProfileDialog: typeof import('./src/components/UserProfileDialog.vue')['default']
 }

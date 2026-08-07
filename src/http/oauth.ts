@@ -29,9 +29,11 @@ export interface OAuthSseMessage {
 }
 
 /** 创建第三方登录或绑定会话。 */
-export function createOAuthSession(provider: OAuthProvider, mode: OAuthFlowMode): Promise<OAuthSession> {
+export function createOAuthSession(provider: OAuthProvider, mode: OAuthFlowMode, returnUrl?: string): Promise<OAuthSession> {
   const action = mode === 'bind' ? 'bind' : 'url'
-  return axios.get(`/auth/${provider}/${action}`)
+  return axios.get(`/auth/${provider}/${action}`, {
+    params: returnUrl ? { returnUrl } : undefined,
+  })
 }
 
 /** 将后端返回的 SSE 相对路径挂到与普通 API 相同的 baseURL 下。 */

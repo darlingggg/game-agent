@@ -4,7 +4,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createProject, getProjectList, deleteProject, type projectItem, type ProjectType } from '@/http/project'
-import { getUserInfo } from '@/http/user'
+import { getUserInfo, type UpdateUserProfileResponse } from '@/http/user'
 import { Delete, Edit, Search } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 import { saveProjectConfig } from '@/utils/projectConfig'
@@ -22,6 +22,20 @@ defineOptions({
 const router = useRouter()
 
 const nickName = ref('')
+const userAvatar = ref('')
+
+type ProjectFilter = 'all' | ProjectType
+
+/** 当前项目类型筛选 */
+const activeType = ref<ProjectFilter>('all')
+
+/** 项目类型筛选项 */
+const projectFilters: Array<{ value: ProjectFilter; label: string }> = [
+  { value: 'all', label: '全部' },
+  { value: 'tool', label: '工具' },
+  { value: '2d', label: '2D 游戏' },
+  { value: '3d', label: '3D 游戏' },
+]
 
 /** 项目列表（完整数据） */
 const projects = ref<projectItem[]>([])
@@ -86,14 +100,29 @@ const editRules: FormRules = {
 }
 
 /** 项目总数 */
+const totalProjectCount = computed(() => projects.value.length)
+
+/** 当前筛选结果数量 */
 const projectCount = computed(() => displayedProjects.value.length)
+
+/** 是否存在搜索或类型筛选 */
+const hasActiveFilters = computed(() => !!searchKeyword.value.trim() || activeType.value !== 'all')
 
 /** 按标题模糊匹配后的项目列表 */
 const displayedProjects = computed(() => {
   const keyword = searchKeyword.value.trim().toLowerCase()
-  if (!keyword) return projects.value
-  return projects.value.filter((project) => project.title.toLowerCase().includes(keyword))
+  return projects.value.filter((project) => {
+    const matchesKeyword = !keyword || project.title.toLowerCase().includes(keyword)
+    const matchesType = activeType.value === 'all' || resolveProjectType(project.type) === activeType.value
+    return matchesKeyword && matchesType
+  })
 })
+
+/** 获取各类型项目数量 */
+function getFilterCount(type: ProjectFilter) {
+  if (type === 'all') return totalProjectCount.value
+  return projects.value.filter((project) => resolveProjectType(project.type) === type).length
+}
 
 /**
  * 搜索输入防抖处理
@@ -114,10 +143,7 @@ function handleSearchInput() {
 function handleResetSearch() {
   searchInput.value = ''
   searchKeyword.value = ''
-  ElMessage({
-    message: '已重置搜索条件',
-    type: 'warning',
-  })
+  activeType.value = 'all'
 }
 
 /**
@@ -127,7 +153,18 @@ function handleResetSearch() {
 function formatProjectTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', { hour12: false })
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .format(date)
+    .replaceAll('/', '.')
+}
+
+/** 项目编号展示 */
+function formatProjectId(id: number) {
+  return String(id).padStart(3, '0')
 }
 
 /**
@@ -189,17 +226,19 @@ async function handleCreateProject() {
 
 /** 删除项目 */
 async function handleDeletePro(id: number) {
-  ElMessageBox.confirm('确定要删除该项目吗？', '提示', {
-    confirmButtonText: '确定',
+  const project = projects.value.find((item) => item.id === id)
+  ElMessageBox.confirm(`删除后无法恢复${project ? `“${project.title}”` : '该项目'}，是否继续？`, '删除项目', {
+    confirmButtonText: '删除',
     cancelButtonText: '取消',
     type: 'warning',
+    lockScroll: false,
   })
     .then(async () => {
       await deleteProject({ id })
       ElMessage.success('项目删除成功')
       await fetchProjectList()
     })
-    .catch(() => { })
+    .catch(() => {})
 }
 
 /** 修改项目配置 */
@@ -256,10 +295,16 @@ function handleEnterProject(project: projectItem) {
   })
 }
 
+function handleProfileUpdated(profile: UpdateUserProfileResponse) {
+  nickName.value = profile.nickname
+  userAvatar.value = profile.avatar?.trim() ?? ''
+}
+
 onMounted(async () => {
   try {
     const res = await getUserInfo()
     nickName.value = res.nickname
+    userAvatar.value = res.avatar?.trim() ?? ''
   } catch {
     // 错误提示由 axios 拦截器统一处理
   }
@@ -275,451 +320,158 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="background">
-    <div class="container">
-      <header class="header">
-        <div class="header-left">
-          <div class="icon">
-            <span class="icon-svg" aria-hidden="true" />
-          </div>
-          <div class="title">
-            <span>AI Agent</span>
+  <div class="home-page">
+    <header class="home-header">
+      <div class="home-header-inner">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">
+            <span class="brand-mark-svg" />
+          </span>
+          <div class="brand-copy">
+            <strong>AI Agent</strong>
+            <span>Project workspace</span>
           </div>
         </div>
+
         <div class="header-actions">
           <ThemeToggle />
-          <UserMenu :nickname="nickName" />
+          <UserMenu :nickname="nickName" :avatar="userAvatar" @profile-updated="handleProfileUpdated" />
         </div>
-      </header>
-      <main class="main">
-        <div class="main-header">
-          <h2 class="main-title">项目列表</h2>
-          <span class="main-count">{{ projectCount }} 个项目</span>
+      </div>
+    </header>
+
+    <main class="home-main">
+      <section class="workspace-heading" aria-labelledby="workspace-title">
+        <div>
+          <p class="workspace-kicker">Workspace / {{ totalProjectCount }} projects</p>
+          <h1 id="workspace-title">{{ nickName ? `${nickName} 的项目` : '项目工作台' }}</h1>
+        </div>
+        <button type="button" class="create-project-button" @click="openCreateDialog">
+          <SvgIcon name="plus" />
+          <span>新建项目</span>
+        </button>
+      </section>
+
+      <section class="project-index" aria-labelledby="project-index-title">
+        <header class="project-index-header">
+          <div>
+            <span class="section-index">01 / PROJECT INDEX</span>
+            <h2 id="project-index-title">项目索引</h2>
+          </div>
+          <div class="project-result-count" aria-live="polite">
+            <strong>{{ projectCount }}</strong>
+            <span>{{ hasActiveFilters ? '项结果' : '个项目' }}</span>
+          </div>
+        </header>
+
+        <div class="project-toolbar">
+          <el-input v-model="searchInput" class="project-search" placeholder="搜索项目名称" :prefix-icon="Search" clearable @input="handleSearchInput" />
+
+          <div class="project-filter" role="group" aria-label="按项目类型筛选">
+            <button
+              v-for="filter in projectFilters"
+              :key="filter.value"
+              type="button"
+              class="project-filter-option"
+              :class="{ 'project-filter-option--active': activeType === filter.value }"
+              :aria-pressed="activeType === filter.value"
+              @click="activeType = filter.value"
+            >
+              <span>{{ filter.label }}</span>
+              <small>{{ getFilterCount(filter.value) }}</small>
+            </button>
+          </div>
         </div>
 
-        <div class="main-search">
-          <el-input v-model="searchInput" class="main-search-input" placeholder="搜索项目" :prefix-icon="Search" clearable
-            @input="handleSearchInput" />
-          <el-button type="warning" dashed @click="handleResetSearch">重置</el-button>
-        </div>
+        <div v-loading="listLoading" class="project-results">
+          <div v-if="displayedProjects.length" class="project-grid">
+            <article v-for="project in displayedProjects" :key="project.id" class="project-card" :class="PROJECT_TYPE_CLASS[resolveProjectType(project.type)]">
+              <button type="button" class="project-card-hitarea" :aria-label="`进入项目 ${project.title}`" @click="handleEnterProject(project)" />
 
-        <div v-loading="listLoading" class="project-grid">
-          <article v-for="project in displayedProjects" :key="project.id" class="project-card"
-            :class="PROJECT_TYPE_CLASS[resolveProjectType(project.type)]">
-            <div class="project-card-stripe" aria-hidden="true" />
-            <el-button class="card-delete" type="danger" :icon="Delete" dashed @click="handleDeletePro(project.id)" />
-            <el-button class="card-edit" type="primary" :icon="Edit" dashed @click="handleEditPro(project.id)" />
-            <div class="project-card-top">
-              <div class="project-card-icon">
-                <SvgIcon :name="`project-${resolveProjectType(project.type)}`" />
-              </div>
-            </div>
-
-            <h3 class="project-card-name">{{ project.title }}</h3>
-            <p class="project-card-desc">{{ getProjectDesc(project.desc) }}</p>
-
-            <div class="project-card-footer">
-              <div class="project-card-meta">
-                <span class="project-type-badge">{{ PROJECT_TYPE_LABEL[resolveProjectType(project.type)] }}</span>
-                <div class="project-card-time">
-                  <SvgIcon name="calendar" />
-                  <span>{{ formatProjectTime(project.createdAt) }}</span>
+              <div class="project-card-visual" aria-hidden="true">
+                <span class="project-card-number">#{{ formatProjectId(project.id) }}</span>
+                <div class="project-card-orbit" />
+                <div class="project-card-icon">
+                  <SvgIcon :name="`project-${resolveProjectType(project.type)}`" />
                 </div>
+                <span class="project-type-badge">{{ PROJECT_TYPE_LABEL[resolveProjectType(project.type)] }}</span>
               </div>
-              <button type="button" class="project-card-enter" @click="handleEnterProject(project)">进入项目 →</button>
-            </div>
-          </article>
 
-          <button type="button" class="project-card project-card--create" @click="openCreateDialog">
-            <div class="project-create-icon">
-              <SvgIcon name="plus" />
-            </div>
-            <h3 class="project-create-title">新建项目</h3>
-            <p class="project-create-desc">创建一个新的创作项目。</p>
-          </button>
+              <div class="project-card-actions">
+                <el-button class="card-action-button" :icon="Edit" circle title="编辑项目" aria-label="编辑项目" @click.stop="handleEditPro(project.id)" />
+                <el-button
+                  class="card-action-button card-action-button--danger"
+                  :icon="Delete"
+                  circle
+                  title="删除项目"
+                  aria-label="删除项目"
+                  @click.stop="handleDeletePro(project.id)"
+                />
+              </div>
+
+              <div class="project-card-content">
+                <h3>{{ project.title }}</h3>
+                <p>{{ getProjectDesc(project.desc) }}</p>
+                <footer>
+                  <time :datetime="project.createdAt" :title="new Date(project.createdAt).toLocaleString('zh-CN', { hour12: false })">
+                    <SvgIcon name="calendar" />
+                    {{ formatProjectTime(project.createdAt) }}
+                  </time>
+                  <span class="project-card-enter">打开项目 <b>↗</b></span>
+                </footer>
+              </div>
+            </article>
+          </div>
+
+          <div v-else-if="!listLoading" class="project-empty">
+            <span class="project-empty-icon"><Search /></span>
+            <h3>{{ hasActiveFilters ? '没有匹配的项目' : '还没有项目' }}</h3>
+            <p>{{ hasActiveFilters ? '换个名称或项目类型试试。' : '从第一个项目开始。' }}</p>
+            <button v-if="hasActiveFilters" type="button" class="empty-action-button" @click="handleResetSearch">查看全部项目</button>
+            <button v-else type="button" class="empty-action-button" @click="openCreateDialog">新建项目</button>
+          </div>
         </div>
-      </main>
+      </section>
+    </main>
 
-      <el-dialog v-model="createDialogVisible" title="新建项目" width="26rem">
-        <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-position="top">
-          <el-form-item label="项目名称" prop="title">
-            <el-input v-model="createForm.title" placeholder="请输入项目名称" maxlength="20" show-word-limit clearable />
-          </el-form-item>
-          <el-form-item label="项目类型" prop="type">
-            <el-radio-group v-model="createForm.type">
-              <el-radio value="tool">通用工具</el-radio>
-              <el-radio value="2d">2D游戏</el-radio>
-              <el-radio value="3d">3D游戏</el-radio>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="项目描述">
-            <el-input v-model="createForm.desc" type="textarea" :rows="3" placeholder="请输入项目描述（选填）" />
-          </el-form-item>
-        </el-form>
-        <template #footer>
-          <el-button @click="createDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="creating" @click="handleCreateProject">创建</el-button>
-        </template>
-      </el-dialog>
-      <el-dialog v-model="editDialogVisible" title="项目配置" width="26rem">
-        <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-position="top">
-          <el-form-item label="项目名称" prop="title">
-            <el-input v-model="editForm.title" placeholder="请输入项目名称" maxlength="20" show-word-limit clearable />
-          </el-form-item>
-          <el-form-item label="项目描述">
-            <el-input v-model="editForm.desc" type="textarea" :rows="3" placeholder="请输入项目描述（选填）" />
-          </el-form-item>
-        </el-form>
-        <template #footer>
-          <el-button @click="editDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="editing" @click="handleUpdateProject">保存</el-button>
-        </template>
-      </el-dialog>
-    </div>
+    <el-dialog v-model="createDialogVisible" class="project-dialog" title="新建项目" width="30rem" :lock-scroll="false" destroy-on-close>
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-position="top">
+        <el-form-item label="项目名称" prop="title">
+          <el-input v-model="createForm.title" placeholder="例如：像素冒险" maxlength="20" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="项目类型" prop="type">
+          <el-radio-group v-model="createForm.type" class="project-type-picker">
+            <el-radio-button v-for="type in ['tool', '2d', '3d'] as ProjectType[]" :key="type" :value="type">
+              <SvgIcon :name="`project-${type}`" />
+              <span>{{ PROJECT_TYPE_LABEL[type] }}</span>
+            </el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="项目描述">
+          <el-input v-model="createForm.desc" type="textarea" :rows="3" placeholder="简单记录项目目标（选填）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="handleCreateProject">创建项目</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editDialogVisible" class="project-dialog" title="项目配置" width="30rem" :lock-scroll="false" destroy-on-close>
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-position="top">
+        <el-form-item label="项目名称" prop="title">
+          <el-input v-model="editForm.title" placeholder="请输入项目名称" maxlength="20" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="项目描述">
+          <el-input v-model="editForm.desc" type="textarea" :rows="3" placeholder="简单记录项目目标（选填）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editing" @click="handleUpdateProject">保存配置</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
-<style scoped>
-.background {
-  width: 100%;
-  height: 100vh;
-  background: radial-gradient(var(--app-bg-gradient-start), var(--app-bg-gradient-end));
-}
-
-.container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: min(100%, 1340px);
-  margin: 0 auto;
-  height: 100vh;
-  padding: 34px;
-}
-
-.header {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.title {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: var(--app-text-primary);
-}
-
-.icon {
-  width: 2.5rem;
-  height: 2.5rem;
-}
-
-.icon-svg {
-  display: block;
-  width: 2.5rem;
-  height: 2.5rem;
-  background: var(--app-icon-fill);
-  mask: url('/svgs/ai-agent.svg') center / contain no-repeat;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.main {
-  flex: 1;
-  width: 100%;
-  min-height: 0;
-  margin-top: 2rem;
-  overflow-y: auto;
-}
-
-.main-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.25rem;
-}
-
-.main-title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--app-text-primary);
-}
-
-.main-count {
-  font-size: 0.875rem;
-  color: var(--app-text-secondary);
-}
-
-.main-search {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
-}
-
-.main-search-input {
-  flex: 1;
-  max-width: 24rem;
-}
-
-.main-search-input :deep(.el-input__wrapper) {
-  border-radius: 4px;
-  border: 1px solid var(--app-border-strong);
-  box-shadow: none;
-  margin-left: 3px;
-  transition: all 0.2s ease;
-}
-
-.main-search-input :deep(.el-input__wrapper.is-focus) {
-  border: 1px solid var(--app-accent);
-  box-shadow: 0 0 0 2px rgba(36, 99, 220, 0.2);
-}
-
-.main-search-input :deep(.el-input__prefix .el-icon) {
-  color: var(--app-text-muted);
-}
-
-.card-delete {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 2rem;
-  height: 2rem;
-}
-
-.card-edit {
-  position: absolute;
-  top: 0.5rem;
-  right: 3rem;
-  width: 2rem;
-  height: 2rem;
-  background-color: var(--app-surface);
-  color: var(--app-text-secondary);
-}
-
-.card-delete:hover {
-  color: var(--app-danger);
-}
-
-.card-edit:hover {
-  color: var(--app-text-primary);
-}
-
-.project-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-  gap: 1.25rem;
-}
-
-.project-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  padding: 1.25rem;
-  padding-left: 1.4rem;
-  background-color: var(--app-surface);
-  border: 1px solid var(--app-card-border);
-  border-radius: 0.35rem;
-  box-shadow: 0 3px 5px var(--app-shadow);
-  overflow: hidden;
-}
-
-.project-card-stripe {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 0.28rem;
-}
-
-.project-card.project-type--tool .project-card-stripe {
-  background: #6366f1;
-}
-
-.project-card.project-type--2d .project-card-stripe {
-  background: #10b981;
-}
-
-.project-card.project-type--3d .project-card-stripe {
-  background: #f97316;
-}
-
-.project-card.project-type--tool .project-card-icon {
-  background: #eef2ff;
-  color: #4338ca;
-}
-
-.project-card.project-type--2d .project-card-icon {
-  background: #ecfdf5;
-  color: #047857;
-}
-
-.project-card.project-type--3d .project-card-icon {
-  background: #fff7ed;
-  color: #c2410c;
-}
-
-.project-type-badge {
-  display: inline-flex;
-  padding: 0.1rem 0.45rem;
-  border-radius: 5px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.project-type--tool .project-type-badge {
-  background: #eef2ff;
-  color: #4338ca;
-  border: 1px solid #c7d2fe;
-}
-
-.project-type--2d .project-type-badge {
-  background: #ecfdf5;
-  color: #047857;
-  border: 1px solid #a7f3d0;
-}
-
-.project-type--3d .project-type-badge {
-  background: #fff7ed;
-  color: #c2410c;
-  border: 1px solid #fed7aa;
-}
-
-.project-card-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  align-items: flex-start;
-}
-
-.project-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-
-.project-card-icon,
-.project-create-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.5rem;
-  background-color: var(--app-accent-soft);
-  color: var(--app-accent);
-  transition: background-color 0.2s ease;
-}
-
-.project-card-icon svg,
-.project-create-icon svg {
-  width: 1.125rem;
-  height: 1.125rem;
-}
-
-.project-card-status {
-  padding: 0.125rem 0.625rem;
-  font-size: 0.75rem;
-  color: var(--app-text-secondary);
-  border: 1px solid var(--app-border);
-  border-radius: 999px;
-  background-color: var(--app-surface);
-}
-
-.project-card-name,
-.project-create-title {
-  margin: 0 0 0.375rem;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--app-text-primary);
-}
-
-.project-card-desc,
-.project-create-desc {
-  margin: 0 0 1.25rem;
-  font-size: 0.8125rem;
-  color: var(--app-text-secondary);
-  line-height: 1.5;
-}
-
-.project-card-footer {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-top: auto;
-}
-
-.project-card-time {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.75rem;
-  color: var(--app-text-muted);
-}
-
-.project-card-time svg {
-  width: 0.875rem;
-  height: 0.875rem;
-  flex-shrink: 0;
-}
-
-.project-card-enter {
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--app-accent);
-  cursor: pointer;
-  white-space: nowrap;
-  margin-bottom: 0.075rem;
-}
-
-.project-card-enter:hover {
-  text-decoration: underline;
-}
-
-.project-card--create {
-  align-items: center;
-  justify-content: center;
-  min-height: 11rem;
-  text-align: center;
-  border: 1px dashed var(--app-border-strong);
-  background-color: var(--app-surface);
-  cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    background-color 0.2s ease;
-}
-
-.project-card--create:hover {
-  border-color: var(--app-accent);
-  background-color: var(--app-surface-hover);
-}
-
-.project-card--create:hover .project-create-icon {
-  background-color: var(--app-surface);
-}
-
-.project-create-icon {
-  margin-bottom: 0.875rem;
-}
-
-.project-create-desc {
-  margin-bottom: 0;
-  max-width: 12rem;
-}
-</style>
+<style scoped src="./home.css"></style>

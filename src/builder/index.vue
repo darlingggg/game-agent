@@ -4,6 +4,7 @@ import { Camera, ChatDotRound, CopyDocument, DArrowRight, Document, Notebook, Se
 import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type Component, type ComponentPublicInstance } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { getProjectList } from '@/http/project'
+import type { UpdateUserProfileResponse } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
 import { ChatPanel, ConfigPanel, FilePanel, LogPanel, PreviewPanel, SessionPanel, SnapshotPanel, TempPanel } from './panels'
 import { createBuildContext, buildContextKey } from './build/buildContext'
@@ -24,6 +25,11 @@ interface TabItem {
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
+const latestUserProfile = ref<UpdateUserProfileResponse | null>(null)
+
+function handleUserProfileUpdated(profile: UpdateUserProfileResponse) {
+  latestUserProfile.value = profile
+}
 
 /** 当前激活会话 id */
 const activeSessionId = ref<number | null>(null)
@@ -352,13 +358,9 @@ onUnmounted(() => {
 <template>
   <div v-if="projectLoading" class="builder-status">正在加载项目...</div>
   <div v-else-if="projectError" class="builder-status builder-status--error">{{ projectError }}</div>
-  <div
-    v-else-if="projectReady"
-    class="container"
-    :class="{ 'container--session-collapsed': sessionPanelCollapsed }"
-  >
+  <div v-else-if="projectReady" class="container builder-shell" :class="{ 'container--session-collapsed': sessionPanelCollapsed }">
     <section class="left">
-      <SessionPanel />
+      <SessionPanel @profile-updated="handleUserProfileUpdated" />
     </section>
     <main class="main">
       <div ref="mainTabRef" class="main-tab">
@@ -372,20 +374,28 @@ onUnmounted(() => {
         >
           <el-icon><DArrowRight /></el-icon>
         </button>
+        <div class="main-tab-context">
+          <span class="main-tab-context-label">Build workspace</span>
+          <strong class="main-tab-context-title">{{ projectStore.currentProject?.title }}</strong>
+        </div>
         <div class="main-tab-list">
-          <div
+          <button
             v-for="(tab, index) in tabs"
             :key="tab.key"
             :ref="(el) => setTabRef(el, index)"
+            type="button"
             class="main-tab-item"
             :class="{ 'main-tab-item--active': activeTab === index }"
+            :aria-pressed="activeTab === index"
+            :aria-label="tab.label"
+            :title="tab.label"
             @click="switchTab(index)"
           >
             <el-icon class="main-tab-item-icon">
               <component :is="tab.icon" />
             </el-icon>
             <span class="main-tab-item-label">{{ tab.label }}</span>
-          </div>
+          </button>
         </div>
         <div class="main-tab-indicator" :style="indicatorStyle" />
       </div>
@@ -397,6 +407,8 @@ onUnmounted(() => {
             class="main-content-panel"
             :class="getPanelTransitionClass('chat')"
             :aria-hidden="activeTabKey !== 'chat' && leavingTabKey !== 'chat'"
+            :user-account-override="latestUserProfile?.account"
+            :user-avatar-override="latestUserProfile?.avatar"
           />
           <FilePanel
             v-if="shouldMountTabPanel('file')"
@@ -720,3 +732,5 @@ onUnmounted(() => {
   border-left: 1px solid var(--app-border);
 }
 </style>
+
+<style src="./builder.css"></style>

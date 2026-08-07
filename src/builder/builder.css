@@ -1,0 +1,1116 @@
+.container.builder-shell {
+  --builder-canvas: #edf0f4;
+  --builder-panel: #f9fafb;
+  --builder-surface: #ffffff;
+  --builder-ink: #15171c;
+  --builder-muted: #6f7784;
+  --builder-line: #d8dde5;
+  --builder-line-strong: #bfc7d2;
+  --builder-blue: #315efb;
+  --builder-blue-strong: #2448ca;
+  --builder-blue-soft: #e9efff;
+  --builder-grid: rgba(21, 23, 28, 0.035);
+  --builder-shadow: 0 10px 30px rgba(20, 29, 45, 0.08);
+
+  --app-bg: var(--builder-canvas);
+  --app-bg-subtle: #f1f3f6;
+  --app-bg-muted: var(--builder-panel);
+  --app-surface: var(--builder-surface);
+  --app-surface-hover: #eef2f8;
+  --app-border: var(--builder-line);
+  --app-border-strong: var(--builder-line-strong);
+  --app-text-primary: var(--builder-ink);
+  --app-text-secondary: var(--builder-muted);
+  --app-text-muted: #939ba8;
+  --app-accent: var(--builder-blue);
+  --app-accent-soft: var(--builder-blue-soft);
+  --app-card-border: var(--builder-line);
+
+  display: grid;
+  grid-template-columns: clamp(260px, 18vw, 304px) minmax(560px, 1fr) clamp(360px, 28vw, 480px);
+  width: 100%;
+  height: 100dvh;
+  background: var(--builder-canvas);
+  color: var(--builder-ink);
+  font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  letter-spacing: 0;
+  transition: grid-template-columns 250ms ease;
+}
+
+html.dark .builder-shell {
+  --builder-canvas: #0d1015;
+  --builder-panel: #12161d;
+  --builder-surface: #171c24;
+  --builder-ink: #edf1f7;
+  --builder-muted: #9aa4b2;
+  --builder-line: #29313d;
+  --builder-line-strong: #3a4554;
+  --builder-blue: #6f95ff;
+  --builder-blue-strong: #9cb7ff;
+  --builder-blue-soft: #1c2948;
+  --builder-grid: rgba(255, 255, 255, 0.035);
+  --builder-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+
+  --app-bg-subtle: #151a22;
+  --app-surface-hover: #202733;
+  --app-text-muted: #778292;
+}
+
+.builder-shell *,
+.builder-shell *::before,
+.builder-shell *::after {
+  box-sizing: border-box;
+}
+
+.builder-shell button,
+.builder-shell input,
+.builder-shell textarea {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.builder-shell button:focus-visible,
+.builder-shell input:focus-visible,
+.builder-shell textarea:focus-visible,
+.builder-shell [tabindex]:focus-visible {
+  outline: 2px solid var(--builder-blue);
+  outline-offset: 2px;
+}
+
+.builder-shell .left,
+.builder-shell .main,
+.builder-shell .right {
+  min-width: 0;
+  height: 100%;
+}
+
+.builder-shell .left {
+  border-right: 1px solid var(--builder-line);
+  background: var(--builder-panel);
+}
+
+.builder-shell .main {
+  background: var(--builder-canvas);
+}
+
+.builder-shell .right {
+  border-left: 1px solid var(--builder-line);
+  background: var(--builder-panel);
+}
+
+.builder-shell.container--session-collapsed {
+  grid-template-columns: 0 minmax(560px, 1fr) clamp(360px, 28vw, 480px);
+}
+
+.builder-shell.container--session-collapsed .main {
+  flex: initial;
+}
+
+/* Workspace rail */
+.builder-shell .session-panel {
+  padding: 0;
+  background: var(--builder-panel);
+}
+
+.builder-shell .session-panel-header {
+  min-height: 68px;
+  padding: 0 14px 0 16px;
+  border-bottom: 1px solid var(--builder-line);
+  background: color-mix(in srgb, var(--builder-panel) 92%, transparent);
+}
+
+.builder-shell .session-panel-header-brand {
+  gap: 10px;
+}
+
+.builder-shell .session-panel-logo {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--builder-ink);
+  border-radius: 5px;
+  background: var(--builder-surface);
+}
+
+.builder-shell .session-panel-logo-svg {
+  width: 24px;
+  height: 24px;
+  background: var(--builder-ink);
+}
+
+.builder-shell .session-panel-title {
+  color: var(--builder-ink);
+  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.builder-shell .session-panel-title::after {
+  content: 'PROJECT BUILDER';
+  display: block;
+  margin-top: 2px;
+  color: var(--builder-muted);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.builder-shell .builder-session-toggle-btn,
+.builder-shell .file-panel-tree-toggle-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--builder-line);
+  border-radius: 5px;
+  background: var(--builder-surface);
+  color: var(--builder-muted);
+  box-shadow: none;
+}
+
+.builder-shell .builder-session-toggle-btn:hover,
+.builder-shell .file-panel-tree-toggle-btn:hover {
+  border-color: var(--builder-ink);
+  background: var(--builder-ink);
+  color: var(--builder-surface);
+}
+
+.builder-shell .session-section {
+  padding: 14px 12px 0;
+}
+
+.builder-shell .session-create-btn {
+  justify-content: flex-start;
+  height: 38px;
+  margin-bottom: 10px;
+  padding: 0 10px;
+  border-color: var(--builder-line-strong);
+  border-radius: 6px;
+  background: var(--builder-surface);
+  color: var(--builder-ink);
+  box-shadow: 0 1px 2px rgba(20, 29, 45, 0.05);
+  font-size: 12px;
+  font-weight: 700;
+  transform: none;
+}
+
+.builder-shell .session-create-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--builder-blue-soft);
+  color: var(--builder-blue);
+  font-size: 13px;
+}
+
+.builder-shell .session-create-btn:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--builder-blue) 55%, var(--builder-line));
+  background: color-mix(in srgb, var(--builder-blue-soft) 48%, var(--builder-surface));
+  color: var(--builder-blue-strong);
+  transform: none;
+  box-shadow: 0 3px 10px rgba(49, 94, 251, 0.08);
+}
+
+.builder-shell .session-search {
+  margin-bottom: 12px;
+}
+
+.builder-shell .session-search .el-input__wrapper {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--builder-line-strong);
+  border-radius: 6px;
+  background: var(--builder-surface);
+  box-shadow: 0 1px 2px rgba(20, 29, 45, 0.035);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.builder-shell .session-search .el-input__wrapper.is-focus {
+  border-color: var(--builder-blue);
+  background: var(--builder-surface);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--builder-blue) 11%, transparent),
+    0 3px 10px rgba(49, 94, 251, 0.07);
+}
+
+.builder-shell .session-search .el-input__inner:focus-visible {
+  outline: none;
+}
+
+.builder-shell .session-search .el-input__prefix {
+  color: var(--builder-muted);
+  transition: color 160ms ease;
+}
+
+.builder-shell .session-search .el-input__wrapper.is-focus .el-input__prefix {
+  color: var(--builder-blue);
+}
+
+.builder-shell .session-list {
+  gap: 2px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-scrollbar-thumb) transparent;
+}
+
+.builder-shell .session-item {
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+
+.builder-shell .session-item:hover {
+  border-color: var(--builder-line);
+  background: var(--builder-surface);
+}
+
+.builder-shell .session-item--active {
+  padding-left: 10px;
+  border-color: #cbd7ff;
+  border-left: 3px solid var(--builder-blue);
+  background: var(--builder-blue-soft);
+}
+
+html.dark .builder-shell .session-item--active {
+  border-color: #2b4071;
+}
+
+.builder-shell .session-item-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.builder-shell .session-item-time,
+.builder-shell .session-item-preview {
+  font-size: 11px;
+}
+
+.builder-shell .session-item-time {
+  font-family: Consolas, 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.builder-shell .session-item-actions {
+  opacity: 0;
+  transform: translateX(4px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.builder-shell .session-item:hover .session-item-actions,
+.builder-shell .session-item--active .session-item-actions,
+.builder-shell .session-item:focus-within .session-item-actions {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.builder-shell .session-item-action {
+  border-radius: 4px;
+}
+
+.builder-shell .session-panel-footer {
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--builder-line);
+  background: var(--builder-surface);
+}
+
+.builder-shell .project-card {
+  padding: 10px 10px 10px 12px;
+  border-color: var(--builder-line);
+  border-radius: 5px;
+  background: var(--builder-panel);
+}
+
+.builder-shell .project-card-label {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.builder-shell .project-card-name {
+  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+}
+
+.builder-shell .project-card-switch {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  background: var(--builder-surface);
+}
+
+.builder-shell .user-bar {
+  padding: 2px 0 0;
+}
+
+/* Main navigation */
+.builder-shell .main-tab {
+  min-height: 68px;
+  gap: 12px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--builder-line);
+  background: var(--builder-surface);
+}
+
+.builder-shell .main-tab-context {
+  display: flex;
+  flex: 0 0 126px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 14px;
+  border-right: 1px solid var(--builder-line);
+}
+
+.builder-shell .main-tab-context-label {
+  color: var(--builder-muted);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.builder-shell .main-tab-context-title {
+  overflow: hidden;
+  color: var(--builder-ink);
+  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builder-shell .main-tab-list {
+  align-self: center;
+  height: 44px;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--builder-line);
+  border-radius: 6px;
+  background: var(--builder-panel);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--builder-surface) 82%, transparent);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.builder-shell .main-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.builder-shell .main-tab-item {
+  position: relative;
+  flex: 1 1 80px;
+  justify-content: center;
+  min-width: 68px;
+  max-width: 112px;
+  height: 34px;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--builder-muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.builder-shell .main-tab-item:hover {
+  border-color: color-mix(in srgb, var(--builder-line-strong) 72%, transparent);
+  background: color-mix(in srgb, var(--builder-surface) 64%, transparent);
+  color: var(--builder-ink);
+}
+
+.builder-shell .main-tab-item--active {
+  border-color: var(--builder-line);
+  background: var(--builder-surface);
+  color: var(--builder-ink);
+  font-weight: 750;
+  box-shadow:
+    0 1px 2px rgba(20, 29, 45, 0.07),
+    0 4px 10px rgba(20, 29, 45, 0.05);
+}
+
+.builder-shell .main-tab-item--active:hover {
+  border-color: var(--builder-line);
+  background: var(--builder-surface);
+}
+
+.builder-shell .main-tab-item--active .main-tab-item-icon {
+  color: var(--builder-blue);
+}
+
+.builder-shell .main-tab-item-icon {
+  font-size: 15px;
+}
+
+.builder-shell .main-tab-indicator {
+  display: none;
+}
+
+.builder-shell .main-content {
+  padding: 8px;
+  background-color: var(--builder-canvas);
+  background-image: linear-gradient(var(--builder-grid) 1px, transparent 1px), linear-gradient(90deg, var(--builder-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.builder-shell .main-content-panel {
+  border: 1px solid var(--builder-line);
+  border-radius: 6px;
+  background: var(--builder-surface);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+}
+
+html.dark .builder-shell .main-content-panel {
+  box-shadow: none;
+}
+
+/* Chat */
+.builder-shell .chat-panel {
+  border: 0;
+  border-radius: 6px;
+  background: var(--builder-surface);
+}
+
+.builder-shell .chat-panel-messages {
+  padding: 18px 20px 30px;
+  background-color: var(--builder-surface);
+  background-image: linear-gradient(var(--builder-grid) 1px, transparent 1px), linear-gradient(90deg, var(--builder-grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.builder-shell .chat-message {
+  gap: 8px;
+  padding: 8px 0 16px;
+}
+
+.builder-shell .chat-message-avatar {
+  width: 30px;
+  height: 30px;
+}
+
+.builder-shell .chat-message--assistant .chat-message-avatar,
+.builder-shell .chat-message--user .chat-message-avatar {
+  border-width: 1px;
+  border-color: var(--builder-line-strong);
+  background: var(--builder-surface);
+}
+
+.builder-shell .chat-message-body {
+  max-width: min(78%, 680px);
+}
+
+.builder-shell .chat-message-bubble {
+  border-radius: 6px;
+}
+
+.builder-shell .chat-message--assistant .chat-message-bubble {
+  border-color: var(--builder-line);
+  background: color-mix(in srgb, var(--builder-surface) 94%, var(--builder-blue-soft));
+  box-shadow: 0 4px 14px rgba(20, 29, 45, 0.045);
+}
+
+.builder-shell .chat-message--user .chat-message-bubble {
+  border: 1px solid var(--builder-line);
+  background: var(--builder-blue-soft);
+}
+
+.builder-shell .chat-message-reply-toggle {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.builder-shell .chat-panel-input-area {
+  padding: 12px 16px;
+  border-top-color: var(--builder-line);
+  background: color-mix(in srgb, var(--builder-panel) 90%, transparent);
+}
+
+.container.builder-shell .main-content .chat-panel-input-shell {
+  padding: 2px;
+  border-radius: 18px;
+  background: var(--builder-line-strong);
+  box-shadow: none;
+}
+
+.container.builder-shell .main-content .chat-panel-input:focus-visible {
+  outline: none;
+}
+
+.builder-shell .chat-panel-upload-btn,
+.builder-shell .chat-panel-action-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.builder-shell .chat-panel-action-btn {
+  background: var(--builder-blue);
+}
+
+/* File workspace */
+.builder-shell .file-panel {
+  border: 0;
+  border-radius: 6px;
+}
+
+.builder-shell .file-panel-tree {
+  width: 240px;
+  border-right-color: var(--builder-line);
+  background: var(--builder-panel);
+}
+
+.builder-shell .file-panel-tree-header,
+.builder-shell .file-panel-content-header {
+  min-height: 44px;
+  border-bottom-color: var(--builder-line);
+  background: var(--builder-surface);
+}
+
+.builder-shell .file-panel-tree-title,
+.builder-shell .file-panel-content-path {
+  color: var(--builder-ink);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.builder-shell .file-panel-save-btn {
+  width: auto;
+  min-width: 64px;
+  height: 30px;
+  padding: 0 12px;
+  border-color: var(--builder-blue);
+  border-radius: 4px;
+  background: var(--builder-blue);
+}
+
+.builder-shell .file-tree-node {
+  font-size: 12px;
+}
+
+/* Configuration, versions and templates */
+.builder-shell .config-panel,
+.builder-shell .snapshot-panel,
+.builder-shell .temp-panel {
+  padding: 18px 20px 28px;
+  border: 0;
+  background: var(--builder-surface);
+}
+
+.builder-shell .main-content .config-panel {
+  --config-accent-bg: var(--builder-panel);
+  --config-accent-bg-hover: #eef2f8;
+  --config-accent-text: var(--builder-ink);
+  --config-accent-text-muted: var(--builder-muted);
+  --config-accent-border: var(--builder-line);
+  --config-accent-border-hover: var(--builder-line-strong);
+  --config-group-border: var(--builder-line);
+}
+
+.builder-shell .main-content .snapshot-panel {
+  --snapshot-accent-bg: var(--builder-panel);
+  --snapshot-accent-bg-hover: #eef2f8;
+  --snapshot-accent-text: var(--builder-ink);
+  --snapshot-accent-text-muted: var(--builder-muted);
+  --snapshot-accent-border: var(--builder-line);
+  --snapshot-accent-border-hover: var(--builder-line-strong);
+  --snapshot-group-border: var(--builder-line);
+  --snapshot-detail-bg: var(--builder-panel);
+}
+
+.builder-shell .main-content .temp-panel {
+  --temp-accent-bg: var(--builder-panel);
+  --temp-accent-bg-hover: #eef2f8;
+  --temp-accent-text: var(--builder-ink);
+  --temp-accent-text-muted: var(--builder-muted);
+  --temp-accent-border: var(--builder-line);
+  --temp-accent-border-hover: var(--builder-line-strong);
+  --temp-group-border: var(--builder-line);
+}
+
+html.dark .builder-shell .main-content .config-panel,
+html.dark .builder-shell .main-content .snapshot-panel,
+html.dark .builder-shell .main-content .temp-panel {
+  --config-accent-bg-hover: #202733;
+  --snapshot-accent-bg-hover: #202733;
+  --temp-accent-bg-hover: #202733;
+}
+
+.builder-shell .config-panel-header,
+.builder-shell .snapshot-panel-header,
+.builder-shell .temp-panel-header {
+  min-height: 36px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--builder-line);
+}
+
+.builder-shell .config-panel-title,
+.builder-shell .snapshot-panel-title,
+.builder-shell .temp-panel-title {
+  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.builder-shell .config-panel-title::before,
+.builder-shell .snapshot-panel-title::before,
+.builder-shell .temp-panel-title::before {
+  content: 'WORKSPACE / ';
+  color: var(--builder-blue);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.builder-shell .config-panel-type-tabs,
+.builder-shell .snapshot-panel-type-tabs {
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--builder-line);
+  border-radius: 5px;
+  background: var(--builder-panel);
+}
+
+.builder-shell .config-panel-type-tabs {
+  width: fit-content;
+}
+
+.builder-shell .snapshot-panel-type-tabs {
+  width: 100%;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--builder-line);
+}
+
+.builder-shell .config-panel-type-tab,
+.builder-shell .snapshot-panel-type-tab,
+.builder-shell .config-theme-option {
+  border-color: transparent;
+  border-radius: 3px;
+  background: transparent;
+}
+
+.builder-shell .config-panel-type-tab--active,
+.builder-shell .snapshot-panel-type-tab--active,
+.builder-shell .config-theme-option--active {
+  border-color: var(--builder-line);
+  background: var(--builder-surface);
+  color: var(--builder-blue);
+  box-shadow: 0 1px 3px rgba(20, 29, 45, 0.08);
+}
+
+.builder-shell .config-panel .config-panel-type-tab--active,
+.builder-shell .snapshot-panel .snapshot-panel-type-tab--active,
+.builder-shell .config-panel .config-theme-option--active {
+  border-color: var(--builder-line);
+  background: var(--builder-surface);
+  color: var(--builder-blue);
+}
+
+.builder-shell .config-section-card,
+.builder-shell .snapshot-panel-group,
+.builder-shell .temp-panel-card {
+  border-color: var(--builder-line);
+  border-radius: 5px;
+  background: var(--builder-surface);
+  box-shadow: 0 5px 16px rgba(20, 29, 45, 0.045);
+}
+
+.builder-shell .config-section-head,
+.builder-shell .snapshot-panel-toggle,
+.builder-shell .temp-panel-card-header {
+  border-color: var(--builder-line);
+  background: var(--builder-panel);
+}
+
+.builder-shell .config-panel .config-section-head,
+.builder-shell .snapshot-panel .snapshot-panel-toggle,
+.builder-shell .temp-panel .temp-panel-card-header {
+  border-color: var(--builder-line);
+  background: var(--builder-panel);
+}
+
+.builder-shell .config-section-title,
+.builder-shell .snapshot-panel-version,
+.builder-shell .temp-panel-card-version {
+  color: var(--builder-ink);
+}
+
+.builder-shell .config-section-desc,
+.builder-shell .snapshot-panel-time,
+.builder-shell .temp-panel-card-time {
+  color: var(--builder-muted);
+}
+
+.builder-shell .config-action-btn,
+.builder-shell .snapshot-panel-save-btn,
+.builder-shell .temp-panel-update-btn,
+.builder-shell .temp-panel-card-update-btn {
+  border-color: var(--builder-blue);
+  border-radius: 4px;
+  background: var(--builder-blue);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.builder-shell .config-panel .config-action-btn,
+.builder-shell .snapshot-panel .snapshot-panel-save-btn,
+.builder-shell .temp-panel .temp-panel-update-btn,
+.builder-shell .temp-panel .temp-panel-card-update-btn {
+  border-color: var(--builder-blue);
+  background: var(--builder-blue);
+  color: #ffffff;
+}
+
+.builder-shell .config-action-btn:hover:not(:disabled),
+.builder-shell .snapshot-panel-save-btn:hover:not(.snapshot-panel-save-btn--hidden),
+.builder-shell .temp-panel-update-btn:hover:not(:disabled),
+.builder-shell .temp-panel-card-update-btn:hover:not(:disabled) {
+  border-color: var(--builder-blue-strong);
+  background: var(--builder-blue-strong);
+  color: #ffffff;
+}
+
+.builder-shell .snapshot-panel-online {
+  border-color: #b8dfcd;
+  border-left-color: #16875d;
+  border-radius: 5px;
+  background: #edf9f4;
+  box-shadow: none;
+}
+
+html.dark .builder-shell .snapshot-panel-online {
+  border-color: #285b4b;
+  border-left-color: #49c493;
+  background: #14251f;
+}
+
+.builder-shell .material-preview-card,
+.builder-shell .material-browse-item,
+.builder-shell .temp-panel-file-item,
+.builder-shell .snapshot-panel-file-tree {
+  border-radius: 4px;
+  border-color: var(--builder-line);
+  background: var(--builder-panel);
+}
+
+/* Template releases use status color to make version state scannable. */
+.builder-shell .main-content .temp-panel {
+  --temp-accent-bg: #edf2ff;
+  --temp-accent-bg-hover: #dde6ff;
+  --temp-accent-text: #2448ca;
+  --temp-accent-text-muted: #6276a8;
+  --temp-accent-border: #c9d5f5;
+  --temp-accent-border-hover: #9fb3ec;
+  --temp-group-border: #d8dee8;
+  --temp-latest-tag-bg: #fff4db;
+  --temp-latest-tag-text: #9a5900;
+  --temp-latest-tag-border: #e8bd65;
+  --temp-latest-header-bg: #fffaf0;
+
+  background: #fbfcfe;
+}
+
+.builder-shell .temp-panel .temp-panel-tip {
+  border-color: #b9dfcd;
+  background: #eff9f4;
+  color: #276f52;
+}
+
+.builder-shell .temp-panel .temp-panel-version-tag {
+  border-color: var(--temp-accent-border);
+  background: var(--temp-accent-bg);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.builder-shell .temp-panel .temp-panel-card {
+  border-color: var(--temp-group-border);
+  border-radius: 6px;
+  background: var(--builder-surface);
+  box-shadow: 0 6px 18px rgba(20, 29, 45, 0.055);
+}
+
+.builder-shell .temp-panel .temp-panel-card--current {
+  border-color: var(--temp-accent-border);
+  box-shadow: 0 7px 20px rgba(49, 94, 251, 0.08);
+}
+
+.builder-shell .temp-panel .temp-panel-card-header {
+  min-height: 52px;
+  border-bottom: 1px solid var(--temp-group-border);
+  background: var(--builder-surface);
+}
+
+.builder-shell .temp-panel .temp-panel-card--current .temp-panel-card-header {
+  border-bottom-color: var(--temp-accent-border);
+  background: var(--temp-accent-bg);
+}
+
+.builder-shell .temp-panel .temp-panel-card--latest:not(.temp-panel-card--current) .temp-panel-card-header {
+  border-bottom-color: var(--temp-latest-tag-border);
+  background: var(--temp-latest-header-bg);
+}
+
+.builder-shell .temp-panel .temp-panel-card-version {
+  color: var(--temp-accent-text);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 15px;
+}
+
+.builder-shell .temp-panel .temp-panel-status-tag--current {
+  border-color: var(--temp-accent-border);
+  background: var(--builder-surface);
+  color: var(--temp-accent-text);
+}
+
+.builder-shell .temp-panel .temp-panel-files-toggle {
+  min-height: 38px;
+  background: color-mix(in srgb, var(--temp-accent-bg) 28%, var(--builder-surface));
+}
+
+.builder-shell .temp-panel .temp-panel-files-toggle:hover {
+  background: color-mix(in srgb, var(--temp-accent-bg) 68%, var(--builder-surface));
+}
+
+.builder-shell .temp-panel .temp-panel-files-count {
+  color: var(--temp-accent-text);
+  font-weight: 700;
+}
+
+.builder-shell .temp-panel .temp-panel-file-item {
+  border-color: var(--temp-group-border);
+  border-radius: 4px;
+  background: var(--builder-surface);
+}
+
+.builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-action--add) {
+  background: #f5fbf8;
+}
+
+.builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-action--update) {
+  background: #f6f8ff;
+}
+
+.builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-action--delete) {
+  background: #fff8f8;
+}
+
+.builder-shell .temp-panel .temp-panel-file-action {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+html.dark .builder-shell .main-content .temp-panel {
+  --temp-accent-bg: #1b2947;
+  --temp-accent-bg-hover: #24365d;
+  --temp-accent-text: #a9bfff;
+  --temp-accent-text-muted: #8196c4;
+  --temp-accent-border: #334c7c;
+  --temp-accent-border-hover: #4b67a0;
+  --temp-group-border: var(--builder-line);
+  --temp-latest-tag-bg: rgba(232, 175, 73, 0.16);
+  --temp-latest-tag-text: #f2c66f;
+  --temp-latest-tag-border: rgba(232, 175, 73, 0.42);
+  --temp-latest-header-bg: rgba(232, 175, 73, 0.08);
+
+  background: var(--builder-surface);
+}
+
+html.dark .builder-shell .temp-panel .temp-panel-tip {
+  border-color: #285b4b;
+  background: #14251f;
+  color: #70c9a3;
+}
+
+html.dark .builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-action--add) {
+  background: #13231d;
+}
+
+html.dark .builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-action--update) {
+  background: #151e34;
+}
+
+html.dark .builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-action--delete) {
+  background: #2a181b;
+}
+
+/* Preview studio */
+.builder-shell .preview-panel {
+  background: var(--builder-panel);
+}
+
+.builder-shell .preview-toolbar {
+  min-height: 68px;
+  padding: 0 16px;
+  border-bottom-color: var(--builder-line);
+  background: var(--builder-surface);
+}
+
+.builder-shell .preview-toolbar-title {
+  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.builder-shell .preview-toolbar-title::after {
+  content: 'LIVE OUTPUT';
+  display: block;
+  margin-top: 2px;
+  color: var(--builder-muted);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.builder-shell .preview-toolbar-actions {
+  gap: 6px;
+}
+
+.builder-shell .preview-toolbar-btn {
+  width: 32px;
+  height: 32px;
+  border-color: var(--builder-line);
+  border-radius: 5px;
+  background: var(--builder-panel);
+}
+
+.builder-shell .preview-toolbar-btn:hover:not(:disabled) {
+  border-color: var(--builder-ink);
+  background: var(--builder-ink);
+  color: var(--builder-surface);
+}
+
+.builder-shell .phone-container {
+  padding: 18px;
+  background-color: var(--builder-canvas);
+  background-image: linear-gradient(var(--builder-grid) 1px, transparent 1px), linear-gradient(90deg, var(--builder-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.builder-shell .phone-frame {
+  max-height: 100%;
+  border: 2px solid var(--builder-ink);
+  border-radius: 34px;
+  box-shadow:
+    0 18px 40px rgba(20, 29, 45, 0.14),
+    0 0 0 5px color-mix(in srgb, var(--builder-surface) 75%, transparent);
+}
+
+html.dark .builder-shell .phone-frame {
+  border-color: #d8dee9;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.4),
+    0 0 0 5px rgba(255, 255, 255, 0.04);
+}
+
+.builder-shell .phone-notch {
+  padding-top: 9px;
+}
+
+.builder-shell .phone-notch::before {
+  width: 86px;
+  height: 22px;
+}
+
+/* Terminal remains intentionally dark */
+.builder-shell .log-panel-wrapper {
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #080b10;
+}
+
+.builder-shell .log-panel {
+  padding: 16px 18px;
+  background: #080b10;
+  color: #c8d0dc;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.builder-shell .log-panel::before {
+  content: 'agent://runtime/log';
+  display: block;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #242b36;
+  color: #6f95ff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.builder-shell .log-panel-build-float {
+  border-color: #343d49;
+  border-radius: 6px;
+  background: rgba(13, 17, 23, 0.97);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 1380px) {
+  .container.builder-shell {
+    grid-template-columns: 264px minmax(500px, 1fr) 360px;
+  }
+
+  .builder-shell.container--session-collapsed {
+    grid-template-columns: 0 minmax(500px, 1fr) 360px;
+  }
+
+  .builder-shell .main-tab-context {
+    display: none;
+  }
+
+  .builder-shell .main-tab-item {
+    min-width: 62px;
+    padding-inline: 8px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .container.builder-shell {
+    grid-template-columns: 232px minmax(440px, 1fr) 320px;
+  }
+
+  .builder-shell.container--session-collapsed {
+    grid-template-columns: 0 minmax(440px, 1fr) 320px;
+  }
+
+  .builder-shell .main-tab-item {
+    min-width: 40px;
+  }
+
+  .builder-shell .main-tab-item-label {
+    display: none;
+  }
+
+  .builder-shell .phone-container {
+    padding: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .builder-shell *,
+  .builder-shell *::before,
+  .builder-shell *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

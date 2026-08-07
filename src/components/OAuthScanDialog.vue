@@ -156,7 +156,17 @@ onBeforeUnmount(stopSession)
 </script>
 
 <template>
-  <el-dialog :model-value="modelValue" class="oauth-dialog" width="26rem" align-center destroy-on-close :show-close="true" @close="handleClose">
+  <el-dialog
+    :model-value="modelValue"
+    class="oauth-dialog"
+    width="26rem"
+    align-center
+    append-to-body
+    :lock-scroll="false"
+    destroy-on-close
+    :show-close="true"
+    @close="handleClose"
+  >
     <template #header>
       <div class="oauth-dialog-header">
         <OAuthProviderIcon :provider="provider" beta />
@@ -306,6 +316,22 @@ onBeforeUnmount(stopSession)
   border-radius: 50%;
   background: #2673ff;
   box-shadow: 0 0 0 0.3rem rgba(38, 115, 255, 0.12);
+  animation: breathing 2.5s ease-in-out infinite;
+}
+
+@keyframes breathing {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
 }
 
 .oauth-stage--error .oauth-status-dot,
