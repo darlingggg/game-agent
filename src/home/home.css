@@ -90,7 +90,7 @@
 .home-main {
   width: min(100% - 48px, 1280px);
   margin: 0 auto;
-  padding: 56px 0 88px;
+  padding: 20px 0 40px;
 }
 
 .workspace-heading {
