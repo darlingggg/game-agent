@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowDown, EditPen, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { setTokens } from '@/ajax'
 import { useLogout } from '@/composables/useLogout'
 import { getUserInfo, type UpdateUserProfileResponse } from '@/http/user'
@@ -34,13 +34,21 @@ const oauthDialogVisible = ref(false)
 const profileDialogVisible = ref(false)
 const activeProvider = ref<OAuthProvider>('qq')
 const profileLoading = ref(false)
+const profileLoaded = ref(false)
 const profileAvatar = ref('')
 const profileNickname = ref('')
 const bindings = reactive({ qq: false, wechat: false })
-const displayedAvatar = computed(() => profileAvatar.value || props.avatar)
+const displayedAvatar = computed(() =>
+  profileLoaded.value ? profileAvatar.value : props.avatar,
+)
 const displayedNickname = computed(() => profileNickname.value || props.nickname)
+const hasAvailableBinding = computed(
+  () => profileLoaded.value && (!bindings.qq || !bindings.wechat),
+)
 
 async function refreshBindings() {
+  if (profileLoading.value) return
+
   profileLoading.value = true
   try {
     const profile = await getUserInfo()
@@ -48,6 +56,7 @@ async function refreshBindings() {
     profileNickname.value = profile.nickname
     bindings.qq = profile.bindings?.qq ?? false
     bindings.wechat = profile.bindings?.wechat ?? false
+    profileLoaded.value = true
   } catch {
     // 错误提示由 axios 拦截器统一处理
   } finally {
@@ -82,38 +91,52 @@ function handleProfileSaved(profile: UpdateUserProfileResponse) {
   profileNickname.value = profile.nickname
   bindings.qq = profile.bindings?.qq ?? false
   bindings.wechat = profile.bindings?.wechat ?? false
+  profileLoaded.value = true
   emit('profile-updated', profile)
 }
 
 function handleDropdownVisible(visible: boolean) {
-  if (visible) void refreshBindings()
+  if (visible && profileLoaded.value) void refreshBindings()
 }
+
+onMounted(() => {
+  void refreshBindings()
+})
 </script>
 
 <template>
   <el-dropdown trigger="click" @command="handleMenuCommand" @visible-change="handleDropdownVisible">
-    <button type="button" class="user-menu-trigger" :class="{ 'user-menu-trigger--compact': compact }">
+    <button
+      type="button"
+      class="user-menu-trigger"
+      :class="{ 'user-menu-trigger--compact': compact }"
+      :aria-label="displayedNickname ? `${displayedNickname} 的用户菜单` : '用户菜单'"
+      :title="displayedNickname || '用户菜单'"
+    >
       <UserAvatar class="user-menu-avatar" :avatar="displayedAvatar" />
       <span v-if="displayedNickname" class="user-menu-name">{{ displayedNickname }}</span>
       <el-icon v-if="!compact" class="user-menu-arrow"><ArrowDown /></el-icon>
     </button>
     <template #dropdown>
-      <el-dropdown-menu class="user-account-menu">
+      <el-dropdown-menu
+        class="user-account-menu"
+        :class="{ 'user-account-menu--has-bindings': hasAvailableBinding }"
+      >
         <el-dropdown-item command="edit-profile" :disabled="profileLoading" class="user-profile-item">
           <span class="user-profile-item-icon"
             ><el-icon><EditPen /></el-icon
           ></span>
           <span class="user-bind-copy"><strong>编辑个人资料</strong><small>头像、昵称与登录信息</small></span>
         </el-dropdown-item>
-        <el-dropdown-item v-if="!bindings.qq" command="bind-qq" :disabled="profileLoading" class="user-bind-item">
+        <el-dropdown-item v-if="profileLoaded && !bindings.qq" command="bind-qq" :disabled="profileLoading" class="user-bind-item">
           <OAuthProviderIcon provider="qq" beta />
           <span class="user-bind-copy"><strong>绑定 QQ</strong><small>扫码关联当前账号</small></span>
         </el-dropdown-item>
-        <el-dropdown-item v-if="!bindings.wechat" command="bind-wechat" :disabled="profileLoading" class="user-bind-item">
+        <el-dropdown-item v-if="profileLoaded && !bindings.wechat" command="bind-wechat" :disabled="profileLoading" class="user-bind-item">
           <OAuthProviderIcon provider="wechat" beta />
           <span class="user-bind-copy"><strong>绑定微信</strong><small>扫码关联当前账号</small></span>
         </el-dropdown-item>
-        <el-dropdown-item divided command="logout" class="user-logout-item">
+        <el-dropdown-item :divided="hasAvailableBinding" command="logout" class="user-logout-item">
           <el-icon><SwitchButton /></el-icon>
           退出登录
         </el-dropdown-item>
@@ -129,8 +152,12 @@ function handleDropdownVisible(visible: boolean) {
 .user-menu-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.8rem;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  gap: 0;
+  padding: 0;
   border: 1px solid var(--app-border);
   border-radius: 0.375rem;
   background-color: var(--app-surface);
@@ -143,6 +170,9 @@ function handleDropdownVisible(visible: boolean) {
 
 .user-menu-trigger--compact {
   width: 100%;
+  height: auto;
+  min-height: 38px;
+  flex: initial;
   justify-content: flex-start;
   gap: 0.5rem;
   padding: 0.625rem 0.75rem;
@@ -155,15 +185,23 @@ function handleDropdownVisible(visible: boolean) {
 
 .user-menu-avatar {
   display: inline-flex;
-  width: 1rem;
-  height: 1rem;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 50%;
+  background-color: var(--app-bg-muted);
   line-height: 0;
 }
 
 .user-menu-trigger--compact .user-menu-avatar {
   width: 1.25rem;
   height: 1.25rem;
+}
+
+.user-menu-trigger:not(.user-menu-trigger--compact) .user-menu-name,
+.user-menu-trigger:not(.user-menu-trigger--compact) .user-menu-arrow {
+  display: none;
 }
 
 .user-menu-name {
@@ -232,6 +270,9 @@ function handleDropdownVisible(visible: boolean) {
 .user-account-menu .user-profile-item {
   height: 3.5rem;
   padding: 0 0.8rem;
+}
+
+.user-account-menu--has-bindings .user-profile-item {
   border-bottom: 1px solid var(--app-border);
 }
 

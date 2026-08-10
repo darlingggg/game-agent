@@ -35,8 +35,9 @@ function handleToggle() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
   padding: 0;
   border: 1px solid var(--app-border);
   border-radius: 0.375rem;

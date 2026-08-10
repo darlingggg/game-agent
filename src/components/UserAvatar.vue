@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { USER_AVATAR_URL } from '@/builder/chat/chatAvatars'
 
 defineOptions({ name: 'UserAvatar' })
@@ -13,8 +13,6 @@ const props = withDefaults(defineProps<Props>(), {
   avatar: '',
   alt: '',
 })
-
-const loadFailed = ref(false)
 
 /** 仅接受可由浏览器安全加载的 HTTP(S) 地址或站内绝对路径。 */
 const normalizedAvatar = computed(() => {
@@ -30,19 +28,18 @@ const normalizedAvatar = computed(() => {
   }
 })
 
-const useFallback = computed(() => !normalizedAvatar.value || loadFailed.value)
+const useFallback = computed(() => !normalizedAvatar.value)
 const displayUrl = computed(() => (useFallback.value ? USER_AVATAR_URL : normalizedAvatar.value))
-
-watch(
-  () => props.avatar,
-  () => {
-    loadFailed.value = false
-  },
-)
 </script>
 
 <template>
-  <img class="user-avatar-image" :class="{ 'user-avatar-image--fallback': useFallback }" :src="displayUrl" :alt="alt" @error="loadFailed = true" />
+  <img
+    class="user-avatar-image"
+    :class="{ 'user-avatar-image--fallback': useFallback }"
+    :src="displayUrl"
+    :alt="alt"
+    crossorigin="anonymous"
+  />
 </template>
 
 <style scoped>
