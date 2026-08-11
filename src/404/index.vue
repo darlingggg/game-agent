@@ -76,12 +76,12 @@ function trackPointer(event: PointerEvent) {
 
 <style scoped>
 .not-found-page {
-  --error-bg: #f4f6f8;
-  --error-ink: #15171c;
-  --error-muted: #777f8c;
-  --error-line: rgba(21, 23, 28, 0.16);
-  --error-blue: #315efb;
-  --error-green: #11865b;
+  --error-bg: var(--brand-canvas);
+  --error-ink: var(--brand-ink);
+  --error-muted: var(--brand-muted);
+  --error-line: var(--brand-line);
+  --error-blue: var(--brand-blue);
+  --error-green: var(--brand-success);
   position: relative;
   min-height: 100svh;
   overflow: hidden;
@@ -496,12 +496,12 @@ function trackPointer(event: PointerEvent) {
 }
 
 :global(html.dark) .not-found-page {
-  --error-bg: #111419;
-  --error-ink: #edf0f5;
-  --error-muted: #8f98a6;
-  --error-line: rgba(237, 240, 245, 0.16);
-  --error-blue: #6f98ff;
-  --error-green: #4dcc98;
+  --error-bg: var(--brand-canvas);
+  --error-ink: var(--brand-ink);
+  --error-muted: var(--brand-muted);
+  --error-line: var(--brand-line);
+  --error-blue: var(--brand-blue);
+  --error-green: var(--brand-success);
 }
 
 :global(html.dark) .brand-mark,

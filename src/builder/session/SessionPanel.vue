@@ -4,10 +4,8 @@ import { DArrowLeft, Delete, Edit, Plus, Search, Sort } from '@element-plus/icon
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { deleteSession, getSessionList, updateSession, type sessionItem } from '@/http/session'
-import { getUserInfo, type UpdateUserProfileResponse } from '@/http/user'
+import { getUserInfo } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
-import ThemeToggle from '@/components/ThemeToggle.vue'
-import UserMenu from '@/components/UserMenu.vue'
 import { SESSION_EMPTY_PREVIEW } from './constants'
 import { useSessionContext } from './sessionContext'
 
@@ -15,9 +13,14 @@ defineOptions({
   name: 'SessionPanel',
 })
 
-const emit = defineEmits<{
-  'profile-updated': [profile: UpdateUserProfileResponse]
-}>()
+const props = withDefaults(
+  defineProps<{
+    userNicknameOverride?: string
+  }>(),
+  {
+    userNicknameOverride: '',
+  },
+)
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -25,9 +28,6 @@ const sessionContext = useSessionContext()
 
 /** 用户昵称 */
 const nickName = ref('')
-/** 用户头像 */
-const userAvatar = ref('')
-
 /** 会话列表 */
 const sessions = ref<sessionItem[]>([])
 
@@ -287,15 +287,16 @@ function handleSwitchProject() {
   router.push('/')
 }
 
-function handleProfileUpdated(profile: UpdateUserProfileResponse) {
-  nickName.value = profile.nickname
-  userAvatar.value = profile.avatar?.trim() ?? ''
-  emit('profile-updated', profile)
-}
-
 watch(searchKeyword, () => {
   void fetchSessionList()
 })
+
+watch(
+  () => props.userNicknameOverride,
+  (nickname) => {
+    if (nickname) nickName.value = nickname
+  },
+)
 
 watch(
   () => sessionContext.lastCreatedSession.value,
@@ -316,7 +317,6 @@ onMounted(async () => {
   try {
     const res = await getUserInfo()
     nickName.value = res.nickname
-    userAvatar.value = res.avatar?.trim() ?? ''
   } catch {
     // 错误提示由 axios 拦截器统一处理
   }
@@ -337,11 +337,9 @@ onUnmounted(() => {
 <template>
   <aside class="session-panel">
     <header class="session-panel-header">
-      <div class="session-panel-header-brand" @click="handleSwitchProject">
-        <div class="session-panel-logo">
-          <span class="session-panel-logo-svg" aria-hidden="true" />
-        </div>
-        <div class="session-panel-title">AI Agent</div>
+      <div class="session-panel-heading">
+        <span>WORKSPACE / SESSIONS</span>
+        <div class="session-panel-title">会话</div>
       </div>
       <button type="button" class="builder-session-toggle-btn" title="收起会话栏" aria-label="收起会话栏" @click.stop="sessionContext.toggleSessionPanelCollapsed()">
         <el-icon>
@@ -414,11 +412,6 @@ onUnmounted(() => {
             <Sort />
           </el-icon>
         </button>
-      </div>
-
-      <div class="user-bar">
-        <UserMenu :nickname="nickName" :avatar="userAvatar" compact @profile-updated="handleProfileUpdated" />
-        <ThemeToggle />
       </div>
     </footer>
   </aside>

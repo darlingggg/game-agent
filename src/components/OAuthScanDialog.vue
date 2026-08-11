@@ -169,7 +169,7 @@ onBeforeUnmount(stopSession)
   >
     <template #header>
       <div class="oauth-dialog-header">
-        <OAuthProviderIcon :provider="provider" beta />
+        <OAuthProviderIcon :provider="provider" :beta="provider === 'wechat'" />
         <div>
           <h2>{{ dialogTitle }}</h2>
           <p>{{ mode === 'bind' ? '扫码后将关联到当前账号' : '扫码授权后自动进入工作台' }}</p>

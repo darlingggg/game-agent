@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { Camera, ChatDotRound, CopyDocument, DArrowRight, Document, Notebook, Setting } from '@element-plus/icons-vue'
-import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type Component, type ComponentPublicInstance } from 'vue'
+import { ArrowLeft, Camera, ChatDotRound, CopyDocument, Document, Notebook, Setting } from '@element-plus/icons-vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type Component } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import ThemeToggle from '@/components/ThemeToggle.vue'
+import UserMenu from '@/components/UserMenu.vue'
 import { getProjectList } from '@/http/project'
 import type { UpdateUserProfileResponse } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
+import { PROJECT_TYPE_LABEL, resolveProjectType } from '@/utils/projectType'
 import { ChatPanel, ConfigPanel, FilePanel, LogPanel, PreviewPanel, SessionPanel, SnapshotPanel, TempPanel } from './panels'
 import { createBuildContext, buildContextKey } from './build/buildContext'
 import { createLogContext, logContextKey } from './log/logContext'
@@ -18,6 +21,7 @@ defineOptions({
 interface TabItem {
   key: string
   label: string
+  meta: string
   /** Tab 图标 */
   icon: Component
 }
@@ -26,9 +30,35 @@ const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const latestUserProfile = ref<UpdateUserProfileResponse | null>(null)
+const sessionToggleRef = ref<HTMLButtonElement | null>(null)
+
+type MobilePane = 'workspace' | 'preview'
+
+/** 当前是否进入会话抽屉布局 */
+const isNarrowLayout = ref(false)
+
+/** 当前是否进入手机单面板布局 */
+const isMobileLayout = ref(false)
+
+/** 手机端默认先展示验收预览 */
+const mobilePane = ref<MobilePane>('preview')
+
+let narrowMediaQuery: MediaQueryList | null = null
+let mobileMediaQuery: MediaQueryList | null = null
 
 function handleUserProfileUpdated(profile: UpdateUserProfileResponse) {
   latestUserProfile.value = profile
+}
+
+/** Builder 顶栏项目类型 */
+const projectTypeLabel = computed(() => PROJECT_TYPE_LABEL[resolveProjectType(projectStore.currentProject?.type)])
+
+/** Builder 顶栏项目编号 */
+const projectNumber = computed(() => String(projectStore.currentProject?.id ?? 0).padStart(3, '0'))
+
+/** 返回项目列表 */
+function handleBackHome() {
+  void router.push('/')
 }
 
 /** 当前激活会话 id */
@@ -50,7 +80,33 @@ const sessionPanelCollapsed = ref(false)
  * 切换会话栏收起/展开
  */
 function toggleSessionPanelCollapsed() {
-  sessionPanelCollapsed.value = !sessionPanelCollapsed.value
+  const willCollapse = !sessionPanelCollapsed.value
+  sessionPanelCollapsed.value = willCollapse
+
+  if (willCollapse && isNarrowLayout.value) {
+    void nextTick(() => sessionToggleRef.value?.focus())
+  }
+}
+
+/** 同步桌面、抽屉与手机断点状态 */
+function syncResponsiveLayout() {
+  const nextNarrow = narrowMediaQuery?.matches ?? false
+  const wasNarrow = isNarrowLayout.value
+
+  isNarrowLayout.value = nextNarrow
+  isMobileLayout.value = mobileMediaQuery?.matches ?? false
+
+  if (!wasNarrow && nextNarrow) {
+    sessionPanelCollapsed.value = true
+  } else if (wasNarrow && !nextNarrow) {
+    sessionPanelCollapsed.value = false
+  }
+}
+
+/** Escape 关闭窄屏会话抽屉 */
+function handleShellKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !isNarrowLayout.value || sessionPanelCollapsed.value) return
+  toggleSessionPanelCollapsed()
 }
 
 /**
@@ -107,12 +163,12 @@ watch(
 )
 
 const tabs: TabItem[] = [
-  { key: 'chat', label: '对话', icon: ChatDotRound },
-  { key: 'file', label: '文件', icon: Document },
-  { key: 'config', label: '配置', icon: Setting },
-  { key: 'snapshot', label: '版本', icon: Camera },
-  { key: 'temp', label: '模板', icon: CopyDocument },
-  { key: 'log', label: '日志', icon: Notebook },
+  { key: 'chat', label: '对话', meta: 'AI COLLAB', icon: ChatDotRound },
+  { key: 'file', label: '文件', meta: 'SOURCE', icon: Document },
+  { key: 'config', label: '配置', meta: 'SETUP', icon: Setting },
+  { key: 'snapshot', label: '版本', meta: 'HISTORY', icon: Camera },
+  { key: 'temp', label: '模板', meta: 'BASELINE', icon: CopyDocument },
+  { key: 'log', label: '日志', meta: 'RUNTIME', icon: Notebook },
 ]
 
 /** 当前选中的 Tab 索引 */
@@ -122,7 +178,7 @@ const activeTab = ref(0)
 type PanelSlideDirection = 'forward' | 'backward'
 
 /** 面板切换动画时长（毫秒） */
-const PANEL_TRANSITION_MS = 280
+const PANEL_TRANSITION_MS = 200
 
 /** 正在退出的 Tab key */
 const leavingTabKey = ref<string | null>(null)
@@ -139,18 +195,6 @@ let panelTransitionTimer: ReturnType<typeof setTimeout> | null = null
 /** 已挂载过的 Tab 面板（首次访问后保持挂载，避免切换丢失状态） */
 const mountedTabKeys = ref<Set<string>>(new Set(['chat']))
 
-/** Tab 元素引用，用于计算底部指示条位置 */
-const tabRefs = ref<HTMLElement[]>([])
-
-/** Tab 栏容器，指示条相对此元素定位 */
-const mainTabRef = ref<HTMLElement | null>(null)
-
-/** 底部指示条样式 */
-const indicatorStyle = ref({
-  width: '0px',
-  transform: 'translateX(0px)',
-})
-
 /** 项目初始化中 */
 const projectLoading = ref(true)
 
@@ -159,32 +203,6 @@ const projectError = ref('')
 
 /** 当前项目是否就绪 */
 const projectReady = computed(() => !projectLoading.value && !projectError.value && !!projectStore.currentProject)
-
-/**
- * 收集 Tab 元素引用
- * @param el Tab DOM 元素
- * @param index Tab 索引
- */
-function setTabRef(el: Element | ComponentPublicInstance | null, index: number) {
-  if (el instanceof HTMLElement) {
-    tabRefs.value[index] = el
-  }
-}
-
-/** 更新底部指示条位置与宽度 */
-function updateIndicator() {
-  const el = tabRefs.value[activeTab.value]
-  const container = mainTabRef.value
-  if (!el || !container) return
-
-  const tabRect = el.getBoundingClientRect()
-  const containerRect = container.getBoundingClientRect()
-
-  indicatorStyle.value = {
-    width: `${tabRect.width}px`,
-    transform: `translateX(${tabRect.left - containerRect.left}px)`,
-  }
-}
 
 /**
  * 构建开始时强制切到日志 Tab（不受切换动画阻塞）
@@ -197,6 +215,7 @@ function switchToLogTab(index: number) {
   leavingTabKey.value = tabs[activeTab.value]?.key ?? null
   mountedTabKeys.value = new Set([...mountedTabKeys.value, 'log'])
   activeTab.value = index
+  if (isMobileLayout.value) mobilePane.value = 'workspace'
   isPanelTransitioning.value = true
 
   if (panelTransitionTimer) {
@@ -207,8 +226,6 @@ function switchToLogTab(index: number) {
     isPanelTransitioning.value = false
     panelTransitionTimer = null
   }, PANEL_TRANSITION_MS)
-
-  nextTick(updateIndicator)
 }
 
 /**
@@ -237,8 +254,6 @@ function switchTab(index: number) {
     isPanelTransitioning.value = false
     panelTransitionTimer = null
   }, PANEL_TRANSITION_MS)
-
-  nextTick(updateIndicator)
 }
 
 /** 当前选中 Tab 的内容标识 */
@@ -310,13 +325,6 @@ async function initCurrentProject() {
   }
 }
 
-watch(
-  () => sessionPanelCollapsed.value,
-  () => {
-    nextTick(updateIndicator)
-  },
-)
-
 /** 地址栏 projectId 变化时重新加载项目 */
 watch(
   () => route.query.projectId,
@@ -343,12 +351,18 @@ onBeforeRouteLeave(() => {
 })
 
 onMounted(() => {
-  nextTick(updateIndicator)
-  window.addEventListener('resize', updateIndicator)
+  narrowMediaQuery = window.matchMedia('(max-width: 1119px)')
+  mobileMediaQuery = window.matchMedia('(max-width: 767px)')
+  syncResponsiveLayout()
+  narrowMediaQuery.addEventListener('change', syncResponsiveLayout)
+  mobileMediaQuery.addEventListener('change', syncResponsiveLayout)
+  window.addEventListener('keydown', handleShellKeydown)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateIndicator)
+  narrowMediaQuery?.removeEventListener('change', syncResponsiveLayout)
+  mobileMediaQuery?.removeEventListener('change', syncResponsiveLayout)
+  window.removeEventListener('keydown', handleShellKeydown)
   if (panelTransitionTimer) {
     clearTimeout(panelTransitionTimer)
   }
@@ -356,37 +370,81 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="projectLoading" class="builder-status">正在加载项目...</div>
-  <div v-else-if="projectError" class="builder-status builder-status--error">{{ projectError }}</div>
-  <div v-else-if="projectReady" class="container builder-shell" :class="{ 'container--session-collapsed': sessionPanelCollapsed }">
-    <section class="left">
-      <SessionPanel @profile-updated="handleUserProfileUpdated" />
-    </section>
-    <main class="main">
-      <div ref="mainTabRef" class="main-tab">
+  <div v-if="projectLoading" class="builder-status">
+    <span class="builder-status-mark" aria-hidden="true" />
+    <span class="builder-status-kicker">WORKSPACE / INITIALIZING</span>
+    <strong>正在加载项目</strong>
+  </div>
+  <div v-else-if="projectError" class="builder-status builder-status--error">
+    <span class="builder-status-mark" aria-hidden="true" />
+    <span class="builder-status-kicker">WORKSPACE / UNAVAILABLE</span>
+    <strong>项目暂时无法打开</strong>
+    <p>{{ projectError }}</p>
+    <button type="button" class="builder-status-action" @click="handleBackHome">返回项目列表</button>
+  </div>
+  <div v-else-if="projectReady" class="container builder-shell" :class="[{ 'container--session-collapsed': sessionPanelCollapsed }, `builder-shell--mobile-${mobilePane}`]">
+    <header class="builder-topbar">
+      <div class="builder-brand">
+        <button type="button" class="builder-brand-back" title="返回项目列表" aria-label="返回项目列表" @click="handleBackHome">
+          <el-icon><ArrowLeft /></el-icon>
+        </button>
+        <button type="button" class="builder-brand-mark" title="返回项目列表" aria-label="返回项目列表" @click="handleBackHome">
+          <span aria-hidden="true" />
+        </button>
+        <span class="builder-brand-copy">
+          <strong>AI Agent</strong>
+          <small>Build workspace</small>
+        </span>
+      </div>
+
+      <div class="builder-project-context">
+        <span class="builder-project-kicker">PROJECT / {{ projectNumber }}</span>
+        <strong class="builder-project-title" :title="projectStore.currentProject?.title">
+          {{ projectStore.currentProject?.title }}
+        </strong>
+        <span class="builder-project-type">{{ projectTypeLabel }}</span>
+      </div>
+
+      <div class="builder-mobile-switch" role="group" aria-label="移动端工作区视图">
+        <button type="button" :class="{ 'is-active': mobilePane === 'preview' }" :aria-pressed="mobilePane === 'preview'" @click="mobilePane = 'preview'">预览</button>
+        <button type="button" :class="{ 'is-active': mobilePane === 'workspace' }" :aria-pressed="mobilePane === 'workspace'" @click="mobilePane = 'workspace'">工作区</button>
+      </div>
+
+      <div class="builder-topbar-actions">
+        <span class="builder-online-state"><i /> Workspace online</span>
         <button
           v-if="sessionPanelCollapsed"
+          ref="sessionToggleRef"
           type="button"
-          class="builder-session-toggle-btn main-tab-session-toggle"
+          class="builder-session-toggle-btn builder-topbar-session-toggle"
           title="展开会话栏"
           aria-label="展开会话栏"
           @click="toggleSessionPanelCollapsed"
         >
-          <el-icon><DArrowRight /></el-icon>
+          <el-icon><ChatDotRound /></el-icon>
+          <span>会话</span>
         </button>
-        <div class="main-tab-context">
-          <span class="main-tab-context-label">Build workspace</span>
-          <strong class="main-tab-context-title">{{ projectStore.currentProject?.title }}</strong>
-        </div>
-        <div class="main-tab-list">
+        <ThemeToggle />
+        <UserMenu show-name @profile-updated="handleUserProfileUpdated" />
+      </div>
+    </header>
+
+    <button v-if="isNarrowLayout && !sessionPanelCollapsed" type="button" class="builder-drawer-scrim" aria-label="关闭会话栏" @click="toggleSessionPanelCollapsed" />
+
+    <section class="left" aria-label="会话列表">
+      <SessionPanel :user-nickname-override="latestUserProfile?.nickname" />
+    </section>
+    <main class="main">
+      <div class="main-tab">
+        <div class="main-tab-list" role="tablist" aria-label="Builder 工作模式">
           <button
             v-for="(tab, index) in tabs"
             :key="tab.key"
-            :ref="(el) => setTabRef(el, index)"
             type="button"
             class="main-tab-item"
             :class="{ 'main-tab-item--active': activeTab === index }"
-            :aria-pressed="activeTab === index"
+            role="tab"
+            :aria-selected="activeTab === index"
             :aria-label="tab.label"
             :title="tab.label"
             @click="switchTab(index)"
@@ -394,10 +452,12 @@ onUnmounted(() => {
             <el-icon class="main-tab-item-icon">
               <component :is="tab.icon" />
             </el-icon>
-            <span class="main-tab-item-label">{{ tab.label }}</span>
+            <span class="main-tab-item-copy">
+              <strong class="main-tab-item-label">{{ tab.label }}</strong>
+              <small>{{ tab.meta }}</small>
+            </span>
           </button>
         </div>
-        <div class="main-tab-indicator" :style="indicatorStyle" />
       </div>
       <div class="main-content">
         <div class="main-content-viewport">
@@ -444,27 +504,91 @@ onUnmounted(() => {
         </div>
       </div>
     </main>
-    <section class="right">
+    <section class="right" aria-label="实时预览">
       <PreviewPanel />
     </section>
   </div>
-  <div v-else class="builder-status">正在恢复项目...</div>
+  <div v-else class="builder-status">
+    <span class="builder-status-mark" aria-hidden="true" />
+    <span class="builder-status-kicker">WORKSPACE / RESTORING</span>
+    <strong>正在恢复项目</strong>
+  </div>
 </template>
 
 <style scoped>
 .builder-status {
+  position: relative;
   width: 100%;
-  height: 100vh;
+  min-height: 100svh;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.875rem;
-  color: var(--app-text-secondary);
-  background-color: var(--app-bg);
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  background-color: var(--brand-canvas);
+  background-image: linear-gradient(var(--brand-grid) 1px, transparent 1px), linear-gradient(90deg, var(--brand-grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  color: var(--brand-ink);
+  font-family: var(--brand-font-body);
+  text-align: center;
+}
+
+.builder-status-mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 10px;
+  place-items: center;
+  border: 1px solid var(--brand-ink);
+  border-radius: var(--brand-radius-md);
+  background: var(--brand-panel);
+  box-shadow: 5px 5px 0 var(--brand-ink);
+}
+
+.builder-status-mark::before {
+  width: 29px;
+  height: 29px;
+  background: var(--brand-blue);
+  content: '';
+  mask: url('/svgs/ai-agent.svg') center / contain no-repeat;
+}
+
+.builder-status-kicker {
+  color: var(--brand-blue);
+  font-family: var(--brand-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.builder-status strong {
+  font-family: var(--brand-font-display);
+  font-size: 22px;
+}
+
+.builder-status p {
+  max-width: 420px;
+  color: var(--brand-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .builder-status--error {
-  color: var(--app-error);
+  --brand-blue: var(--brand-coral);
+}
+
+.builder-status-action {
+  min-height: 38px;
+  margin-top: 10px;
+  padding: 0 14px;
+  border: 1px solid var(--brand-ink);
+  border-radius: var(--brand-radius-sm);
+  background: var(--brand-blue);
+  box-shadow: 4px 4px 0 var(--brand-ink);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 :global(.builder-panel-loading) {
@@ -626,28 +750,28 @@ onUnmounted(() => {
 }
 
 .main-content-panel--enter-forward {
-  animation: panel-enter-forward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: panel-enter-forward 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: auto;
   z-index: 2;
   visibility: visible;
 }
 
 .main-content-panel--enter-backward {
-  animation: panel-enter-backward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: panel-enter-backward 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: auto;
   z-index: 2;
   visibility: visible;
 }
 
 .main-content-panel--leave-forward {
-  animation: panel-leave-forward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: panel-leave-forward 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: none;
   z-index: 1;
   visibility: visible;
 }
 
 .main-content-panel--leave-backward {
-  animation: panel-leave-backward 0.28s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: panel-leave-backward 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: none;
   z-index: 1;
   visibility: visible;
@@ -655,7 +779,7 @@ onUnmounted(() => {
 
 @keyframes panel-enter-forward {
   from {
-    transform: translateX(5rem);
+    transform: translateX(0.75rem);
     opacity: 0;
   }
 
@@ -672,14 +796,14 @@ onUnmounted(() => {
   }
 
   to {
-    transform: translateX(-5rem);
+    transform: translateX(-0.75rem);
     opacity: 0;
   }
 }
 
 @keyframes panel-enter-backward {
   from {
-    transform: translateX(-5rem);
+    transform: translateX(-0.75rem);
     opacity: 0;
   }
 
@@ -696,7 +820,7 @@ onUnmounted(() => {
   }
 
   to {
-    transform: translateX(5rem);
+    transform: translateX(0.75rem);
     opacity: 0;
   }
 }

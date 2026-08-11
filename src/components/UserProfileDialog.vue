@@ -358,7 +358,7 @@ onBeforeUnmount(releaseAvatarPreview)
           </div>
 
           <div class="profile-binding-row">
-            <OAuthProviderIcon provider="qq" beta />
+            <OAuthProviderIcon provider="qq" />
             <div class="profile-binding-copy">
               <strong>QQ</strong>
               <span>{{ profile?.bindings?.qq ? '已绑定' : '未绑定' }}</span>

@@ -1,6 +1,6 @@
 import { inject, ref, type InjectionKey, type Ref } from 'vue'
 import type { SseEvent } from '@/http/sse'
-import { getBuildStepDetailText, isBuildStepInfo, parseBuildDoneResult } from './buildEvent'
+import { isBuildStepInfo, parseBuildDoneResult } from './buildEvent'
 import type { BuildDoneResult, BuildStepInfo, BuildStepView } from './buildTypes'
 
 /** 构建日志上下文 */

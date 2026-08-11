@@ -143,13 +143,17 @@ onBeforeUnmount(() => {
 
         <div class="oauth-options">
           <button type="button" class="oauth-option" @click="openOAuth('qq')">
-            <OAuthProviderIcon provider="qq" beta />
-            <span><strong>QQ</strong><small>扫码{{ isRegisterMode ? '注册或' : '' }}登录</small></span>
+            <OAuthProviderIcon provider="qq" />
+            <span
+              ><strong>QQ</strong><small>扫码{{ isRegisterMode ? '注册或' : '' }}登录</small></span
+            >
             <el-icon><ArrowRight /></el-icon>
           </button>
           <button type="button" class="oauth-option" @click="openOAuth('wechat')">
             <OAuthProviderIcon provider="wechat" beta />
-            <span><strong>微信</strong><small>扫码{{ isRegisterMode ? '注册或' : '' }}登录</small></span>
+            <span
+              ><strong>微信</strong><small>扫码{{ isRegisterMode ? '注册或' : '' }}登录</small></span
+            >
             <el-icon><ArrowRight /></el-icon>
           </button>
         </div>
@@ -161,7 +165,14 @@ onBeforeUnmount(() => {
             <el-input v-model="form.account" placeholder="输入账号" autocomplete="username" />
           </el-form-item>
           <el-form-item label="密码" prop="password">
-            <el-input v-model="form.password" type="password" placeholder="输入密码" show-password :autocomplete="isRegisterMode ? 'new-password' : 'current-password'" @keyup.enter="!isRegisterMode && handleSubmit()" />
+            <el-input
+              v-model="form.password"
+              type="password"
+              placeholder="输入密码"
+              show-password
+              :autocomplete="isRegisterMode ? 'new-password' : 'current-password'"
+              @keyup.enter="!isRegisterMode && handleSubmit()"
+            />
           </el-form-item>
           <el-form-item v-if="isRegisterMode" label="确认密码" prop="confirmPassword">
             <el-input v-model="form.confirmPassword" type="password" placeholder="再次输入密码" show-password autocomplete="new-password" />
@@ -187,18 +198,24 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .auth-page {
+  --auth-canvas: #f7f7f4;
+  --auth-stage: var(--brand-stage);
+  --auth-ink: var(--brand-ink);
+  --auth-blue: #2673ff;
+  --auth-line: #dfe1e4;
+  --auth-muted: #74777d;
   display: grid;
   width: 100%;
   min-height: 100vh;
   grid-template-columns: minmax(0, 1.25fr) minmax(27rem, 0.75fr);
-  background: #f7f7f4;
+  background: var(--auth-canvas);
 }
 
 .auth-visual {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  background: #131518;
+  background: var(--auth-stage);
   color: #f8f8f4;
 }
 
@@ -276,7 +293,7 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  background: #2673ff;
+  background: var(--auth-blue);
   box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.35);
 }
 
@@ -376,8 +393,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   justify-content: center;
   padding: 2.4rem 3.6rem 1.5rem;
-  background: #f7f7f4;
-  color: #17191d;
+  background: var(--auth-canvas);
+  color: var(--auth-ink);
 }
 
 .auth-panel-inner {
@@ -387,7 +404,7 @@ onBeforeUnmount(() => {
 }
 
 .auth-panel-eyebrow {
-  color: #2673ff;
+  color: var(--auth-blue);
 }
 
 .auth-panel-heading h2 {
@@ -417,15 +434,18 @@ onBeforeUnmount(() => {
   height: 4.5rem;
   align-items: center;
   padding: 0 0.9rem;
-  border: 1px solid #dfe1e4;
+  border: 1px solid var(--auth-line);
   border-radius: 0.4rem;
   background: #fff;
-  color: #17191d;
+  color: var(--auth-ink);
   cursor: pointer;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.7rem;
   text-align: left;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .oauth-option:hover {
@@ -478,7 +498,7 @@ onBeforeUnmount(() => {
 .auth-divider::after {
   height: 1px;
   flex: 1;
-  background: #dfe1e4;
+  background: var(--auth-line);
   content: '';
 }
 
@@ -499,16 +519,18 @@ onBeforeUnmount(() => {
   min-height: 2.8rem;
   border-radius: 0.3rem;
   background: #fff;
-  box-shadow: 0 0 0 1px #dfe1e4 inset;
+  box-shadow: 0 0 0 1px var(--auth-line) inset;
 }
 
 .auth-form :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #2673ff inset, 0 0 0 3px rgba(38, 115, 255, 0.1);
+  box-shadow:
+    0 0 0 1px var(--auth-blue) inset,
+    0 0 0 3px rgba(38, 115, 255, 0.1);
 }
 
 .auth-form :deep(.el-input__inner) {
   color: #20242b;
-  caret-color: #2673ff;
+  caret-color: var(--auth-blue);
   -webkit-text-fill-color: #20242b;
 }
 
@@ -541,7 +563,7 @@ onBeforeUnmount(() => {
   padding: 0.25rem;
   border: 0;
   background: transparent;
-  color: #2673ff;
+  color: var(--auth-blue);
   cursor: pointer;
   font-size: 0.78rem;
   text-align: center;
@@ -559,7 +581,9 @@ onBeforeUnmount(() => {
 }
 
 @keyframes orbit-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 860px) {

@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/block-lang -->
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as THREE from 'three'

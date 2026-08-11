@@ -14,15 +14,19 @@ import UserProfileDialog from './UserProfileDialog.vue'
 defineOptions({ name: 'UserMenu' })
 
 interface Props {
+  account?: string
   nickname?: string
   avatar?: string | null
   compact?: boolean
+  showName?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  account: '',
   nickname: '',
   avatar: '',
   compact: false,
+  showName: false,
 })
 
 const emit = defineEmits<{
@@ -37,14 +41,20 @@ const profileLoading = ref(false)
 const profileLoaded = ref(false)
 const profileAvatar = ref('')
 const profileNickname = ref('')
+const profileAccount = ref('')
 const bindings = reactive({ qq: false, wechat: false })
-const displayedAvatar = computed(() =>
-  profileLoaded.value ? profileAvatar.value : props.avatar,
-)
-const displayedNickname = computed(() => profileNickname.value || props.nickname)
-const hasAvailableBinding = computed(
-  () => profileLoaded.value && (!bindings.qq || !bindings.wechat),
-)
+const displayedAvatar = computed(() => (profileLoaded.value ? profileAvatar.value : props.avatar))
+const displayedName = computed(() => {
+  if (profileLoaded.value) {
+    return profileNickname.value.trim() || profileAccount.value.trim()
+  }
+  return props.nickname.trim() || props.account.trim()
+})
+const shortenedDisplayName = computed(() => {
+  const characters = Array.from(displayedName.value)
+  return characters.length > 10 ? `${characters.slice(0, 10).join('')}…` : displayedName.value
+})
+const hasAvailableBinding = computed(() => profileLoaded.value && (!bindings.qq || !bindings.wechat))
 
 async function refreshBindings() {
   if (profileLoading.value) return
@@ -54,6 +64,7 @@ async function refreshBindings() {
     const profile = await getUserInfo()
     profileAvatar.value = profile.avatar?.trim() ?? ''
     profileNickname.value = profile.nickname
+    profileAccount.value = profile.account
     bindings.qq = profile.bindings?.qq ?? false
     bindings.wechat = profile.bindings?.wechat ?? false
     profileLoaded.value = true
@@ -89,6 +100,7 @@ async function handleBindSuccess(result: OAuthLoginResult) {
 function handleProfileSaved(profile: UpdateUserProfileResponse) {
   profileAvatar.value = profile.avatar?.trim() ?? ''
   profileNickname.value = profile.nickname
+  profileAccount.value = profile.account
   bindings.qq = profile.bindings?.qq ?? false
   bindings.wechat = profile.bindings?.wechat ?? false
   profileLoaded.value = true
@@ -109,19 +121,19 @@ onMounted(() => {
     <button
       type="button"
       class="user-menu-trigger"
-      :class="{ 'user-menu-trigger--compact': compact }"
-      :aria-label="displayedNickname ? `${displayedNickname} 的用户菜单` : '用户菜单'"
-      :title="displayedNickname || '用户菜单'"
+      :class="{
+        'user-menu-trigger--compact': compact,
+        'user-menu-trigger--show-name': showName,
+      }"
+      :aria-label="displayedName ? `${displayedName} 的用户菜单` : '用户菜单'"
+      :title="displayedName || '用户菜单'"
     >
       <UserAvatar class="user-menu-avatar" :avatar="displayedAvatar" />
-      <span v-if="displayedNickname" class="user-menu-name">{{ displayedNickname }}</span>
-      <el-icon v-if="!compact" class="user-menu-arrow"><ArrowDown /></el-icon>
+      <span v-if="displayedName" class="user-menu-name">{{ shortenedDisplayName }}</span>
+      <el-icon v-if="!compact && showName" class="user-menu-arrow"><ArrowDown /></el-icon>
     </button>
     <template #dropdown>
-      <el-dropdown-menu
-        class="user-account-menu"
-        :class="{ 'user-account-menu--has-bindings': hasAvailableBinding }"
-      >
+      <el-dropdown-menu class="user-account-menu" :class="{ 'user-account-menu--has-bindings': hasAvailableBinding }">
         <el-dropdown-item command="edit-profile" :disabled="profileLoading" class="user-profile-item">
           <span class="user-profile-item-icon"
             ><el-icon><EditPen /></el-icon
@@ -129,7 +141,7 @@ onMounted(() => {
           <span class="user-bind-copy"><strong>编辑个人资料</strong><small>头像、昵称与登录信息</small></span>
         </el-dropdown-item>
         <el-dropdown-item v-if="profileLoaded && !bindings.qq" command="bind-qq" :disabled="profileLoading" class="user-bind-item">
-          <OAuthProviderIcon provider="qq" beta />
+          <OAuthProviderIcon provider="qq" />
           <span class="user-bind-copy"><strong>绑定 QQ</strong><small>扫码关联当前账号</small></span>
         </el-dropdown-item>
         <el-dropdown-item v-if="profileLoaded && !bindings.wechat" command="bind-wechat" :disabled="profileLoading" class="user-bind-item">
@@ -199,9 +211,18 @@ onMounted(() => {
   height: 1.25rem;
 }
 
-.user-menu-trigger:not(.user-menu-trigger--compact) .user-menu-name,
-.user-menu-trigger:not(.user-menu-trigger--compact) .user-menu-arrow {
+.user-menu-trigger:not(.user-menu-trigger--compact):not(.user-menu-trigger--show-name) .user-menu-name,
+.user-menu-trigger:not(.user-menu-trigger--compact):not(.user-menu-trigger--show-name) .user-menu-arrow {
   display: none;
+}
+
+.user-menu-trigger--show-name:not(.user-menu-trigger--compact) {
+  width: auto;
+  max-width: 9rem;
+  flex-basis: auto;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  padding: 0 0.55rem 0 0.22rem;
 }
 
 .user-menu-name {
@@ -211,6 +232,11 @@ onMounted(() => {
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.user-menu-trigger--show-name .user-menu-name {
+  max-width: 5.8rem;
+  font-weight: 700;
 }
 
 .user-menu-trigger--compact .user-menu-name {

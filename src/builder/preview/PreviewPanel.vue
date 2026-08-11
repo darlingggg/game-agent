@@ -64,6 +64,13 @@ const errorText = ref('')
 /** 刷新进行中 */
 const refreshing = ref(false)
 
+/** 预览工具栏状态 */
+const previewStatus = computed(() => {
+  if (errorText.value) return { label: 'ERROR', kind: 'error' }
+  if (previewUrl.value) return { label: 'LIVE', kind: 'live' }
+  return { label: 'STARTING', kind: 'loading' }
+})
+
 /** 预览加载令牌，用于忽略过期请求的结果 */
 let previewLoadToken = 0
 
@@ -297,14 +304,22 @@ async function handleBuild() {
 <template>
   <div class="preview-panel">
     <header class="preview-toolbar">
-      <h2 class="preview-toolbar-title">实时预览</h2>
+      <div class="preview-toolbar-heading">
+        <h2 class="preview-toolbar-title">实时预览</h2>
+        <span class="preview-status" :class="`preview-status--${previewStatus.kind}`"> <i aria-hidden="true" />{{ previewStatus.label }} </span>
+      </div>
       <div class="preview-toolbar-actions">
         <el-tooltip :content="buildTooltip" placement="top" :show-after="200">
           <span class="preview-toolbar-tooltip-trigger">
-            <button type="button" class="preview-toolbar-btn preview-toolbar-btn--build" :disabled="isBuildDisabled"
-              title="构建部署" aria-label="构建部署" @click="handleBuildClick">
-              <span class="preview-toolbar-build-wrap"
-                :class="{ 'preview-toolbar-build-wrap--building': isBuildAnimating }">
+            <button
+              type="button"
+              class="preview-toolbar-btn preview-toolbar-btn--build"
+              :disabled="isBuildDisabled"
+              title="构建部署"
+              aria-label="构建部署"
+              @click="handleBuildClick"
+            >
+              <span class="preview-toolbar-build-wrap" :class="{ 'preview-toolbar-build-wrap--building': isBuildAnimating }">
                 <SvgIcon name="build-wireframe" class="preview-toolbar-build-icon preview-toolbar-build-wireframe" />
                 <SvgIcon name="build-face" class="preview-toolbar-build-icon preview-toolbar-build-face" />
               </span>
@@ -313,15 +328,28 @@ async function handleBuild() {
         </el-tooltip>
         <el-tooltip :content="canCopyDeployLink ? '复制部署链接' : '暂无部署链接'" placement="top" :show-after="200">
           <span class="preview-toolbar-tooltip-trigger">
-            <button type="button" class="preview-toolbar-btn"
-              :class="{ 'preview-toolbar-btn--disabled': !canCopyDeployLink }" :disabled="!canCopyDeployLink"
-              title="复制部署链接" aria-label="复制部署链接" @click="handleShare">
+            <button
+              type="button"
+              class="preview-toolbar-btn"
+              :class="{ 'preview-toolbar-btn--disabled': !canCopyDeployLink }"
+              :disabled="!canCopyDeployLink"
+              title="复制部署链接"
+              aria-label="复制部署链接"
+              @click="handleShare"
+            >
               <SvgIcon name="link" class="preview-toolbar-icon" />
             </button>
           </span>
         </el-tooltip>
-        <button type="button" class="preview-toolbar-btn" :class="{ 'preview-toolbar-btn--loading': refreshing }"
-          :disabled="refreshing" title="刷新预览" aria-label="刷新预览" @click="handleRefresh">
+        <button
+          type="button"
+          class="preview-toolbar-btn"
+          :class="{ 'preview-toolbar-btn--loading': refreshing }"
+          :disabled="refreshing"
+          title="刷新预览"
+          aria-label="刷新预览"
+          @click="handleRefresh"
+        >
           <SvgIcon name="refresh" class="preview-toolbar-icon" />
         </button>
       </div>
@@ -373,6 +401,38 @@ async function handleBuild() {
   font-size: 1rem;
   font-weight: 700;
   color: var(--app-text-primary);
+}
+
+.preview-toolbar-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.preview-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--app-text-muted);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+
+.preview-status i {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.preview-status--live {
+  color: #4dcc98;
+}
+
+.preview-status--error {
+  color: #ff806f;
 }
 
 .preview-toolbar-actions {
@@ -463,7 +523,6 @@ html.dark .preview-toolbar-build-wrap {
 }
 
 @keyframes preview-build-scale {
-
   0%,
   100% {
     transform: scale(1);
@@ -475,7 +534,6 @@ html.dark .preview-toolbar-build-wrap {
 }
 
 @keyframes preview-build-face-color {
-
   0%,
   100% {
     fill: var(--build-icon-face-idle);

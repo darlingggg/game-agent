@@ -1,4 +1,28 @@
 :root {
+  /* Shared AI Agent visual language */
+  --brand-canvas: #f4f6f8;
+  --brand-panel: #ffffff;
+  --brand-panel-muted: #f9fafb;
+  --brand-ink: #15171c;
+  --brand-muted: #6f7784;
+  --brand-line: rgba(21, 23, 28, 0.14);
+  --brand-line-strong: rgba(21, 23, 28, 0.26);
+  --brand-blue: #315efb;
+  --brand-blue-strong: #2247d4;
+  --brand-blue-soft: #e9efff;
+  --brand-stage: #131518;
+  --brand-stage-panel: #1a1e25;
+  --brand-coral: #ff5b45;
+  --brand-success: #11865b;
+  --brand-grid: rgba(21, 23, 28, 0.045);
+  --brand-shadow-soft: 0 10px 30px rgba(20, 29, 45, 0.08);
+  --brand-font-display: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  --brand-font-body: Arial, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --brand-font-mono: Consolas, 'Courier New', monospace;
+  --brand-radius-xs: 3px;
+  --brand-radius-sm: 5px;
+  --brand-radius-md: 6px;
+
   /* Wiki 布局侧栏*/
   --wiki-sidebar-bg: #001529;
   --wiki-sidebar-active-bg: #1890ff;
@@ -21,14 +45,14 @@
   --app-text-primary: #1a1c1e;
   --app-text-secondary: #73767a;
   --app-text-muted: #9ca3af;
-  --app-accent: #2463dc;
-  --app-accent-soft: #eef4ff;
+  --app-accent: var(--brand-blue);
+  --app-accent-soft: var(--brand-blue-soft);
   --app-icon-fill: #2c2c2c;
   /** 用户头像立方体填充色 */
   --app-avatar-cube-fill: #000000;
   --app-shadow: rgba(0, 0, 0, 0.1);
   --app-card-border: #e8ebf0;
-  --app-danger: #f11212;
+  --app-danger: var(--brand-coral);
   --app-error: #c0392b;
   /** 滚动条轨道色 */
   --app-scrollbar-track: transparent;
@@ -37,20 +61,45 @@
   /** 滚动条滑块悬停色 */
   --app-scrollbar-thumb-hover: #b0b8c4;
 
-  /* 主色：炭黑 */
-  --el-color-primary: #1a1c1e;
-  --el-color-primary-rgb: 26, 28, 30;
-  --el-color-primary-light-3: #4a4d51;
-  --el-color-primary-light-5: #73767a;
-  --el-color-primary-light-7: #9c9fa2;
-  --el-color-primary-light-8: #b0b3b6;
-  --el-color-primary-light-9: #e8e9ea;
-  --el-color-primary-dark-2: #121416;
+  /* Element Plus follows the shared brand tokens, including teleported overlays. */
+  --el-color-primary: #315efb;
+  --el-color-primary-rgb: 49, 94, 251;
+  --el-color-primary-light-3: #6f8bfc;
+  --el-color-primary-light-5: #98aafd;
+  --el-color-primary-light-7: #c1ccfe;
+  --el-color-primary-light-8: #d8dffe;
+  --el-color-primary-light-9: #eef1ff;
+  --el-color-primary-dark-2: #2247d4;
+  --el-bg-color: #ffffff;
+  --el-bg-color-overlay: #ffffff;
+  --el-fill-color-blank: #ffffff;
+  --el-border-color: #dfe3e8;
+  --el-border-color-light: #e8ebef;
+  --el-text-color-primary: #15171c;
+  --el-text-color-regular: #4d5561;
+  --el-text-color-secondary: #747d89;
 
   color-scheme: light;
 }
 
 html.dark {
+  --brand-canvas: #111419;
+  --brand-panel: #191d24;
+  --brand-panel-muted: #151920;
+  --brand-ink: #edf0f5;
+  --brand-muted: #8f98a6;
+  --brand-line: rgba(237, 240, 245, 0.14);
+  --brand-line-strong: rgba(237, 240, 245, 0.26);
+  --brand-blue: #6f98ff;
+  --brand-blue-strong: #91adff;
+  --brand-blue-soft: #1d2948;
+  --brand-stage: #0b0e13;
+  --brand-stage-panel: #151922;
+  --brand-coral: #ff806f;
+  --brand-success: #4dcc98;
+  --brand-grid: rgba(237, 240, 245, 0.04);
+  --brand-shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.3);
+
   /* Wiki 布局暗色 */
   --wiki-layout-main-bg: #141414;
 
@@ -67,14 +116,14 @@ html.dark {
   --app-text-primary: #e8eaed;
   --app-text-secondary: #a8adb8;
   --app-text-muted: #7d8491;
-  --app-accent: #5b8cff;
-  --app-accent-soft: #1e2a45;
+  --app-accent: var(--brand-blue);
+  --app-accent-soft: var(--brand-blue-soft);
   --app-icon-fill: #e8eaed;
   /** 用户头像立方体填充色 */
   --app-avatar-cube-fill: #ffffff;
   --app-shadow: rgba(0, 0, 0, 0.35);
   --app-card-border: #2d333d;
-  --app-danger: #ff6b6b;
+  --app-danger: var(--brand-coral);
   --app-error: #ff8787;
   /** 滚动条轨道色 */
   --app-scrollbar-track: transparent;
@@ -92,6 +141,14 @@ html.dark {
   --el-color-primary-light-8: #d9e6ff;
   --el-color-primary-light-9: #1e2a45;
   --el-color-primary-dark-2: #4a78e8;
+  --el-bg-color: #191d24;
+  --el-bg-color-overlay: #1d222b;
+  --el-fill-color-blank: #191d24;
+  --el-border-color: #343c49;
+  --el-border-color-light: #2a313c;
+  --el-text-color-primary: #edf0f5;
+  --el-text-color-regular: #c2c8d1;
+  --el-text-color-secondary: #929cab;
 
   color-scheme: dark;
 }
