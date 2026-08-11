@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/block-lang -->
 <script setup>
 import * as Phaser from 'phaser'
 import { ref, onMounted, onUnmounted } from 'vue'

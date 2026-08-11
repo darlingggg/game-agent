@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SvgIcon from '@/components/SvgIcon.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getSessionList, type sessionItem } from '@/http/session'
@@ -15,12 +16,24 @@ defineOptions({
   name: 'ChatPanel',
 })
 
+interface Props {
+  userAccountOverride?: string
+  userAvatarOverride?: string | null
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  userAccountOverride: '',
+  userAvatarOverride: '',
+})
+
 const projectStore = useProjectStore()
 const sessionContext = useSessionContext()
 const logContext = useLogContext()
 
 /** 消息列表 */
 const messages = ref<ChatMessage[]>([])
+/** 当前用户头像 */
+const userAvatar = ref('')
 
 /** 消息加载中 */
 const messagesLoading = ref(false)
@@ -51,6 +64,15 @@ let pendingImageIdSeed = 0
 
 /** 当前用户账号，用于 COS uploads/{account} 路径 */
 const userAccount = ref('')
+
+watch(
+  () => [props.userAccountOverride, props.userAvatarOverride] as const,
+  ([account, avatar]) => {
+    if (account) userAccount.value = account
+    if (avatar !== undefined && avatar !== null) userAvatar.value = avatar.trim()
+  },
+  { immediate: true },
+)
 
 /** 隐藏的文件选择器 */
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -294,6 +316,7 @@ onMounted(async () => {
   try {
     const userInfo = await getUserInfo()
     userAccount.value = userInfo.account
+    userAvatar.value = userInfo.avatar?.trim() ?? ''
   } catch {
     // 错误提示由 axios 拦截器统一处理
   }
@@ -614,13 +637,8 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
   }
 
   // 待创建，或无选中会话时直接首聊：绑定返回的会话 id，避免后续消息反复新建
-  const hasNoSession =
-    !sessionContext.activeSessionId.value ||
-    sessionContext.activeSessionId.value === PENDING_SESSION_ID
-  if (
-    Number.isFinite(userSessionId) &&
-    (sessionContext.isPendingNewSession.value || hasNoSession)
-  ) {
+  const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
+  if (Number.isFinite(userSessionId) && (sessionContext.isPendingNewSession.value || hasNoSession)) {
     skipNextSessionLoad = true
     sessionContext.isPendingNewSession.value = false
     sessionContext.activeSessionId.value = userSessionId
@@ -775,9 +793,7 @@ async function handleSend() {
   await scrollToBottom()
 
   const currentProjectId = projectId()
-  const resolvedChatTitle = needsNewBackendSession
-    ? content.slice(0, 30)
-    : backendSessionTitle.value.trim() || (await ensureSessionTitle())
+  const resolvedChatTitle = needsNewBackendSession ? content.slice(0, 30) : backendSessionTitle.value.trim() || (await ensureSessionTitle())
   const chatTitle = resolvedChatTitle.trim() || undefined
   if (needsNewBackendSession) {
     sessionTitle.value = resolvedChatTitle
@@ -867,52 +883,58 @@ function handleActionClick() {
   <div class="chat-panel">
     <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages">
       <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
-      <ChatMessageItem v-for="message in messages" :key="message.id" :message="message" />
+      <ChatMessageItem v-for="message in messages" :key="message.id" :message="message" :user-avatar="userAvatar" />
     </div>
 
     <div class="chat-panel-input-area">
       <div class="chat-panel-input-shell">
         <div v-if="pendingImages.length > 0" class="chat-panel-image-preview">
-          <div v-for="(image, index) in pendingImages" :key="image.id" class="chat-panel-image-preview-item"
-            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }">
-            <img :src="image.uploading ? image.blobUrl : image.cosUrl"
-              :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
+          <div
+            v-for="(image, index) in pendingImages"
+            :key="image.id"
+            class="chat-panel-image-preview-item"
+            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }"
+          >
+            <img :src="image.uploading ? image.blobUrl : image.cosUrl" :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
             <div v-if="image.uploading" class="chat-panel-image-loading">
               <span class="chat-panel-image-loading-spinner" aria-label="上传中" />
             </div>
-            <button type="button" class="chat-panel-image-remove" title="移除图片"
-              :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">
-              ×
-            </button>
+            <button type="button" class="chat-panel-image-remove" title="移除图片" :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
           </div>
         </div>
-        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple
-          class="chat-panel-file-input" @change="handleImageSelect" />
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple class="chat-panel-file-input" @change="handleImageSelect" />
         <div class="chat-panel-input-body">
-          <textarea ref="inputRef" v-model="inputText" class="chat-panel-input"
-            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送" rows="5" :disabled="isStreaming"
-            @keydown="handleInputKeydown" @paste="handleInputPaste" />
+          <textarea
+            ref="inputRef"
+            v-model="inputText"
+            class="chat-panel-input"
+            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送"
+            rows="5"
+            :disabled="isStreaming"
+            @keydown="handleInputKeydown"
+            @paste="handleInputPaste"
+          />
           <div class="chat-panel-input-footer">
-            <button type="button" class="chat-panel-upload-btn"
-              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }" title="上传图片（可多选）" :disabled="isStreaming"
-              @click="handleUploadClick">
+            <button
+              type="button"
+              class="chat-panel-upload-btn"
+              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
+              title="上传图片（可多选）"
+              :disabled="isStreaming"
+              @click="handleUploadClick"
+            >
               <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
-              <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+              <SvgIcon v-else name="upload-image" />
             </button>
-            <button type="button" class="chat-panel-action-btn" :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-              :title="isStreaming ? '终止' : '发送'" :disabled="hasUploadingImage" @click="handleActionClick">
-              <!-- 发送图标 -->
-              <svg v-if="!isStreaming" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M3.4 20.6L20.8 12 3.4 3.4l2.8 7.2L16 12l-9.8 1.4-2.8 7.2z" fill="currentColor" />
-              </svg>
-              <!-- 终止图标 -->
-              <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
-              </svg>
+            <button
+              type="button"
+              class="chat-panel-action-btn"
+              :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+              :title="isStreaming ? '终止' : '发送'"
+              :disabled="hasUploadingImage"
+              @click="handleActionClick"
+            >
+              <SvgIcon :name="isStreaming ? 'stop' : 'send'" />
             </button>
           </div>
         </div>

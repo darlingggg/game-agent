@@ -1,4 +1,4 @@
-import type { AiLogEntry, DisplayLogEntry, ToolLogEntry } from './logTypes'
+import type { DisplayLogEntry, ToolLogEntry } from './logTypes'
 
 /** AI 日志超过该行数时默认折叠 */
 export const AI_LOG_COLLAPSE_LINE_THRESHOLD = 3

@@ -470,7 +470,11 @@ onUnmounted(() => {
   color: var(--app-text-muted);
   font-size: 0.875rem;
   text-align: center;
-  background-color: #1e1e1e;
+  background-color: #17191d;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 .file-panel-content-empty--error {

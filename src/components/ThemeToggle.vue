@@ -18,8 +18,7 @@ function handleToggle() {
 
 <template>
   <el-tooltip :content="mode === 'dark' ? '切换浅色主题' : '切换深色主题'" placement="bottom">
-    <button type="button" class="theme-toggle" :aria-label="mode === 'dark' ? '切换浅色主题' : '切换深色主题'"
-      @click="handleToggle">
+    <button type="button" class="theme-toggle" :aria-label="mode === 'dark' ? '切换浅色主题' : '切换深色主题'" @click="handleToggle">
       <el-icon v-if="mode === 'dark'" class="theme-toggle-icon">
         <Sunny />
       </el-icon>
@@ -35,8 +34,9 @@ function handleToggle() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
   padding: 0;
   border: 1px solid var(--app-border);
   border-radius: 0.375rem;
@@ -56,6 +56,6 @@ function handleToggle() {
 }
 
 .theme-toggle-icon {
-  font-size: 1rem;
+  font-size: 20px;
 }
 </style>

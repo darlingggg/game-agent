@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SvgIcon from '@/components/SvgIcon.vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useBuildContext } from '@/builder/build/buildContext'
 import { getBuildStepDetailText, hasBuildStepDetail } from '@/builder/build/buildEvent'
@@ -255,17 +256,11 @@ onMounted(() => {
         <div class="log-panel-build-actions">
           <button type="button" class="log-panel-build-btn" :title="buildCollapsed ? '展开' : '收起'"
             :aria-label="buildCollapsed ? '展开' : '收起'" @click="toggleBuildCollapsed">
-            <svg class="log-panel-build-btn-icon" :class="{ 'log-panel-build-btn-icon--expanded': !buildCollapsed }"
-              viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round" />
-            </svg>
+            <SvgIcon name="chevron-down" class="log-panel-build-btn-icon" :class="{ 'log-panel-build-btn-icon--expanded': !buildCollapsed }" />
           </button>
           <button v-if="!buildRunning" type="button" class="log-panel-build-btn" title="关闭"
             aria-label="关闭" @click="closeBuildPanel">
-            <svg class="log-panel-build-btn-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-            </svg>
+            <SvgIcon name="close" class="log-panel-build-btn-icon" />
           </button>
         </div>
       </header>
@@ -294,12 +289,8 @@ onMounted(() => {
               <span class="log-panel-build-step-title">{{ step.title }}</span>
               <span v-if="step.durationText" class="log-panel-build-step-duration">{{ step.durationText }}</span>
               <span v-if="step.status === 'running'" class="log-panel-build-step-loading" aria-label="执行中" />
-              <svg v-if="hasBuildStepDetail(step)" class="log-panel-build-step-arrow"
-                :class="{ 'log-panel-build-step-arrow--expanded': step.expanded }" viewBox="0 0 24 24" fill="none"
-                aria-hidden="true">
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round" />
-              </svg>
+              <SvgIcon v-if="hasBuildStepDetail(step)" name="chevron-down" class="log-panel-build-step-arrow"
+                :class="{ 'log-panel-build-step-arrow--expanded': step.expanded }" />
             </button>
             <p v-if="step.message" class="log-panel-build-step-message">{{ step.message }}</p>
             <pre v-if="step.expanded && getBuildStepDetailText(step)"
@@ -331,11 +322,7 @@ onMounted(() => {
           @click="toggleAiDetail(entry)">
           <span class="log-panel-text">{{ getAiDisplayText(entry) }}</span>
           <span v-if="!entry.expanded" class="log-panel-ai-ellipsis">...</span>
-          <svg class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
-            viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" />
-          </svg>
+          <SvgIcon name="chevron-down" class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }" />
         </button>
         <span v-else class="log-panel-text">{{ entry.content }}</span>
       </div>
@@ -345,11 +332,7 @@ onMounted(() => {
           :data-time="entry.createdAt ? formatLogTime(entry.createdAt) : undefined">[tool]</span>
         <button type="button" class="log-panel-tool-btn" @click="toggleToolDetail(entry)">
           <span>{{ entry.content }}</span>
-          <svg class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
-            viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" />
-          </svg>
+          <SvgIcon name="chevron-down" class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }" />
         </button>
         <span class="log-panel-status">{{ getToolStatusMark(entry.status) }}</span>
         <pre v-if="entry.expanded && getToolDetailText(entry)"
@@ -365,11 +348,7 @@ onMounted(() => {
           @click="toggleAiDetail(entry)">
           <span class="log-panel-text">{{ getAiDisplayText(entry) }}</span>
           <span v-if="!entry.expanded" class="log-panel-ai-ellipsis">...</span>
-          <svg class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }"
-            viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" />
-          </svg>
+          <SvgIcon name="chevron-down" class="log-panel-tool-arrow" :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }" />
         </button>
         <span v-else class="log-panel-text">{{ entry.content }}</span>
         <span v-if="entry.streaming" class="log-panel-loading" aria-label="输出中" />
@@ -382,12 +361,8 @@ onMounted(() => {
           :class="{ 'log-panel-tool-btn--disabled': !entry.result && entry.status === 'loading' }"
           @click="toggleToolDetail(entry)">
           <span>{{ entry.content }}</span>
-          <svg v-if="entry.result || entry.status !== 'loading'" class="log-panel-tool-arrow"
-            :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }" viewBox="0 0 24 24" fill="none"
-            aria-hidden="true">
-            <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" />
-          </svg>
+          <SvgIcon v-if="entry.result || entry.status !== 'loading'" name="chevron-down" class="log-panel-tool-arrow"
+            :class="{ 'log-panel-tool-arrow--expanded': entry.expanded }" />
         </button>
         <span v-if="entry.status === 'loading'" class="log-panel-loading" aria-label="执行中" />
         <span v-else class="log-panel-status">{{ getToolStatusMark(entry.status) }}</span>

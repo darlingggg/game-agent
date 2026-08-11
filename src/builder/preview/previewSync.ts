@@ -11,16 +11,42 @@ interface WriteFileContentParams {
   fileContent?: string
 }
 
+/** 文件删除类工具参数结构（delete_file） */
+interface FileDeleteToolParams {
+  path?: string
+  relativePath?: string
+  filePath?: string
+}
+
+/** upsert_file 工具返回的 data 项 */
+interface UpsertFileResultItem {
+  path?: string
+  relativePath?: string
+  action?: string
+}
+
+/** upsert_file 工具返回结构 */
+interface UpsertFileResult {
+  success?: boolean
+  data?: UpsertFileResultItem[]
+}
+
 /** write_file_content 工具名称 */
 export const WRITE_FILE_CONTENT_TOOL = 'write_file_content'
 
+/** upsert_file 工具名称 */
+export const UPSERT_FILE_TOOL = 'upsert_file'
+
+/** delete_file 工具名称 */
+export const DELETE_FILE_TOOL = 'delete_file'
+
 /**
- * 从 write_file_content 参数中解析相对路径
+ * 从文件工具参数中解析相对路径
  * @param paramsJson 工具参数 JSON 字符串
  */
-function parseWriteFilePath(paramsJson: string): string | null {
+function parseFileToolPath(paramsJson: string): string | null {
   try {
-    const params = JSON.parse(paramsJson) as WriteFileContentParams
+    const params = JSON.parse(paramsJson) as WriteFileContentParams | FileDeleteToolParams
     const rawPath = params.relativePath ?? params.path ?? params.filePath
     if (!rawPath || typeof rawPath !== 'string') return null
     return normalizeRelativePath(rawPath)
@@ -45,11 +71,30 @@ function parseWriteFileContent(paramsJson: string): string | null {
 }
 
 /**
- * write_file_content 工具执行成功后，将文件同步到 WebContainer 触发预览热更新
+ * 从 upsert_file 返回结果中解析相对路径列表
+ * @param resultJson 工具结果 JSON 字符串
+ */
+function parseUpsertFileRelativePaths(resultJson: string): string[] {
+  try {
+    const result = JSON.parse(resultJson) as UpsertFileResult
+    if (!Array.isArray(result.data)) return []
+    const paths: string[] = []
+    for (const item of result.data) {
+      if (!item.relativePath || typeof item.relativePath !== 'string') continue
+      paths.push(normalizeRelativePath(item.relativePath))
+    }
+    return paths
+  } catch {
+    return []
+  }
+}
+
+/**
+ * write_file_content 执行成功后，将文件同步到 WebContainer 触发预览热更新
  * @param paramsJson tool_start 阶段记录的参数 JSON
  */
 export async function syncWriteFileContentToPreview(paramsJson: string): Promise<void> {
-  const relativePath = parseWriteFilePath(paramsJson)
+  const relativePath = parseFileToolPath(paramsJson)
   if (!relativePath) return
 
   let content = parseWriteFileContent(paramsJson)
@@ -63,6 +108,37 @@ export async function syncWriteFileContentToPreview(paramsJson: string): Promise
   }
 
   await syncPreviewFile(relativePath, content)
+}
+
+/**
+ * upsert_file 执行成功后，按结果中的 relativePath 从 /file/content 拉取完整内容并同步到 WebContainer
+ * （参数里是 patch，不能当作文件内容）
+ * @param resultJson tool_end 阶段记录的结果 JSON
+ */
+export async function syncUpsertFileToPreview(resultJson: string): Promise<void> {
+  const relativePaths = parseUpsertFileRelativePaths(resultJson)
+  if (relativePaths.length === 0) return
+
+  for (const relativePath of relativePaths) {
+    try {
+      const content = await fetchProjectTempFileContent(relativePath)
+      await syncPreviewFile(relativePath, content)
+    } catch (error) {
+      console.warn('[Preview] upsert_file 同步失败', relativePath, error)
+    }
+  }
+}
+
+/**
+ * delete_file 执行成功后，从 WebContainer 删除对应文件并刷新预览
+ * @param paramsJson tool_start 阶段记录的参数 JSON
+ */
+export async function syncDeleteFileToPreview(paramsJson: string): Promise<void> {
+  const relativePath = parseFileToolPath(paramsJson)
+  if (!relativePath) return
+
+  await removePreviewFile(relativePath)
+  requestPreviewIframeReloadDebounced()
 }
 
 /**

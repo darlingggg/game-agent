@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SvgIcon from '@/components/SvgIcon.vue'
 import { Camera, Delete, Edit, RefreshLeft } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -776,12 +777,8 @@ watch(
             </el-tooltip>
             <button type="button" class="snapshot-panel-expand-btn" aria-label="展开或收起版本快照"
               @click="toggleVersion(group)">
-              <svg class="snapshot-panel-arrow"
-                :class="{ 'snapshot-panel-arrow--expanded': isVersionExpanded(group) }" viewBox="0 0 24 24"
-                fill="none" aria-hidden="true">
-                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round" />
-              </svg>
+              <SvgIcon name="chevron-down" class="snapshot-panel-arrow"
+                :class="{ 'snapshot-panel-arrow--expanded': isVersionExpanded(group) }" />
             </button>
           </div>
         </div>
