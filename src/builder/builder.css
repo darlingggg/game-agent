@@ -1937,8 +1937,18 @@ html.dark .builder-shell .phone-frame {
 
   .container.builder-shell .main-content .chat-panel-upload-btn,
   .container.builder-shell .main-content .chat-panel-action-btn {
-    width: 36px;
-    height: 36px;
+    width: 30px;
+    height: 30px;
+  }
+
+  .container.builder-shell .main-content .chat-panel-upload-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .container.builder-shell .main-content .chat-panel-action-btn svg {
+    width: 18px;
+    height: 18px;
   }
 
   .container.builder-shell .main-content .file-panel-tree {
