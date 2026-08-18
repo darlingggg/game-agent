@@ -22,6 +22,7 @@ const normalizedAvatar = computed(() => {
   try {
     const url = new URL(value, window.location.origin)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return ''
+    if (window.location.protocol === 'https:' && url.protocol === 'http:') url.protocol = 'https:'
     return url.toString()
   } catch {
     return ''
@@ -33,13 +34,7 @@ const displayUrl = computed(() => (useFallback.value ? USER_AVATAR_URL : normali
 </script>
 
 <template>
-  <img
-    class="user-avatar-image"
-    :class="{ 'user-avatar-image--fallback': useFallback }"
-    :src="displayUrl"
-    :alt="alt"
-    crossorigin="anonymous"
-  />
+  <img class="user-avatar-image" :class="{ 'user-avatar-image--fallback': useFallback }" :src="displayUrl" :alt="alt" crossorigin="anonymous" />
 </template>
 
 <style scoped>

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ArrowLeft, Collection, Connection, DataAnalysis, Download, Folder, Link, Odometer, Picture, Refresh, Search, User, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import UserMenu from '@/components/UserMenu.vue'
+import AdminChart from './AdminChart.vue'
+import { createBarOption, createDonutOption, createLineOption } from './chartOptions'
 import {
   getAdminAssets,
   getAdminDashboardOverview,
@@ -44,6 +46,7 @@ const PROJECT_TYPE_LABEL: Record<AdminProject['type'], string> = {
 }
 
 const PAGE_SIZE = 20
+const STORAGE_SYNC_POLL_INTERVAL = 1500
 const router = useRouter()
 const activeView = ref<AdminView>('overview')
 const loading = ref(false)
@@ -86,6 +89,8 @@ const projectDetail = ref<AdminProjectDetail | null>(null)
 const projectConversationPage = ref(1)
 const editForm = reactive({ role: 'normal' as UserRole, qqOpenid: '', wxOpenid: '' })
 const originalEdit = reactive({ role: 'normal' as UserRole, qqOpenid: '', wxOpenid: '' })
+let storageSyncPollTimer: number | null = null
+let manualStorageSyncPending = false
 
 const VIEW_META: Record<AdminView, { kicker: string; title: string; description: string }> = {
   overview: { kicker: '运营', title: '运营总览', description: '查看全站用户、项目、AI 用量与 COS 存储状态。' },
@@ -229,38 +234,105 @@ const assetUploadTrend = computed(() => {
   return { days, points, areaPoints: `0,78 ${points} 280,78`, max }
 })
 
-function makeTrend(values: number[]) {
-  if (!values.length) return { points: '', areaPoints: '', max: 0 }
-  const max = Math.max(...values, 1)
-  const divisor = Math.max(values.length - 1, 1)
-  const points = values.map((value, index) => `${(index / divisor) * 280},${70 - (value / max) * 58}`).join(' ')
-  return { points, areaPoints: `0,78 ${points} 280,78`, max }
-}
-
-const overviewTrends = computed(() => {
+const overviewGrowthChartOption = computed(() => {
   const rows = overview.value?.trends ?? []
-  return {
-    users: makeTrend(rows.map((row) => toNumber(row.newUsers))),
-    projects: makeTrend(rows.map((row) => toNumber(row.newProjects))),
-    tokens: makeTrend(rows.map((row) => toNumber(row.totalTokens))),
-    storage: makeTrend(rows.map((row) => toNumber(row.storageBytes))),
-    startLabel: rows[0]?.date.slice(5).replace('-', '/') ?? '—',
-    endLabel: rows.at(-1)?.date.slice(5).replace('-', '/') ?? '—',
-  }
+  return createLineOption(
+    rows.map((row) => row.date.slice(5).replace('-', '/')),
+    [
+      { name: '新增用户', values: rows.map((row) => toNumber(row.newUsers)), color: '#315efb' },
+      { name: '新增项目', values: rows.map((row) => toNumber(row.newProjects)), color: '#ff5f56' },
+    ],
+  )
 })
 
-const overviewTokenComposition = computed(() => {
-  const ai = overview.value?.summary.ai
-  const prompt = toNumber(ai?.periodPromptTokens)
-  const completion = toNumber(ai?.periodCompletionTokens)
-  const total = prompt + completion
-  return {
-    prompt,
-    completion,
-    promptPercent: total ? Math.round((prompt / total) * 100) : 0,
-    completionPercent: total ? Math.round((completion / total) * 100) : 0,
-  }
+const overviewTokenChartOption = computed(() => {
+  const rows = overview.value?.trends ?? []
+  return createLineOption(
+    rows.map((row) => row.date.slice(5).replace('-', '/')),
+    [{ name: 'Token', values: rows.map((row) => toNumber(row.totalTokens)), color: '#8b5cf6' }],
+  )
 })
+
+const userRoleChartOption = computed(() =>
+  createBarOption(
+    userRoleStats.value.map((item) => ({
+      name: item.label,
+      value: item.count,
+      color: { super: '#315efb', admin: '#8b5cf6', normal: '#15946c', disabled: '#ff5f56' }[item.role],
+    })),
+  ),
+)
+
+const userBindingChartOption = computed(() =>
+  createBarOption([
+    { name: 'QQ', value: userBindingStats.value.qq, color: '#315efb' },
+    { name: '微信', value: userBindingStats.value.wechat, color: '#15946c' },
+    { name: '双端绑定', value: userBindingStats.value.both, color: '#8b5cf6' },
+  ]),
+)
+
+const userProjectChartOption = computed(() =>
+  createDonutOption(
+    [
+      { name: '运行中', value: userProjectStats.value.active, color: '#15946c' },
+      { name: '已归档', value: userProjectStats.value.deleted, color: '#ff5f56' },
+    ],
+    `${userProjectStats.value.activePercent}%\n运行中`,
+  ),
+)
+
+const projectTypeChartOption = computed(() =>
+  createBarOption(
+    projectTypeStats.value.map((item) => ({
+      name: item.label,
+      value: item.count,
+      color: { tool: '#315efb', '2d': '#15946c', '3d': '#ff5f56' }[item.type],
+    })),
+  ),
+)
+
+const projectStatusChartOption = computed(() =>
+  createDonutOption(
+    [
+      { name: '运行中', value: projectStatusStats.value.active, color: '#15946c' },
+      { name: '已归档', value: projectStatusStats.value.archived, color: '#ff5f56' },
+    ],
+    `${projectStatusStats.value.activePercent}%\n运行中`,
+  ),
+)
+
+const projectTokenChartOption = computed(() =>
+  createDonutOption(
+    [
+      { name: '提示词', value: tokenStats.value.prompt, color: '#315efb' },
+      { name: '生成量', value: tokenStats.value.completion, color: '#ff5f56' },
+    ],
+    `${tokenStats.value.promptPercent}%\n提示词`,
+    formatNumber,
+  ),
+)
+
+const assetKindChartOption = computed(() =>
+  createBarOption(assetKindStats.value.map((item, index) => ({ name: item.label, value: item.count, color: ['#315efb', '#15946c', '#ff5f56', '#8b5cf6'][index] }))),
+)
+
+const assetStorageChartOption = computed(() =>
+  createDonutOption(
+    [
+      { name: '图片', value: assetStorageStats.value.imageBytes, color: '#315efb' },
+      { name: '其他', value: assetStorageStats.value.otherBytes, color: '#ff5f56' },
+    ],
+    `${assetStorageStats.value.imagePercent}%\n图片`,
+    formatBytes,
+  ),
+)
+
+const assetTrendChartOption = computed(() =>
+  createLineOption(
+    assetUploadTrend.value.days.map((day) => day.label),
+    [{ name: '上传素材', values: assetUploadTrend.value.days.map((day) => day.count), color: '#0ea5e9' }],
+  ),
+)
 
 const viewMetrics = computed(() => {
   if (activeView.value === 'overview') {
@@ -425,12 +497,59 @@ async function loadAssets(page = assetPage.value) {
   }
 }
 
+function stopStorageSyncPolling() {
+  if (storageSyncPollTimer === null) return
+  window.clearTimeout(storageSyncPollTimer)
+  storageSyncPollTimer = null
+}
+
+function finishStorageSyncPolling() {
+  stopStorageSyncPolling()
+  storageSyncing.value = false
+  if (!manualStorageSyncPending) return
+
+  manualStorageSyncPending = false
+  const error = overview.value?.summary.storage.errorMessage
+  if (error || overview.value?.summary.storage.syncStatus === 'error') {
+    ElMessage.error(error || 'COS 存储同步失败')
+  } else {
+    ElMessage.success('COS 存储同步完成')
+  }
+}
+
+function scheduleStorageSyncPolling() {
+  if (storageSyncPollTimer !== null || !overview.value?.storageSync.running) return
+  storageSyncPollTimer = window.setTimeout(async () => {
+    storageSyncPollTimer = null
+    let failed = false
+    try {
+      await loadOverview()
+    } catch {
+      failed = true
+      manualStorageSyncPending = false
+      storageSyncing.value = false
+      if (overview.value) overview.value.storageSync.running = false
+    } finally {
+      if (!failed && overview.value?.storageSync.running) scheduleStorageSyncPolling()
+    }
+  }, STORAGE_SYNC_POLL_INTERVAL)
+}
+
+function reconcileStorageSyncState() {
+  if (overview.value?.storageSync.running) {
+    scheduleStorageSyncPolling()
+    return
+  }
+  finishStorageSyncPolling()
+}
+
 async function loadOverview(days = overviewDays.value) {
   if (overviewLoading.value) return
   overviewLoading.value = true
   try {
     overview.value = await getAdminDashboardOverview(days)
     overviewDays.value = overview.value.range.days
+    reconcileStorageSyncState()
   } finally {
     overviewLoading.value = false
   }
@@ -467,14 +586,17 @@ async function changeOverviewDays(days: 7 | 30) {
 }
 
 async function runStorageSync() {
-  if (currentUser.value?.role !== 'super' || storageSyncing.value) return
+  if (currentUser.value?.role !== 'super' || storageSyncing.value || overviewLoading.value) return
   storageSyncing.value = true
+  manualStorageSyncPending = true
   try {
     const result = await syncAdminStorage()
-    ElMessage.success(result.started ? 'COS 存储同步已启动' : 'COS 存储同步正在运行')
+    ElMessage.info(result.started ? 'COS 存储同步已启动' : 'COS 存储同步正在运行')
     await loadOverview()
-  } finally {
+  } catch (error) {
+    manualStorageSyncPending = false
     storageSyncing.value = false
+    throw error
   }
 }
 
@@ -631,6 +753,10 @@ async function handleAssetPageChange(page: number) {
 onMounted(() => {
   void loadDashboard()
 })
+
+onBeforeUnmount(() => {
+  stopStorageSyncPolling()
+})
 </script>
 
 <template>
@@ -733,17 +859,7 @@ onMounted(() => {
         <div v-if="activeView === 'overview'" v-loading="overviewLoading" class="insights-grid overview-insights-grid">
           <article class="overview-line-chart">
             <div class="insight-title"><span>增长轨迹</span><small>新增用户 / 项目</small></div>
-            <div class="overview-chart-legend">
-              <span><i class="legend-user" />用户</span><span><i class="legend-project" />项目</span>
-            </div>
-            <svg class="trend-plot overview-plot" viewBox="0 0 280 82" role="img" aria-label="用户和项目新增趋势">
-              <polyline class="overview-line-user" :points="overviewTrends.users.points" />
-              <polyline class="overview-line-project" :points="overviewTrends.projects.points" />
-            </svg>
-            <div class="overview-chart-scale">
-              <span>{{ overviewTrends.startLabel }}</span
-              ><span>{{ overviewTrends.endLabel }}</span>
-            </div>
+            <AdminChart class="admin-chart admin-chart--overview" :option="overviewGrowthChartOption" label="用户和项目新增趋势，可悬浮查看每日数据并点击图例筛选" />
           </article>
 
           <article class="overview-line-chart">
@@ -754,13 +870,7 @@ onMounted(() => {
               <strong>{{ formatNumber(overview?.summary.ai.periodTotalTokens ?? 0) }}</strong
               ><small>期间 Token</small>
             </div>
-            <svg class="trend-plot overview-plot overview-token-plot" viewBox="0 0 280 82" role="img" aria-label="AI Token 使用趋势">
-              <polygon :points="overviewTrends.tokens.areaPoints" />
-              <polyline :points="overviewTrends.tokens.points" />
-            </svg>
-            <div class="overview-token-split">
-              <span>提示词 {{ overviewTokenComposition.promptPercent }}%</span><span>生成量 {{ overviewTokenComposition.completionPercent }}%</span>
-            </div>
+            <AdminChart class="admin-chart admin-chart--overview-token" :option="overviewTokenChartOption" label="AI Token 使用趋势，可悬浮查看每日用量" />
           </article>
 
           <article class="overview-storage-state">
@@ -788,7 +898,7 @@ onMounted(() => {
             </dl>
             <div class="storage-sync-row">
               <span>同步于 {{ formatDateTime(overview?.summary.storage.lastSyncedAt) }}</span>
-              <button v-if="currentUser?.role === 'super'" type="button" :disabled="storageSyncing || overview?.storageSync.running" @click="runStorageSync">
+              <button v-if="currentUser?.role === 'super'" type="button" :disabled="overviewLoading || storageSyncing || overview?.storageSync.running" @click="runStorageSync">
                 <el-icon :class="{ spinning: storageSyncing || overview?.storageSync.running }"><Refresh /></el-icon>{{ overview?.storageSync.running ? '同步中' : '立即同步' }}
               </button>
             </div>
@@ -798,152 +908,53 @@ onMounted(() => {
         <div v-else-if="activeView === 'users'" class="insights-grid">
           <article class="type-chart role-distribution-chart">
             <div class="insight-title"><span>权限分布</span><small>四种权限</small></div>
-            <div v-for="item in userRoleStats" :key="item.role" class="type-chart-row">
-              <div>
-                <span class="role-stat-label"><i :class="`role-dot--${item.role}`" />{{ item.label }}</span
-                ><strong>{{ item.count }}</strong>
-              </div>
-              <div class="chart-track"><i :class="`role-fill--${item.role}`" :style="{ width: `${item.percent}%` }" /></div>
-            </div>
+            <AdminChart class="admin-chart" :option="userRoleChartOption" label="当前分页用户权限分布，可悬浮查看数量" />
           </article>
 
           <article class="binding-chart">
             <div class="insight-title"><span>账号绑定</span><small>当前分页覆盖率</small></div>
-            <div class="binding-summary">
-              <strong>{{ userBindingStats.both }}</strong
-              ><small>同时绑定 QQ 与微信</small>
-            </div>
-            <div class="type-chart-row">
-              <div>
-                <span>QQ</span><strong>{{ userBindingStats.qq }} / {{ userBindingStats.total }}</strong>
-              </div>
-              <div class="chart-track"><i class="binding-fill--qq" :style="{ width: `${userBindingStats.qqPercent}%` }" /></div>
-            </div>
-            <div class="type-chart-row">
-              <div>
-                <span>微信</span><strong>{{ userBindingStats.wechat }} / {{ userBindingStats.total }}</strong>
-              </div>
-              <div class="chart-track"><i class="binding-fill--wechat" :style="{ width: `${userBindingStats.wechatPercent}%` }" /></div>
-            </div>
+            <AdminChart class="admin-chart" :option="userBindingChartOption" label="当前分页账号绑定情况，可悬浮查看数量" />
           </article>
 
           <article class="status-chart">
             <div class="insight-title"><span>用户项目</span><small>运行 / 归档</small></div>
-            <div class="status-chart-body">
-              <div class="status-donut" :class="{ 'status-donut--empty': userProjectStats.total === 0 }" :style="{ '--active-share': `${userProjectStats.activePercent}%` }">
-                <span
-                  ><strong>{{ userProjectStats.activePercent }}%</strong><small>运行中</small></span
-                >
-              </div>
-              <div class="status-legend">
-                <span
-                  ><i class="status-dot--active" />运行中 <strong>{{ userProjectStats.active }}</strong></span
-                >
-                <span
-                  ><i class="status-dot--archived" />已归档 <strong>{{ userProjectStats.deleted }}</strong></span
-                >
-              </div>
-            </div>
+            <AdminChart class="admin-chart admin-chart--donut" :option="userProjectChartOption" label="用户项目状态，可悬浮查看并点击图例筛选" />
           </article>
         </div>
 
         <div v-else-if="activeView === 'projects'" class="insights-grid">
           <article class="type-chart">
             <div class="insight-title"><span>项目构成</span><small>按类型</small></div>
-            <div v-for="item in projectTypeStats" :key="item.type" class="type-chart-row">
-              <div>
-                <span>{{ item.label }}</span
-                ><strong>{{ item.count }}</strong>
-              </div>
-              <div class="chart-track"><i :class="`chart-fill--${item.type}`" :style="{ width: `${item.percent}%` }" /></div>
-            </div>
+            <AdminChart class="admin-chart" :option="projectTypeChartOption" label="当前分页项目类型分布，可悬浮查看数量" />
           </article>
 
           <article class="status-chart">
             <div class="insight-title"><span>项目状态</span><small>运行 / 归档</small></div>
-            <div class="status-chart-body">
-              <div class="status-donut" :class="{ 'status-donut--empty': projectStatusStats.total === 0 }" :style="{ '--active-share': `${projectStatusStats.activePercent}%` }">
-                <span
-                  ><strong>{{ projectStatusStats.activePercent }}%</strong><small>运行中</small></span
-                >
-              </div>
-              <div class="status-legend">
-                <span
-                  ><i class="status-dot--active" />运行中 <strong>{{ projectStatusStats.active }}</strong></span
-                >
-                <span
-                  ><i class="status-dot--archived" />已归档 <strong>{{ projectStatusStats.archived }}</strong></span
-                >
-              </div>
-            </div>
+            <AdminChart class="admin-chart admin-chart--donut" :option="projectStatusChartOption" label="当前分页项目状态，可悬浮查看并点击图例筛选" />
           </article>
 
           <article class="token-chart">
             <div class="insight-title"><span>Token 构成</span><small>本页用量</small></div>
-            <div class="token-chart-total">
-              <strong>{{ formatNumber(summary.tokens) }}</strong
-              ><small>总 Token</small>
-            </div>
-            <div class="token-chart-row">
-              <div>
-                <span>提示词</span><strong>{{ formatNumber(tokenStats.prompt) }}</strong>
-              </div>
-              <div class="chart-track"><i class="token-fill--prompt" :style="{ width: `${tokenStats.promptPercent}%` }" /></div>
-            </div>
-            <div class="token-chart-row">
-              <div>
-                <span>生成量</span><strong>{{ formatNumber(tokenStats.completion) }}</strong>
-              </div>
-              <div class="chart-track"><i class="token-fill--completion" :style="{ width: `${tokenStats.completionPercent}%` }" /></div>
-            </div>
+            <AdminChart class="admin-chart admin-chart--donut" :option="projectTokenChartOption" label="当前分页 Token 构成，可悬浮查看并点击图例筛选" />
           </article>
         </div>
 
         <div v-else class="insights-grid">
           <article class="type-chart asset-kind-chart">
             <div class="insight-title"><span>文件格式</span><small>本页 TOP 4</small></div>
-            <div v-for="item in assetKindStats" :key="item.label" class="type-chart-row">
-              <div>
-                <span>{{ item.label }}</span
-                ><strong>{{ item.count }}</strong>
-              </div>
-              <div class="chart-track"><i :class="`asset-kind-fill--${item.index}`" :style="{ width: `${item.percent}%` }" /></div>
-            </div>
-            <div v-if="!assetKindStats.length" class="insight-empty">进入素材页后加载统计</div>
+            <AdminChart v-if="assetKindStats.length" class="admin-chart" :option="assetKindChartOption" label="当前分页文件格式分布，可悬浮查看数量" />
+            <div v-else class="insight-empty">进入素材页后加载统计</div>
           </article>
 
           <article class="asset-storage-chart">
             <div class="insight-title"><span>容量构成</span><small>图片 / 其他</small></div>
-            <div class="token-chart-total">
-              <strong>{{ formatBytes(assetStorageStats.totalBytes) }}</strong
-              ><small>本页总容量</small>
-            </div>
-            <div class="storage-composition-bar">
-              <i :style="{ width: `${assetStorageStats.imagePercent}%` }" /><span :style="{ width: `${100 - assetStorageStats.imagePercent}%` }" />
-            </div>
-            <div class="storage-legend">
-              <span
-                ><i class="storage-dot--image" />图片 <strong>{{ formatBytes(assetStorageStats.imageBytes) }}</strong></span
-              >
-              <span
-                ><i class="storage-dot--other" />其他 <strong>{{ formatBytes(assetStorageStats.otherBytes) }}</strong></span
-              >
-            </div>
+            <AdminChart class="admin-chart admin-chart--donut" :option="assetStorageChartOption" label="当前分页素材容量构成，可悬浮查看并点击图例筛选" />
           </article>
 
           <article class="asset-trend-chart">
             <div class="insight-title"><span>最近上传</span><small>截至本页最新日期</small></div>
-            <svg v-if="assetUploadTrend.days.length" class="trend-plot" viewBox="0 0 280 82" role="img" aria-label="最近七日素材上传趋势">
-              <polygon :points="assetUploadTrend.areaPoints" />
-              <polyline :points="assetUploadTrend.points" />
-            </svg>
+            <AdminChart v-if="assetUploadTrend.days.length" class="admin-chart" :option="assetTrendChartOption" label="最近七日素材上传趋势，可悬浮查看每日数量" />
             <div v-else class="insight-empty">暂无上传时间数据</div>
-            <div v-if="assetUploadTrend.days.length" class="trend-labels">
-              <span v-for="day in assetUploadTrend.days" :key="day.label"
-                ><strong>{{ day.count }}</strong
-                ><small>{{ day.label }}</small></span
-              >
-            </div>
           </article>
         </div>
       </section>
@@ -1164,6 +1175,7 @@ onMounted(() => {
                 v-if="asset.url && isImageAsset(asset) && !failedAssetPreviews.has(asset.key)"
                 :src="asset.url"
                 :alt="asset.fileName"
+                crossorigin="anonymous"
                 loading="lazy"
                 referrerpolicy="no-referrer"
                 @error="handleAssetImageError(asset.key)"

@@ -6,6 +6,7 @@ import { getSessionList, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
 import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
+import ConversationRail from './ConversationRail.vue'
 import type { ChatMessage } from './types'
 import { chatWithAI, reconnectChatStream, type ChatSseEvent } from '@/http/chat'
 import { uploadImageToCos } from '@/http/cos'
@@ -51,7 +52,9 @@ function getToolDisplayName(raw: string): string {
 }
 const contextDialogVisible = computed({
   get: () => false,
-  set: () => { contextPopoverVisible.value = true },
+  set: () => {
+    contextPopoverVisible.value = true
+  },
 })
 
 function handleContextMeterDocumentClick(event: MouseEvent) {
@@ -126,6 +129,7 @@ const userAborted = ref(false)
 
 /** 消息列表容器，用于滚动到底部 */
 const messagesRef = ref<HTMLElement | null>(null)
+const activeRailMessageId = ref('')
 
 /** 当前 SSE 中止控制器 */
 let abortController: AbortController | null = null
@@ -575,7 +579,46 @@ async function scrollToBottom() {
   const el = messagesRef.value
   if (!el) return
   el.scrollTop = el.scrollHeight
+  updateActiveRailMessage()
 }
+
+function updateActiveRailMessage() {
+  const container = messagesRef.value
+  if (!container) return
+
+  const anchors = Array.from(container.querySelectorAll<HTMLElement>('[data-chat-message-role="user"]'))
+  if (!anchors.length) {
+    activeRailMessageId.value = ''
+    return
+  }
+
+  const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 24
+  if (isAtBottom) {
+    activeRailMessageId.value = anchors.at(-1)?.dataset.chatMessageId ?? ''
+    return
+  }
+
+  const threshold = container.getBoundingClientRect().top + Math.min(container.clientHeight * 0.3, 120)
+  const visibleAnchor = anchors.reduce((active, anchor) => (anchor.getBoundingClientRect().top <= threshold ? anchor : active), anchors[0]!)
+  activeRailMessageId.value = visibleAnchor.dataset.chatMessageId ?? ''
+}
+
+function scrollToRailMessage(messageId: string) {
+  const container = messagesRef.value
+  if (!container) return
+
+  const target = Array.from(container.querySelectorAll<HTMLElement>('[data-chat-message-id]')).find((item) => item.dataset.chatMessageId === messageId)
+  if (!target) return
+
+  const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+  container.scrollTo({ top, behavior: 'smooth' })
+  activeRailMessageId.value = messageId
+}
+
+watch(
+  () => messages.value.length,
+  () => nextTick(updateActiveRailMessage),
+)
 
 /**
  * 根据 id 查找消息
@@ -809,8 +852,16 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
     tokenUsage.generationStatus = 'completed'
     void scrollToBottom()
   }
-  if (event.event === 'cancelled') { activeToolLabel.value = ''; activeToolCompleted.value = false; tokenUsage.generationStatus = 'cancelled' }
-  if (event.event === 'error') { activeToolLabel.value = ''; activeToolCompleted.value = false; tokenUsage.generationStatus = 'failed' }
+  if (event.event === 'cancelled') {
+    activeToolLabel.value = ''
+    activeToolCompleted.value = false
+    tokenUsage.generationStatus = 'cancelled'
+  }
+  if (event.event === 'error') {
+    activeToolLabel.value = ''
+    activeToolCompleted.value = false
+    tokenUsage.generationStatus = 'failed'
+  }
 }
 
 async function reconnectStreamingAssistant(message: ChatMessage) {
@@ -985,79 +1036,103 @@ function handleActionClick() {
 
 <template>
   <div class="chat-panel">
-    <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages">
-      <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
-      <ChatMessageItem v-for="message in messages" :key="message.id" :message="message" :user-avatar="userAvatar" />
-      <div v-if="activeToolLabel" class="chat-tool-status" :class="{ 'chat-tool-status--done': activeToolCompleted }"><span class="chat-tool-status-dot" />{{ activeToolCompleted ? '调用完毕' : '正在调用' }} {{ activeToolLabel }}<span v-if="!activeToolCompleted" class="chat-tool-status-dots">...</span></div>
+    <div class="chat-panel-conversation">
+      <ConversationRail :messages="messages" :active-message-id="activeRailMessageId" @select="scrollToRailMessage" />
+      <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages" @scroll.passive="updateActiveRailMessage">
+        <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
+        <div v-for="message in messages" :key="message.id" class="chat-message-anchor" :data-chat-message-id="message.id" :data-chat-message-role="message.role">
+          <ChatMessageItem :message="message" :user-avatar="userAvatar" />
+        </div>
+        <div v-if="activeToolLabel" class="chat-tool-status" :class="{ 'chat-tool-status--done': activeToolCompleted }">
+          <span class="chat-tool-status-dot" />{{ activeToolCompleted ? '调用完毕' : '正在调用' }} {{ activeToolLabel
+          }}<span v-if="!activeToolCompleted" class="chat-tool-status-dots">...</span>
+        </div>
+      </div>
     </div>
 
     <div class="chat-panel-input-area">
       <div class="chat-panel-input-shell">
         <div v-if="pendingImages.length > 0" class="chat-panel-image-preview">
-          <div v-for="(image, index) in pendingImages" :key="image.id" class="chat-panel-image-preview-item"
-            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }">
-            <img :src="image.uploading ? image.blobUrl : image.cosUrl"
-              :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
+          <div
+            v-for="(image, index) in pendingImages"
+            :key="image.id"
+            class="chat-panel-image-preview-item"
+            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }"
+          >
+            <img :src="image.uploading ? image.blobUrl : image.cosUrl" :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
             <div v-if="image.uploading" class="chat-panel-image-loading">
               <span class="chat-panel-image-loading-spinner" aria-label="上传中" />
             </div>
-            <button type="button" class="chat-panel-image-remove" title="移除图片"
-              :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
+            <button type="button" class="chat-panel-image-remove" title="移除图片" :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
           </div>
         </div>
-        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple
-          class="chat-panel-file-input" @change="handleImageSelect" />
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple class="chat-panel-file-input" @change="handleImageSelect" />
         <div class="chat-panel-input-body">
-          <textarea ref="inputRef" v-model="inputText" class="chat-panel-input"
-            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送" rows="5" :disabled="isStreaming"
-            @keydown="handleInputKeydown" @paste="handleInputPaste" />
+          <textarea
+            ref="inputRef"
+            v-model="inputText"
+            class="chat-panel-input"
+            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送"
+            rows="5"
+            :disabled="isStreaming"
+            @keydown="handleInputKeydown"
+            @paste="handleInputPaste"
+          />
           <div class="chat-panel-input-footer">
-            <button type="button" class="chat-panel-upload-btn"
-              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }" title="上传图片（可多选）" :disabled="isStreaming"
-              @click="handleUploadClick">
+            <button
+              type="button"
+              class="chat-panel-upload-btn"
+              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
+              title="上传图片（可多选）"
+              :disabled="isStreaming"
+              @click="handleUploadClick"
+            >
               <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
               <SvgIcon v-else name="upload-image" />
             </button>
             <button type="button" class="chat-context-meter" title="查看当前会话上下文用量" @click="contextDialogVisible = true">
-              <span class="chat-context-meter-ring"
-                :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
+              <span class="chat-context-meter-ring" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
               <div v-if="contextPopoverVisible" class="context-usage-popover">
-                <div class="context-usage-popover-head"><b>Context Usage</b><button type="button"
-                    @click="contextPopoverVisible = false">×</button></div>
-                <div class="context-usage-popover-summary"><strong>{{ Math.round(tokenUsage.contextRatio * 100) }}%
-                    Full</strong><span>~{{ tokenUsage.contextTokens.toLocaleString() }} / {{
-                      tokenUsage.contextLimit.toLocaleString() }} Tokens</span></div>
-                <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" />
+                <div class="context-usage-popover-head"><b>Context Usage</b><button type="button" @click="contextPopoverVisible = false">×</button></div>
+                <div class="context-usage-popover-summary">
+                  <strong>{{ Math.round(tokenUsage.contextRatio * 100) }}% Full</strong
+                  ><span>~{{ tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }} Tokens</span>
                 </div>
-                <div class="context-usage-popover-row"><span><i
-                      class="usage-dot usage-dot--blue" />Conversation</span><b>{{
-                        tokenUsage.contextTokens.toLocaleString() }}</b></div>
-                <div class="context-usage-popover-row"><span><i class="usage-dot usage-dot--violet" />Session
-                    total</span><b>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b></div>
+                <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" /></div>
+                <div class="context-usage-popover-row">
+                  <span><i class="usage-dot usage-dot--blue" />Conversation</span><b>{{ tokenUsage.contextTokens.toLocaleString() }}</b>
+                </div>
+                <div class="context-usage-popover-row">
+                  <span><i class="usage-dot usage-dot--violet" />Session total</span><b>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
+                </div>
               </div>
             </button>
             <div class="chat-panel-submit-actions">
-              <button type="button" class="chat-context-trigger" title="Context usage"
-                @click="contextPopoverVisible = !contextPopoverVisible">
-                <span class="chat-context-meter-ring"
-                  :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
+              <button type="button" class="chat-context-trigger" title="Context usage" @click="contextPopoverVisible = !contextPopoverVisible">
+                <span class="chat-context-meter-ring" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
                 <div v-if="contextPopoverVisible" class="context-usage-popover">
-                  <div class="context-usage-popover-head"><b>上下文用量</b><button type="button"
-                      @click.stop="contextPopoverVisible = false">x</button></div>
-                  <div class="context-usage-popover-summary"><strong>已使用 {{ Math.round(tokenUsage.contextRatio * 100)
-                      }}%</strong><span>约 {{ tokenUsage.contextTokens.toLocaleString() }} / {{
-                        tokenUsage.contextLimit.toLocaleString() }} Token</span></div>
-                  <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" />
+                  <div class="context-usage-popover-head"><b>上下文用量</b><button type="button" @click.stop="contextPopoverVisible = false">x</button></div>
+                  <div class="context-usage-popover-summary">
+                    <strong>已使用 {{ Math.round(tokenUsage.contextRatio * 100) }}%</strong
+                    ><span>约 {{ tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }} Token</span>
                   </div>
-                  <div class="context-usage-popover-row"><span><i class="usage-dot usage-dot--blue" />当前上下文</span><b>{{
-                    tokenUsage.contextTokens.toLocaleString() }}</b></div>
-                  <div class="context-usage-popover-row"><span><i class="usage-dot usage-dot--violet" />会话累计</span><b>{{
-                    (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b></div>
+                  <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" /></div>
+                  <div class="context-usage-popover-row">
+                    <span><i class="usage-dot usage-dot--blue" />当前上下文</span><b>{{ tokenUsage.contextTokens.toLocaleString() }}</b>
+                  </div>
+                  <div class="context-usage-popover-row">
+                    <span><i class="usage-dot usage-dot--violet" />会话累计</span><b>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
+                  </div>
                 </div>
               </button>
-              <button type="button" class="chat-panel-action-btn"
-                :class="{ 'chat-panel-action-btn--stop': isStreaming }" :title="isStreaming ? '终止' : '发送'"
-                :disabled="hasUploadingImage" @click="handleActionClick">
+              <button
+                type="button"
+                class="chat-panel-action-btn"
+                :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+                :title="isStreaming ? '终止' : '发送'"
+                :disabled="hasUploadingImage"
+                @click="handleActionClick"
+              >
                 <SvgIcon :name="isStreaming ? 'stop' : 'send'" />
               </button>
             </div>
@@ -1068,16 +1143,19 @@ function handleActionClick() {
     <el-dialog v-model="contextDialogVisible" title="会话 Token 用量" width="min(420px, calc(100vw - 32px))" append-to-body>
       <div class="context-usage-dialog">
         <div class="context-usage-hero">
-          <span class="chat-context-meter-ring chat-context-meter-ring--large"
-            :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }"><strong>{{
-              Math.round(tokenUsage.contextRatio * 100) }}%</strong></span>
-          <div><b>{{ tokenUsage.isCompressing ? '正在压缩上下文' : '当前上下文占用' }}</b><small>{{ tokenUsage.usageEstimated ?
-            '本轮含估算Token' : '基于后端统计' }}</small></div>
+          <span class="chat-context-meter-ring chat-context-meter-ring--large" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }"
+            ><strong>{{ Math.round(tokenUsage.contextRatio * 100) }}%</strong></span
+          >
+          <div>
+            <b>{{ tokenUsage.isCompressing ? '正在压缩上下文' : '当前上下文占用' }}</b
+            ><small>{{ tokenUsage.usageEstimated ? '本轮含估算Token' : '基于后端统计' }}</small>
+          </div>
         </div>
-        <div class="context-usage-grid"><span>当前上下文</span><strong>{{ tokenUsage.contextTokens.toLocaleString()
-        }}</strong><span>上下文上限</span><strong>{{ tokenUsage.contextLimit.toLocaleString()
-            }}</strong><span>会话累计消耗</span><strong>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString()
-            }}</strong></div>
+        <div class="context-usage-grid">
+          <span>当前上下文</span><strong>{{ tokenUsage.contextTokens.toLocaleString() }}</strong
+          ><span>上下文上限</span><strong>{{ tokenUsage.contextLimit.toLocaleString() }}</strong
+          ><span>会话累计消耗</span><strong>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</strong>
+        </div>
       </div>
     </el-dialog>
   </div>
@@ -1113,6 +1191,17 @@ function handleActionClick() {
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
 
+.chat-panel-conversation {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+}
+
+.chat-message-anchor {
+  scroll-margin-top: 16px;
+}
+
 .chat-panel-messages::-webkit-scrollbar {
   width: 6px;
 }
@@ -1142,11 +1231,38 @@ function handleActionClick() {
   font-size: 1rem;
   font-weight: 700;
 }
-.chat-tool-status { display: inline-flex; align-items: center; gap: 0.45rem; margin: 0.5rem 0 0 2.5rem; padding: 0.45rem 0.65rem; border: 1px solid var(--app-border); border-radius: 0.5rem; color: var(--app-text-secondary); font-size: 0.75rem; background: var(--app-bg-subtle); }
-.chat-tool-status-dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--app-accent); animation: chat-tool-pulse 1.2s ease-in-out infinite; }
-.chat-tool-status-dots { letter-spacing: 0.1em; }
-.chat-tool-status--done .chat-tool-status-dot { background: #22c55e; animation: none; }
-@keyframes chat-tool-pulse { 50% { opacity: 0.35; transform: scale(0.7); } }
+.chat-tool-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0 2.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  background: var(--app-bg-subtle);
+}
+.chat-tool-status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--app-accent);
+  animation: chat-tool-pulse 1.2s ease-in-out infinite;
+}
+.chat-tool-status-dots {
+  letter-spacing: 0.1em;
+}
+.chat-tool-status--done .chat-tool-status-dot {
+  background: #22c55e;
+  animation: none;
+}
+@keyframes chat-tool-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
 
 .chat-panel-input-area {
   flex-shrink: 0;
@@ -1499,7 +1615,7 @@ function handleActionClick() {
   border: 1px solid var(--app-border);
   border-radius: 0.75rem;
   background: var(--app-surface);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
   color: var(--app-text-primary);
 }
 
@@ -1683,7 +1799,9 @@ html.dark .chat-panel-messages {
     font-size: 0.875rem;
   }
 
-  .context-usage-popover-head { font-size: 0.9rem; }
+  .context-usage-popover-head {
+    font-size: 0.9rem;
+  }
   .context-usage-popover-summary {
     gap: 0.5rem;
     font-size: 0.8rem;

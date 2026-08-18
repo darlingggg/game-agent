@@ -468,6 +468,25 @@
   border-right: 0;
 }
 
+.admin-chart {
+  width: 100%;
+  height: 90px;
+}
+
+.admin-chart--donut {
+  height: 112px;
+}
+
+.admin-chart--overview {
+  height: 112px;
+  margin-top: -5px;
+}
+
+.admin-chart--overview-token {
+  height: 86px;
+  margin-top: 1px;
+}
+
 .overview-insights-grid > article {
   min-height: 154px;
 }
