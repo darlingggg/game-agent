@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ArrowDown, EditPen, SwitchButton } from '@element-plus/icons-vue'
+import { ArrowDown, EditPen, Setting, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { setTokens } from '@/ajax'
 import { useLogout } from '@/composables/useLogout'
-import { getUserInfo, type UpdateUserProfileResponse } from '@/http/user'
+import { getUserInfo, type UpdateUserProfileResponse, type UserRole } from '@/http/user'
 import type { OAuthLoginResult, OAuthProvider } from '@/http/oauth'
 import OAuthProviderIcon from './OAuthProviderIcon.vue'
 import OAuthScanDialog from './OAuthScanDialog.vue'
@@ -33,6 +34,7 @@ const emit = defineEmits<{
   'profile-updated': [profile: UpdateUserProfileResponse]
 }>()
 
+const router = useRouter()
 const { confirmLogout } = useLogout()
 const oauthDialogVisible = ref(false)
 const profileDialogVisible = ref(false)
@@ -42,19 +44,29 @@ const profileLoaded = ref(false)
 const profileAvatar = ref('')
 const profileNickname = ref('')
 const profileAccount = ref('')
+const profileRole = ref<UserRole>('normal')
 const bindings = reactive({ qq: false, wechat: false })
 const displayedAvatar = computed(() => (profileLoaded.value ? profileAvatar.value : props.avatar))
 const displayedName = computed(() => {
   if (profileLoaded.value) {
-    return profileNickname.value.trim() || profileAccount.value.trim()
+    return (profileNickname.value ?? '').trim() || (profileAccount.value ?? '').trim()
   }
-  return props.nickname.trim() || props.account.trim()
+  return (props.nickname ?? '').trim() || (props.account ?? '').trim()
 })
 const shortenedDisplayName = computed(() => {
   const characters = Array.from(displayedName.value)
   return characters.length > 10 ? `${characters.slice(0, 10).join('')}…` : displayedName.value
 })
-const hasAvailableBinding = computed(() => profileLoaded.value && (!bindings.qq || !bindings.wechat))
+const canAccessAdmin = computed(() => profileRole.value === 'super' || profileRole.value === 'admin')
+const roleLabel = computed(() => {
+  const labels: Record<UserRole, string> = {
+    super: '超级管理员',
+    admin: '管理员',
+    normal: '普通用户',
+    disabled: '已禁用',
+  }
+  return labels[profileRole.value]
+})
 
 async function refreshBindings() {
   if (profileLoading.value) return
@@ -63,8 +75,9 @@ async function refreshBindings() {
   try {
     const profile = await getUserInfo()
     profileAvatar.value = profile.avatar?.trim() ?? ''
-    profileNickname.value = profile.nickname
-    profileAccount.value = profile.account
+    profileNickname.value = profile.nickname ?? ''
+    profileAccount.value = profile.account ?? ''
+    profileRole.value = profile.role
     bindings.qq = profile.bindings?.qq ?? false
     bindings.wechat = profile.bindings?.wechat ?? false
     profileLoaded.value = true
@@ -86,6 +99,7 @@ function handleMenuCommand(command: string) {
     return
   }
   if (command === 'edit-profile') profileDialogVisible.value = true
+  if (command === 'admin') void router.push('/admin')
   if (command === 'bind-qq') openBindDialog('qq')
   if (command === 'bind-wechat') openBindDialog('wechat')
 }
@@ -99,8 +113,9 @@ async function handleBindSuccess(result: OAuthLoginResult) {
 
 function handleProfileSaved(profile: UpdateUserProfileResponse) {
   profileAvatar.value = profile.avatar?.trim() ?? ''
-  profileNickname.value = profile.nickname
-  profileAccount.value = profile.account
+  profileNickname.value = profile.nickname ?? ''
+  profileAccount.value = profile.account ?? ''
+  profileRole.value = profile.role
   bindings.qq = profile.bindings?.qq ?? false
   bindings.wechat = profile.bindings?.wechat ?? false
   profileLoaded.value = true
@@ -133,22 +148,33 @@ onMounted(() => {
       <el-icon v-if="!compact && showName" class="user-menu-arrow"><ArrowDown /></el-icon>
     </button>
     <template #dropdown>
-      <el-dropdown-menu class="user-account-menu" :class="{ 'user-account-menu--has-bindings': hasAvailableBinding }">
+      <el-dropdown-menu class="user-account-menu">
+        <li class="user-account-summary" role="presentation">
+          <UserAvatar class="user-account-summary-avatar" :avatar="displayedAvatar" />
+          <strong>{{ displayedName || '当前账号' }}</strong>
+          <em class="user-role-badge" :class="`user-role-badge--${profileRole}`">{{ roleLabel }}</em>
+        </li>
         <el-dropdown-item command="edit-profile" :disabled="profileLoading" class="user-profile-item">
           <span class="user-profile-item-icon"
             ><el-icon><EditPen /></el-icon
           ></span>
-          <span class="user-bind-copy"><strong>编辑个人资料</strong><small>头像、昵称与登录信息</small></span>
+          <span class="user-bind-copy"><strong>编辑资料</strong></span>
         </el-dropdown-item>
         <el-dropdown-item v-if="profileLoaded && !bindings.qq" command="bind-qq" :disabled="profileLoading" class="user-bind-item">
           <OAuthProviderIcon provider="qq" />
-          <span class="user-bind-copy"><strong>绑定 QQ</strong><small>扫码关联当前账号</small></span>
+          <span class="user-bind-copy"><strong>绑定 QQ</strong></span>
         </el-dropdown-item>
         <el-dropdown-item v-if="profileLoaded && !bindings.wechat" command="bind-wechat" :disabled="profileLoading" class="user-bind-item">
           <OAuthProviderIcon provider="wechat" beta />
-          <span class="user-bind-copy"><strong>绑定微信</strong><small>扫码关联当前账号</small></span>
+          <span class="user-bind-copy"><strong>绑定微信</strong></span>
         </el-dropdown-item>
-        <el-dropdown-item :divided="hasAvailableBinding" command="logout" class="user-logout-item">
+        <el-dropdown-item v-if="canAccessAdmin" command="admin" class="user-admin-item">
+          <span class="user-admin-item-icon"
+            ><el-icon><Setting /></el-icon
+          ></span>
+          <span class="user-bind-copy"><strong>管理控制台</strong></span>
+        </el-dropdown-item>
+        <el-dropdown-item command="logout" class="user-logout-item">
           <el-icon><SwitchButton /></el-icon>
           退出登录
         </el-dropdown-item>
@@ -250,19 +276,18 @@ onMounted(() => {
 }
 
 .user-bind-copy {
-  display: flex;
-  min-width: 8.5rem;
-  flex-direction: column;
-  gap: 0.1rem;
-  margin-left: 1rem;
-  line-height: 1.2;
+  display: inline-flex;
+  min-width: 6.5rem;
+  align-items: center;
+  margin-left: 0.625rem;
+  line-height: 1;
 }
 
 .user-profile-item-icon {
   display: grid;
-  width: 1.9rem;
-  height: 1.9rem;
-  flex: 0 0 1.9rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 1.5rem;
   place-items: center;
   border: 1px solid var(--app-border);
   border-radius: 0.3rem;
@@ -272,45 +297,171 @@ onMounted(() => {
 
 .user-bind-copy strong {
   color: var(--app-text-primary);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 600;
-}
-
-.user-bind-copy small {
-  color: var(--app-text-muted);
-  font-size: 0.68rem;
 }
 </style>
 
 <style>
 .user-account-menu {
-  min-width: 14rem;
-  padding: 0.35rem !important;
+  min-width: 12.25rem;
+  padding: 0.25rem !important;
+}
+
+.user-account-menu .user-account-summary {
+  display: grid;
+  min-height: 2.4rem;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 0.45rem 0.35rem;
+  border-bottom: 1px solid var(--app-border);
+  list-style: none;
+}
+
+.user-account-summary-avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.user-account-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-account-summary strong {
+  color: var(--app-text-primary);
+  font-size: 0.75rem;
+}
+
+.user-role-badge {
+  display: inline-flex;
+  min-height: 1.2rem;
+  align-items: center;
+  padding: 0 0.35rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.2rem;
+  background: var(--app-bg-muted);
+  color: var(--app-text-secondary);
+  font-size: 0.625rem;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.user-role-badge--super {
+  border-color: #315efb;
+  background: #e9efff;
+  color: #254bd8;
+}
+
+.user-role-badge--admin {
+  border-color: #7c5cd6;
+  background: #f0ebff;
+  color: #6642c8;
+}
+
+.user-role-badge--normal {
+  border-color: #26936d;
+  background: #e9f7f1;
+  color: #16795b;
+}
+
+.user-role-badge--disabled {
+  border-color: #e06a5b;
+  background: #fff0ed;
+  color: #c54b3d;
 }
 
 .user-account-menu .user-bind-item {
-  height: 3.5rem;
-  padding: 0 0.8rem;
+  height: 2.25rem;
+  padding: 0 0.5rem;
 }
 
 .user-account-menu .user-profile-item {
-  height: 3.5rem;
-  padding: 0 0.8rem;
+  height: 2.25rem;
+  padding: 0 0.5rem;
 }
 
-.user-account-menu--has-bindings .user-profile-item {
-  border-bottom: 1px solid var(--app-border);
+.user-account-menu .user-admin-item {
+  height: 2.25rem;
+  padding: 0 0.5rem;
+}
+
+.user-account-menu .user-admin-item-icon {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 1.5rem;
+  place-items: center;
+  border: 1px solid var(--app-border);
+  border-radius: 0.3rem;
+  background: var(--app-accent-soft);
+  color: var(--app-accent);
+}
+
+.user-account-menu .user-admin-item-icon .el-icon {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  font-size: 1rem;
 }
 
 .user-account-menu .provider-icon {
-  width: 1.9rem;
-  height: 1.9rem;
-  flex-basis: 1.9rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+  margin-inline: 0.125rem;
+}
+
+.user-account-menu .provider-icon img {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.user-account-menu .provider-icon--qq img {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.user-account-menu .provider-beta {
+  top: -0.18rem;
+  right: -0.3rem;
+  min-width: 1rem;
+  padding: 0.06rem 0.14rem;
 }
 
 .user-account-menu .user-logout-item {
+  height: 2.1rem;
+  margin-top: 0.2rem;
   background-color: #fff1f1;
   color: #c93636;
+}
+
+html.dark .user-role-badge--super {
+  border-color: #5279e5;
+  background: #1d2948;
+  color: #88a7ff;
+}
+
+html.dark .user-role-badge--admin {
+  border-color: #765fc0;
+  background: #2c2445;
+  color: #b69dff;
+}
+
+html.dark .user-role-badge--normal {
+  border-color: #24775f;
+  background: #17342e;
+  color: #5bd1a8;
+}
+
+html.dark .user-role-badge--disabled {
+  border-color: #81453f;
+  background: #3a2220;
+  color: #ff9285;
 }
 
 .user-account-menu .user-logout-item:not(.is-disabled):hover,

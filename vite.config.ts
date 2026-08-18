@@ -11,7 +11,7 @@ import Components from 'unplugin-vue-components/vite'
 
 /** WebContainer / Monaco 依赖的 Cross-Origin Isolation 响应头 */
 const crossOriginIsolationHeaders = {
-  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'cross-origin',
 }

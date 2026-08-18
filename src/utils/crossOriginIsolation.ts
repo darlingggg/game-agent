@@ -1,6 +1,6 @@
 /** Cross-Origin Isolation 所需的 HTTP 响应头 */
 export const CROSS_ORIGIN_ISOLATION_HEADERS = {
-  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'cross-origin',
 } as const
