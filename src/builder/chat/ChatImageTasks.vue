@@ -37,23 +37,20 @@ function formatBytes(value: number | null) {
   <div class="chat-image-tasks" aria-label="AI 生图任务">
     <article v-for="task in tasks" :key="task.taskId" class="chat-image-task" :class="'is-' + task.status">
       <div class="chat-image-task__preview">
-        <el-image
-          v-if="task.status === 'succeeded' && task.url"
-          :src="task.url"
-          :preview-src-list="previewUrls"
-          fit="cover"
-          crossorigin="anonymous"
-          preview-teleported
-          hide-on-click-modal
-        />
+        <el-image v-if="task.status === 'succeeded' && task.url" :src="task.url" :preview-src-list="previewUrls"
+          fit="cover" crossorigin="anonymous" preview-teleported hide-on-click-modal />
         <div v-else-if="task.status === 'failed'" class="chat-image-task__state is-error">
-          <el-icon><Warning /></el-icon>
+          <el-icon>
+            <Warning />
+          </el-icon>
           <strong>图片生成失败</strong>
           <span>{{ task.errorMessage || '服务暂时不可用，请稍后重试' }}</span>
         </div>
         <div v-else class="chat-image-task__state">
           <span class="chat-image-task__scanner" />
-          <el-icon><Picture /></el-icon>
+          <el-icon>
+            <Picture />
+          </el-icon>
           <strong>{{ statusLabel(task.status) }}</strong>
           <span>完成 COS 保存后显示</span>
         </div>
@@ -202,6 +199,7 @@ function formatBytes(value: number | null) {
   font-size: 0.8125rem;
   line-height: 1.55;
   -webkit-box-orient: vertical;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
 }
 
@@ -212,15 +210,28 @@ function formatBytes(value: number | null) {
 }
 
 @keyframes image-task-scan {
-  0%, 100% { top: 0; opacity: 0.35; }
-  50% { top: calc(100% - 2px); opacity: 1; }
+
+  0%,
+  100% {
+    top: 0;
+    opacity: 0.35;
+  }
+
+  50% {
+    top: calc(100% - 2px);
+    opacity: 1;
+  }
 }
 
 @keyframes image-task-pulse {
-  50% { opacity: 0.25; transform: scale(0.75); }
+  50% {
+    opacity: 0.25;
+    transform: scale(0.75);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .chat-image-task__scanner,
   .chat-image-task__status.is-working i {
     animation: none;
