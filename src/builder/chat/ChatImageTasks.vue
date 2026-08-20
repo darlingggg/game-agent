@@ -132,7 +132,6 @@ function formatBytes(value: number | null) {
 }
 
 .chat-image-task__state span {
-  max-width: 16rem;
   font-size: 0.75rem;
   line-height: 1.5;
 }
