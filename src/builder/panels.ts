@@ -34,6 +34,9 @@ export const ChatPanel = createAsyncPanel(() => import('./chat/ChatPanel.vue'))
 /** 文件面板 */
 export const FilePanel = createAsyncPanel(() => import('./file/FilePanel.vue'))
 
+/** AI 图像生成面板 */
+export const ImagePanel = createAsyncPanel(() => import('./image/ImagePanel.vue'))
+
 /** 配置面板 */
 export const ConfigPanel = createAsyncPanel(() => import('./config/ConfigPanel.vue'))
 

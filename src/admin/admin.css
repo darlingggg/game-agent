@@ -2045,10 +2045,52 @@
   background-size: 20px 20px;
 }
 
-.asset-preview img {
+.asset-preview-image {
+  width: 100%;
+  height: 100%;
+  cursor: zoom-in;
+}
+
+.asset-preview-image :deep(.el-image__inner) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.asset-card:hover .asset-preview-image :deep(.el-image__inner) {
+  transform: scale(1.025);
+}
+
+.asset-source-tag {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  min-width: 62px;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid rgba(91, 99, 112, 0.22);
+  border-radius: 999px;
+  box-shadow: 0 2px 7px rgba(15, 17, 21, 0.1);
+  background: rgba(243, 245, 247, 0.93);
+  color: #555e6c;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(10px) saturate(120%);
+}
+
+.asset-source-tag.is-ai {
+  border-color: rgba(211, 47, 47, 0.32);
+  background: rgba(255, 238, 238, 0.94);
+  color: #b42318;
 }
 
 .asset-preview > span {
@@ -2072,8 +2114,10 @@
 
 .asset-preview > a {
   position: absolute;
-  top: 6px;
+  z-index: 2;
+  top: auto;
   right: 6px;
+  bottom: 6px;
   display: grid;
   width: 26px;
   height: 26px;
@@ -2295,20 +2339,30 @@
   .admin-navigation {
     display: grid;
     height: 100%;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
     margin: 0;
   }
 
   .admin-navigation button {
     display: flex;
     min-height: 46px;
-    gap: 7px;
+    min-width: 0;
+    gap: 3px;
     margin: 0;
+    padding: 0 3px;
   }
 
   .admin-navigation button span {
     display: inline;
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-navigation button b {
+    display: none;
   }
 
   .admin-navigation button.active::before {

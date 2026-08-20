@@ -1,3 +1,5 @@
+import type { ImageGenerationTask } from '@/http/imageGeneration'
+
 /** 消息角色 */
 export type ChatRole = 'user' | 'assistant'
 
@@ -21,6 +23,10 @@ export interface ChatMessage {
   content: string
   /** 后端 messages 表 id，用于刷新后 SSE 重连 */
   messageId?: number
+  /** 后端 sessions.id，用于关联工具任务 */
+  sessionId?: number
+  /** 主 AI 在本次回复中创建的图片任务 */
+  imageTasks?: ImageGenerationTask[]
   /** 图像识别内容，与 Agent 正文区分展示 */
   vision?: ChatVisionResult
   /** 是否正在流式输出 */

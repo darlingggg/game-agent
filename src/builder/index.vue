@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Camera, ChatDotRound, CopyDocument, Document, Notebook, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, Camera, ChatDotRound, CopyDocument, Document, Notebook, Picture, Setting } from '@element-plus/icons-vue'
 import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type Component } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -9,7 +9,7 @@ import { getProjectList } from '@/http/project'
 import type { UpdateUserProfileResponse } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
 import { PROJECT_TYPE_LABEL, resolveProjectType } from '@/utils/projectType'
-import { ChatPanel, ConfigPanel, FilePanel, LogPanel, PreviewPanel, SessionPanel, SnapshotPanel, TempPanel } from './panels'
+import { ChatPanel, ConfigPanel, FilePanel, ImagePanel, LogPanel, PreviewPanel, SessionPanel, SnapshotPanel, TempPanel } from './panels'
 import { createBuildContext, buildContextKey } from './build/buildContext'
 import { createLogContext, logContextKey } from './log/logContext'
 import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
@@ -164,6 +164,7 @@ watch(
 
 const tabs: TabItem[] = [
   { key: 'chat', label: '对话', meta: 'AI COLLAB', icon: ChatDotRound },
+  { key: 'image', label: '图像', meta: 'IMAGE LAB', icon: Picture },
   { key: 'file', label: '文件', meta: 'SOURCE', icon: Document },
   { key: 'config', label: '配置', meta: 'SETUP', icon: Setting },
   { key: 'snapshot', label: '版本', meta: 'HISTORY', icon: Camera },
@@ -475,6 +476,12 @@ onUnmounted(() => {
             class="main-content-panel"
             :class="getPanelTransitionClass('file')"
             :aria-hidden="activeTabKey !== 'file' && leavingTabKey !== 'file'"
+          />
+          <ImagePanel
+            v-if="shouldMountTabPanel('image')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('image')"
+            :aria-hidden="activeTabKey !== 'image' && leavingTabKey !== 'image'"
           />
           <ConfigPanel
             v-if="shouldMountTabPanel('config')"

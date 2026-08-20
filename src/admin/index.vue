@@ -7,6 +7,7 @@ import ThemeToggle from '@/components/ThemeToggle.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import AdminChart from './AdminChart.vue'
+import AdminImageGenerations from './AdminImageGenerations.vue'
 import { createBarOption, createDonutOption, createLineOption } from './chartOptions'
 import {
   getAdminAssets,
@@ -29,7 +30,7 @@ import { getUserInfo, type UserInfoResponse, type UserRole } from '@/http/user'
 
 defineOptions({ name: 'AdminConsole' })
 
-type AdminView = 'overview' | 'users' | 'projects' | 'assets'
+type AdminView = 'overview' | 'users' | 'projects' | 'assets' | 'images'
 type ProjectStatusFilter = 'all' | 'active' | 'deleted'
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -49,6 +50,7 @@ const PAGE_SIZE = 20
 const STORAGE_SYNC_POLL_INTERVAL = 1500
 const router = useRouter()
 const activeView = ref<AdminView>('overview')
+const imageGenerationsRef = ref<InstanceType<typeof AdminImageGenerations> | null>(null)
 const loading = ref(false)
 const overviewLoading = ref(false)
 const storageSyncing = ref(false)
@@ -97,6 +99,7 @@ const VIEW_META: Record<AdminView, { kicker: string; title: string; description:
   users: { kicker: '用户', title: '用户与权限', description: '查看账户状态、第三方绑定和项目使用情况。' },
   projects: { kicker: '项目', title: '全量项目', description: '查看所有用户的项目、运行状态与模型用量。' },
   assets: { kicker: '素材', title: '上传素材', description: '查看各用户上传到 COS 的图片、文件与目录归属。' },
+  images: { kicker: 'AI 生图', title: '生图任务', description: '查看主 AI 工具与图像工作台的生成进度、失败原因和 COS 入库情况。' },
 }
 
 const activeViewMeta = computed(() => VIEW_META[activeView.value])
@@ -577,6 +580,7 @@ async function refreshCurrentView() {
   if (activeView.value === 'users') await loadUsers()
   if (activeView.value === 'projects') await loadProjects()
   if (activeView.value === 'assets') await loadAssets()
+  if (activeView.value === 'images') await imageGenerationsRef.value?.refresh()
 }
 
 async function changeOverviewDays(days: 7 | 30) {
@@ -781,6 +785,9 @@ onBeforeUnmount(() => {
         <button :class="{ active: activeView === 'assets' }" type="button" @click="selectView('assets')">
           <el-icon><Picture /></el-icon><span>素材管理</span><b>{{ assets.length || '—' }}</b>
         </button>
+        <button :class="{ active: activeView === 'images' }" type="button" @click="selectView('images')">
+          <el-icon><Picture /></el-icon><span>AI 生图</span><b>AI</b>
+        </button>
       </nav>
 
       <div class="admin-sidebar-foot">
@@ -824,7 +831,7 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section class="admin-metrics" aria-label="平台统计">
+      <section v-if="activeView !== 'images'" class="admin-metrics" aria-label="平台统计">
         <article v-for="(metric, index) in viewMetrics" :key="metric.label" :class="{ 'admin-metric-accent': index === viewMetrics.length - 1 }">
           <span>{{ metric.label }}</span
           ><strong>{{ metric.value }}</strong
@@ -833,6 +840,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section
+        v-if="activeView !== 'images'"
         class="admin-insights"
         :aria-label="activeView === 'overview' ? '全站运营分析' : activeView === 'users' ? '当前用户分页分析' : activeView === 'projects' ? '当前项目分页分析' : '当前素材分页分析'"
       >
@@ -1005,7 +1013,9 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section v-if="activeView === 'users'" class="admin-dataset" aria-labelledby="users-title">
+      <AdminImageGenerations v-if="activeView === 'images'" ref="imageGenerationsRef" />
+
+      <section v-else-if="activeView === 'users'" class="admin-dataset" aria-labelledby="users-title">
         <div class="dataset-header">
           <div>
             <p>账户目录</p>
@@ -1171,18 +1181,27 @@ onBeforeUnmount(() => {
         <div v-loading="assetsLoading" class="asset-grid">
           <article v-for="asset in filteredAssets" :key="asset.key" class="asset-card">
             <div class="asset-preview">
-              <img
+              <el-image
                 v-if="asset.url && isImageAsset(asset) && !failedAssetPreviews.has(asset.key)"
+                class="asset-preview-image"
                 :src="asset.url"
                 :alt="asset.fileName"
-                crossorigin="anonymous"
-                loading="lazy"
+                :preview-src-list="[asset.url]"
+                fit="cover"
+                lazy
+                preview-teleported
+                hide-on-click-modal
                 referrerpolicy="no-referrer"
                 @error="handleAssetImageError(asset.key)"
               />
               <span v-else
                 ><Picture /><small>{{ asset.isDirectory ? 'DIR' : asset.extension || 'FILE' }}</small></span
               >
+              <span
+                v-if="isImageAsset(asset)"
+                class="asset-source-tag"
+                :class="asset.source === 'ai_generated' ? 'is-ai' : 'is-upload'"
+              >{{ asset.source === 'ai_generated' ? 'AI 生成' : '用户上传' }}</span>
               <a v-if="asset.url" :href="asset.url" target="_blank" rel="noopener" aria-label="打开素材"
                 ><el-icon><Download /></el-icon
               ></a>

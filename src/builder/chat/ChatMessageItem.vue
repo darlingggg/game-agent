@@ -4,6 +4,7 @@ import { AI_AVATAR_URL } from './chatAvatars'
 import SvgIcon from '@/components/SvgIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import MarkdownContent from './MarkdownContent.vue'
+import ChatImageTasks from './ChatImageTasks.vue'
 import type { ChatMessage } from './types'
 
 defineOptions({
@@ -34,14 +35,16 @@ const hasVisionAnswer = computed(() => !!props.message.vision?.answer.trim())
 
 const hasVisionContent = computed(() => hasVisionReasoning.value || hasVisionAnswer.value || !!props.message.vision?.streaming)
 
+const hasImageTasks = computed(() => Boolean(props.message.imageTasks?.length))
+
 /** 流式输出中且尚无内容时展示 loading */
-const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value)
+const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value && !hasImageTasks.value)
 
 /** AI 回复是否可折叠（流式结束后且有正文） */
-const canCollapse = computed(() => !isUser.value && !props.message.streaming && (!!props.message.content.trim() || hasVisionContent.value))
+const canCollapse = computed(() => !isUser.value && !props.message.streaming && (!!props.message.content.trim() || hasVisionContent.value || hasImageTasks.value))
 
 /** AI 回复折叠面板是否展开 */
-const replyExpanded = ref(!!props.message.streaming)
+const replyExpanded = ref(!!props.message.streaming || hasImageTasks.value)
 
 /** 图像思考区块是否展开，默认折叠 */
 const visionReasoningExpanded = ref(false)
@@ -86,6 +89,13 @@ watch(
     if (streaming) {
       replyExpanded.value = true
     }
+  },
+)
+
+watch(
+  () => props.message.imageTasks?.length ?? 0,
+  (count) => {
+    if (count > 0) replyExpanded.value = true
   },
 )
 
@@ -155,6 +165,7 @@ function toggleVisionReasoning() {
                 <span>图像识别中</span>
               </div>
             </div>
+            <ChatImageTasks v-if="message.imageTasks?.length" :tasks="message.imageTasks" />
             <MarkdownContent v-if="message.content" :content="message.content" />
             <span v-if="message.streaming && message.content" class="chat-message-cursor" />
           </div>

@@ -202,6 +202,7 @@ export interface AdminAsset {
   key: string
   fileName: string
   relativePath: string
+  source: 'user_upload' | 'ai_generated'
   extension: string
   size: number
   etag: string
@@ -213,6 +214,62 @@ export interface AdminAsset {
   userId: number | null
   account: string | null
   userNickname: string | null
+}
+
+export type AdminImageGenerationStatus = 'queued' | 'submitted' | 'generating' | 'storing' | 'succeeded' | 'failed'
+export type AdminImageGenerationOrigin = 'image_lab' | 'agent_tool'
+
+export interface AdminImageGeneration {
+  id: number
+  account: string
+  projectId: number | null
+  conversationId: number | null
+  assistantSessionId: number | null
+  toolCallId: string | null
+  model: string
+  externalTaskId: string | null
+  prompt: string
+  negativePrompt: string | null
+  referenceImages: string[]
+  imageSize: string
+  status: AdminImageGenerationStatus
+  temporaryUrl: string | null
+  objectKey: string | null
+  contentType: string | null
+  originalSize: number | null
+  storedSize: number | null
+  width: number | null
+  height: number | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+  origin: AdminImageGenerationOrigin
+  url?: string
+  userId: number | null
+  userNickname: string | null
+  projectTitle: string | null
+  conversationTitle?: string | null
+}
+
+export interface AdminImageGenerationParams extends AdminListParams {
+  account?: string
+  projectId?: number
+  status?: AdminImageGenerationStatus
+  origin?: AdminImageGenerationOrigin
+  keyword?: string
+  dateFrom?: string
+  dateTo?: string
+}
+
+export interface AdminImageGenerationPage extends PageData<AdminImageGeneration> {
+  summary: {
+    total: number
+    succeeded: number
+    failed: number
+    processing: number
+    storedBytes: number
+  }
 }
 
 export interface UpdateAdminUserInput {
@@ -232,6 +289,11 @@ export const getAdminUser = (id: number): Promise<AdminUser> => axios.get(`/admi
 export const updateAdminUser = (id: number, data: UpdateAdminUserInput): Promise<AdminUser> => axios.patch(`/admin/users/${id}`, data)
 
 export const getAdminAssets = (params: AdminAssetListParams = {}): Promise<PageData<AdminAsset>> => axios.get('/admin/assets', { params })
+
+export const getAdminImageGenerations = (params: AdminImageGenerationParams = {}): Promise<AdminImageGenerationPage> =>
+  axios.get('/admin/image-generations', { params })
+
+export const getAdminImageGeneration = (taskId: number): Promise<AdminImageGeneration> => axios.get('/admin/image-generations/' + taskId)
 
 export const getAdminDashboardOverview = (days: 7 | 30 = 30): Promise<AdminDashboardOverview> => axios.get('/admin/dashboard/overview', { params: { days } })
 

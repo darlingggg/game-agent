@@ -3,6 +3,7 @@ import axios from '@/ajax'
 export interface sessionItem {
   id: number
   projectId: number
+  conversationId?: number
   messageId?: number
   title: string
   account: string
@@ -18,6 +19,8 @@ interface RawSessionItem {
   id: number
   projectId?: number
   project_id?: number
+  conversationId?: number | null
+  conversation_id?: number | null
   messageId?: number | null
   message_id?: number | null
   title?: string
@@ -59,6 +62,7 @@ function normalizeSessionItem(item: RawSessionItem): sessionItem {
   return {
     id: item.id,
     projectId: item.projectId ?? item.project_id ?? 0,
+    conversationId: item.conversationId ?? item.conversation_id ?? undefined,
     messageId: messageId === null ? undefined : messageId,
     title: item.title ?? '',
     account: item.account ?? '',

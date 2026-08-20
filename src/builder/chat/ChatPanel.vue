@@ -14,6 +14,12 @@ import { getUserInfo } from '@/http/user'
 import { useLogContext } from '@/builder/log/logContext'
 import { useTokenUsageStore } from '@/stores/tokenUsage'
 import { cancelChatMessage } from '@/http/tokenUsage'
+import {
+  getImageGenerationTasks,
+  reconnectImageGenerationTask,
+  type ImageGenerationSseEvent,
+  type ImageGenerationTask,
+} from '@/http/imageGeneration'
 
 defineOptions({
   name: 'ChatPanel',
@@ -43,6 +49,7 @@ const TOOL_LABELS: Record<string, string> = {
   delete_file: '删除文件',
   download_file: '下载文件',
   upsert_file: '更新文件',
+  generate_image: '生成图片',
 }
 
 function getToolDisplayName(raw: string): string {
@@ -67,6 +74,8 @@ function handleContextMeterDocumentClick(event: MouseEvent) {
 
 /** 消息列表 */
 const messages = ref<ChatMessage[]>([])
+const imageTaskControllers = new Map<number, AbortController>()
+const TERMINAL_IMAGE_STATUSES = new Set(['succeeded', 'failed'])
 /** 当前用户头像 */
 const userAvatar = ref('')
 
@@ -233,6 +242,7 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
       id: String(item.id),
       role: 'user',
       content,
+      sessionId: item.id,
       createdAt: item.createdAt,
     }
   }
@@ -245,6 +255,7 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
     role: 'assistant',
     content,
     messageId: item.messageId,
+    sessionId: item.id,
     streaming: item.status === 'streaming',
     createdAt: item.createdAt,
   }
@@ -263,11 +274,80 @@ function pickSessionMessages(list: sessionItem[], sessionId: number) {
   return list.filter((item) => getSessionKey(item) === sessionKey || item.id === sessionId)
 }
 
+function stopImageTaskSubscriptions() {
+  for (const controller of imageTaskControllers.values()) controller.abort()
+  imageTaskControllers.clear()
+}
+
+function mergeImageTask(message: ChatMessage, patch: Partial<ImageGenerationTask> & { taskId?: number }) {
+  const taskId = Number(patch.taskId)
+  if (!Number.isFinite(taskId)) return
+  const tasks = message.imageTasks ?? (message.imageTasks = [])
+  const index = tasks.findIndex((task) => task.taskId === taskId)
+  if (index >= 0) {
+    tasks[index] = { ...tasks[index], ...patch, taskId } as ImageGenerationTask
+  } else if (patch.prompt && patch.status) {
+    tasks.push({ ...patch, taskId } as ImageGenerationTask)
+  }
+}
+
+function handleImageTaskEvent(message: ChatMessage, event: ImageGenerationSseEvent) {
+  const data = event.data ?? {}
+  if (event.event === 'error') {
+    mergeImageTask(message, {
+      ...data,
+      status: 'failed',
+      errorMessage: data.message || data.errorMessage || '图片生成失败',
+    })
+    return
+  }
+  if (event.event === 'status' || event.event === 'stored') mergeImageTask(message, data)
+}
+
+function reconnectAssistantImageTask(message: ChatMessage, task: ImageGenerationTask) {
+  if (TERMINAL_IMAGE_STATUSES.has(task.status) || imageTaskControllers.has(task.taskId)) return
+  const controller = new AbortController()
+  imageTaskControllers.set(task.taskId, controller)
+  void reconnectImageGenerationTask({
+    taskId: task.taskId,
+    signal: controller.signal,
+    onEvent: (event) => handleImageTaskEvent(message, event),
+  })
+    .catch((error) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      ElMessage.warning('生图任务状态连接中断，可刷新页面重连')
+    })
+    .finally(() => {
+      if (imageTaskControllers.get(task.taskId) === controller) imageTaskControllers.delete(task.taskId)
+    })
+}
+
+async function loadConversationImageTasks(conversationId?: number) {
+  if (!conversationId) return
+  const loaded: ImageGenerationTask[] = []
+  let page = 1
+  let hasMore = false
+  do {
+    const result = await getImageGenerationTasks({ conversationId, page, pageSize: 50 })
+    loaded.push(...result.list.filter((task) => task.assistantSessionId))
+    hasMore = result.pagination.hasMore
+    page += 1
+  } while (hasMore)
+
+  for (const task of loaded) {
+    const message = messages.value.find((item) => item.sessionId === task.assistantSessionId)
+    if (!message) continue
+    mergeImageTask(message, task)
+    reconnectAssistantImageTask(message, task)
+  }
+}
+
 /**
  * 加载当前会话的历史消息
  */
 async function loadSessionMessages() {
   const currentProjectId = projectId()
+  stopImageTaskSubscriptions()
 
   if (sessionContext.isPendingNewSession.value) {
     stopStreaming()
@@ -320,6 +400,7 @@ async function loadSessionMessages() {
       .sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime())
 
     messages.value = sessionMessages
+    await loadConversationImageTasks(target?.conversationId)
     await scrollToBottom()
 
     const lastItem = sessionMessages[sessionMessages.length - 1]
@@ -717,6 +798,7 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
     assistantMessageId?: unknown
   }
   const assistantMessageId = Number(payload.assistantMessageId)
+  const assistantSessionId = Number(payload.assistantSessionId)
   const userSessionId = Number(payload.userSessionId)
 
   const assistantMessage = findMessageById(assistantId)
@@ -725,6 +807,7 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
       assistantMessage.messageId = assistantMessageId
       streamingBackendMessageId = assistantMessageId
     }
+    if (Number.isFinite(assistantSessionId)) assistantMessage.sessionId = assistantSessionId
   }
 
   // 待创建，或无选中会话时直接首聊：绑定返回的会话 id，避免后续消息反复新建
@@ -754,6 +837,18 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
     if (event.data && typeof event.data === 'object') {
       const id = Number((event.data as Record<string, unknown>).conversationId)
       if (Number.isFinite(id)) tokenUsage.setConversationId(id)
+    }
+    return
+  }
+
+  if (event.event === 'image_task' && event.data && typeof event.data === 'object') {
+    const task = event.data as unknown as ImageGenerationTask
+    const assistantMessage = findMessageById(assistantId)
+      ?? messages.value.find((item) => item.sessionId === task.assistantSessionId)
+    if (assistantMessage) {
+      mergeImageTask(assistantMessage, task)
+      reconnectAssistantImageTask(assistantMessage, task)
+      void scrollToBottom()
     }
     return
   }
@@ -1008,6 +1103,7 @@ async function handleSend() {
 onUnmounted(() => {
   document.removeEventListener('click', handleContextMeterDocumentClick)
   stopStreaming()
+  stopImageTaskSubscriptions()
   clearPendingImages()
 })
 
