@@ -562,7 +562,7 @@ onUnmounted(() => {
 
                 <div class="image-reference-strip">
                   <div v-for="(item, index) in references" :key="item.id" class="image-reference-item">
-                    <img :src="item.previewUrl" alt="关联图预览" referrerpolicy="no-referrer" />
+                    <img :src="item.previewUrl" alt="关联图预览" crossorigin="anonymous" referrerpolicy="no-referrer" />
                     <span v-if="item.uploading" class="image-reference-loading" aria-label="上传中" />
                     <button type="button" title="移除关联图" aria-label="移除关联图" @click="removeReference(index)">
                       <el-icon><Close /></el-icon>
@@ -720,6 +720,7 @@ onUnmounted(() => {
                     :preview-src-list="[displayUrl(task)]"
                     :alt="task.prompt"
                     fit="cover"
+                    crossorigin="anonymous"
                     preview-teleported
                     hide-on-click-modal
                   >

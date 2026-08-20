@@ -42,6 +42,7 @@ function formatBytes(value: number | null) {
           :src="task.url"
           :preview-src-list="previewUrls"
           fit="cover"
+          crossorigin="anonymous"
           preview-teleported
           hide-on-click-modal
         />

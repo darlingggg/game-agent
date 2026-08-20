@@ -1189,6 +1189,7 @@ onBeforeUnmount(() => {
                 :preview-src-list="[asset.url]"
                 fit="cover"
                 lazy
+                crossorigin="anonymous"
                 preview-teleported
                 hide-on-click-modal
                 referrerpolicy="no-referrer"

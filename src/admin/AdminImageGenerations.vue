@@ -145,7 +145,7 @@ onMounted(() => void load(1))
           <el-table-column label="图片" width="92">
             <template #default="{ row }">
               <div class="task-thumb">
-                <img v-if="row.url" :src="row.url" alt="AI 生成图片" loading="lazy" referrerpolicy="no-referrer" />
+                <img v-if="row.url" :src="row.url" alt="AI 生成图片" loading="lazy" crossorigin="anonymous" referrerpolicy="no-referrer" />
                 <Picture v-else />
               </div>
             </template>
@@ -182,14 +182,21 @@ onMounted(() => void load(1))
       <div v-loading="detailLoading" class="task-detail">
         <template v-if="selected">
           <div class="task-detail__preview">
-            <el-image v-if="selected.url" :src="selected.url" :preview-src-list="[selected.url]" fit="contain" preview-teleported />
+            <el-image
+              v-if="selected.url"
+              :src="selected.url"
+              :preview-src-list="[selected.url]"
+              fit="contain"
+              crossorigin="anonymous"
+              preview-teleported
+            />
             <div v-else><Warning v-if="selected.status === 'failed'" /><Picture v-else /><span>{{ STATUS_LABELS[selected.status] }}</span></div>
           </div>
           <div class="task-detail__headline"><span class="task-status" :class="'is-' + selected.status"><i />{{ STATUS_LABELS[selected.status] }}</span><strong>{{ originLabel(selected.origin) }}</strong><small>{{ formatDuration(selected) }}</small></div>
           <section><h3>提示词</h3><p>{{ selected.prompt }}</p></section>
           <section v-if="selected.negativePrompt"><h3>排除内容</h3><p>{{ selected.negativePrompt }}</p></section>
           <section v-if="selected.errorMessage" class="is-error"><h3>失败原因</h3><p>{{ selected.errorMessage }}</p></section>
-          <section v-if="selected.referenceImages.length"><h3>关联图片</h3><div class="reference-images"><a v-for="url in selected.referenceImages" :key="url" :href="url" target="_blank" rel="noopener"><img :src="url" alt="关联图片" /></a></div></section>
+          <section v-if="selected.referenceImages.length"><h3>关联图片</h3><div class="reference-images"><a v-for="url in selected.referenceImages" :key="url" :href="url" target="_blank" rel="noopener"><img :src="url" alt="关联图片" crossorigin="anonymous" /></a></div></section>
           <dl>
             <div><dt>用户</dt><dd>{{ selected.userNickname || '—' }} / {{ selected.account }}</dd></div>
             <div><dt>项目</dt><dd>{{ selected.projectTitle || '—' }} / {{ selected.projectId || '—' }}</dd></div>
