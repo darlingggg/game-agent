@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DArrowLeft, Delete, Edit, Plus, Search, Sort } from '@element-plus/icons-vue'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { deleteSession, getSessionList, updateSession, type sessionItem } from '@/http/session'
-import { getUserInfo } from '@/http/user'
+import { deleteConversation, getConversationList, updateConversation, type ConversationSummary } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
 import { SESSION_EMPTY_PREVIEW } from './constants'
 import { useSessionContext } from './sessionContext'
@@ -13,23 +12,13 @@ defineOptions({
   name: 'SessionPanel',
 })
 
-const props = withDefaults(
-  defineProps<{
-    userNicknameOverride?: string
-  }>(),
-  {
-    userNicknameOverride: '',
-  },
-)
-
 const router = useRouter()
 const projectStore = useProjectStore()
 const sessionContext = useSessionContext()
 
 /** 用户昵称 */
-const nickName = ref('')
 /** 会话列表 */
-const sessions = ref<sessionItem[]>([])
+const conversations = ref<ConversationSummary[]>([])
 
 /** 搜索框输入值 */
 const searchInput = ref('')
@@ -45,12 +34,17 @@ const SEARCH_DEBOUNCE_MS = 300
 
 /** 列表加载中 */
 const listLoading = ref(false)
+const loadingMore = ref(false)
+const listPage = ref(1)
+const listHasMore = ref(false)
+const CONVERSATION_PAGE_SIZE = 30
+let listRequestId = 0
 
 /** 当前项目 ID */
 const projectId = computed(() => projectStore.currentProject?.id ?? 0)
 
 /** 当前激活会话 id */
-const activeSessionId = computed(() => sessionContext.activeSessionId.value)
+const activeConversationId = computed(() => sessionContext.activeConversationId.value)
 
 /** 是否处于待创建新会话状态 */
 const isPendingNewSession = computed(() => sessionContext.isPendingNewSession.value)
@@ -66,18 +60,18 @@ const projectDesc = computed(() => {
 
 /**
  * 获取会话标题
- * @param session 会话项
+ * @param conversation 会话摘要
  */
-function getSessionTitle(session: sessionItem) {
-  return session.title.trim() || session.content?.trim() || '新会话'
+function getSessionTitle(conversation: ConversationSummary) {
+  return conversation.title.trim() || conversation.preview.trim() || '新会话'
 }
 
 /**
  * 获取会话预览
- * @param session 会话项
+ * @param conversation 会话摘要
  */
-function getSessionPreview(session: sessionItem) {
-  return session.content?.trim() || SESSION_EMPTY_PREVIEW
+function getSessionPreview(conversation: ConversationSummary) {
+  return conversation.preview.trim() || SESSION_EMPTY_PREVIEW
 }
 
 /**
@@ -103,72 +97,70 @@ function handleSearchInput() {
   }, SEARCH_DEBOUNCE_MS)
 }
 
-/**
- * 获取 filterMap 去重键
- * @param session 会话项
- */
-function getFilterMapKey(session: sessionItem) {
-  return session.title.trim() || session.content?.trim() || String(session.id)
-}
-
-/**
- * 加载会话列表
- */
-const filterMap = new Map<string, number>()
-async function fetchSessionList() {
+/** 加载会话摘要列表；继续加载时追加下一页。 */
+async function fetchConversationList(reset = true) {
   if (!projectId.value) return
-  listLoading.value = true
+  if (!reset && (!listHasMore.value || loadingMore.value)) return
+  const requestId = ++listRequestId
+  const page = reset ? 1 : listPage.value + 1
+  if (reset) listLoading.value = true
+  else loadingMore.value = true
   try {
-    const title = searchKeyword.value.trim()
-    const list = await getSessionList({
+    const result = await getConversationList({
       projectId: projectId.value,
-      title: title || undefined,
+      keyword: searchKeyword.value.trim() || undefined,
+      page,
+      pageSize: CONVERSATION_PAGE_SIZE,
     })
-    filterMap.clear()
-    sessions.value = []
-    for (const item of list) {
-      const mapKey = getFilterMapKey(item)
-      if (filterMap.has(mapKey)) continue
-      filterMap.set(mapKey, item.id)
-      sessions.value.push(item)
-    }
+    if (requestId !== listRequestId) return
+    conversations.value = reset ? result.list : [...conversations.value, ...result.list]
+    listPage.value = result.pagination.page
+    listHasMore.value = result.pagination.hasMore
 
-    if (list.length === 0 && !isPendingNewSession.value) {
-      sessionContext.activeSessionId.value = null
+    const searching = Boolean(searchKeyword.value.trim())
+    if (conversations.value.length === 0 && !isPendingNewSession.value && !searching) {
+      sessionContext.activeConversationId.value = null
       return
     }
 
-    const activeExists = list.some((item) => item.id === activeSessionId.value)
-    if (!activeExists && !isPendingNewSession.value && list.length > 0) {
-      sessionContext.selectSession(list[0]!.id, false)
+    const activeExists = conversations.value.some((item) => item.id === activeConversationId.value)
+    if (reset && !searching && !activeExists && !isPendingNewSession.value && conversations.value.length > 0) {
+      sessionContext.selectConversation(conversations.value[0]!.id, false)
     }
   } catch {
     // 错误提示由 axios 拦截器统一处理
   } finally {
-    listLoading.value = false
+    if (requestId === listRequestId) {
+      listLoading.value = false
+      loadingMore.value = false
+    }
   }
+}
+
+function handleSessionListScroll(event: Event) {
+  const target = event.currentTarget as HTMLElement
+  if (target.scrollHeight - target.scrollTop - target.clientHeight > 80) return
+  void fetchConversationList(false)
 }
 
 /**
  * 将首条消息创建成功的会话加入列表
  * @param payload 创建结果
  */
-function addCreatedSession(payload: { id: number; content: string; firstMessage: string }) {
-  const newSession: sessionItem = {
+function addCreatedConversation(payload: { id: number; title: string; firstMessage: string; createdAt: string }) {
+  const newConversation: ConversationSummary = {
     id: payload.id,
     projectId: projectId.value,
-    title: payload.firstMessage.slice(0, 30),
-    account: nickName.value,
-    role: 'user',
-    content: payload.firstMessage,
-    createdAt: new Date().toISOString(),
+    title: payload.title,
+    preview: payload.firstMessage,
+    messageCount: 2,
+    createdAt: payload.createdAt,
+    updatedAt: payload.createdAt,
   }
-
-  const mapKey = getFilterMapKey(newSession)
-  if (!filterMap.has(mapKey)) {
-    filterMap.set(mapKey, payload.id)
-    sessions.value.unshift(newSession)
-  }
+  if (conversations.value.some((item) => item.id === payload.id)) return
+  const keyword = searchKeyword.value.trim().toLocaleLowerCase()
+  if (keyword && !newConversation.title.toLocaleLowerCase().includes(keyword)) return
+  conversations.value.unshift(newConversation)
 }
 
 /**
@@ -181,34 +173,26 @@ function handleCreateSession() {
 
 /**
  * 切换会话
- * @param sessionId 会话 ID
+ * @param conversationId 会话 ID
  */
-function handleSelectSession(sessionId: number) {
-  sessionContext.selectSession(sessionId)
-}
-
-/**
- * 从 filterMap 中移除指定标题
- * @param title 会话标题
- */
-function removeFromFilterMap(title: string) {
-  filterMap.delete(title.trim())
+function handleSelectSession(conversationId: number) {
+  sessionContext.selectConversation(conversationId)
 }
 
 /**
  * 从本地列表移除会话并更新选中态
- * @param sessionId 会话 ID
+ * @param conversationId 会话 ID
  */
-function removeSessionLocally(sessionId: number) {
-  sessions.value = sessions.value.filter((item) => item.id !== sessionId)
+function removeSessionLocally(conversationId: number) {
+  conversations.value = conversations.value.filter((item) => item.id !== conversationId)
 
-  if (activeSessionId.value === sessionId) {
-    const nextId = sessions.value[0]?.id ?? null
+  if (activeConversationId.value === conversationId) {
+    const nextId = conversations.value[0]?.id ?? null
     if (nextId) {
-      sessionContext.selectSession(nextId)
+      sessionContext.selectConversation(nextId)
     } else {
       sessionContext.isPendingNewSession.value = false
-      sessionContext.activeSessionId.value = null
+      sessionContext.activeConversationId.value = null
       sessionContext.chatResetSignal.value++
     }
   }
@@ -216,9 +200,9 @@ function removeSessionLocally(sessionId: number) {
 
 /**
  * 删除会话
- * @param session 会话项
+ * @param conversation 会话摘要
  */
-async function handleDeleteSession(session: sessionItem) {
+async function handleDeleteSession(conversation: ConversationSummary) {
   if (!projectId.value) return
 
   try {
@@ -228,13 +212,8 @@ async function handleDeleteSession(session: sessionItem) {
       type: 'warning',
     })
 
-    await deleteSession({
-      projectId: projectId.value,
-      title: session.title,
-    })
-
-    removeFromFilterMap(session.title)
-    removeSessionLocally(session.id)
+    await deleteConversation(conversation.id)
+    removeSessionLocally(conversation.id)
     ElMessage.success('会话删除成功')
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
@@ -244,35 +223,30 @@ async function handleDeleteSession(session: sessionItem) {
 
 /**
  * 修改会话标题
- * @param session 会话项
+ * @param conversation 会话摘要
  */
-async function handleRenameSession(session: sessionItem) {
+async function handleRenameSession(conversation: ConversationSummary) {
   if (!projectId.value) return
 
   try {
     const { value } = await ElMessageBox.prompt('请输入会话标题', '修改标题', {
       confirmButtonText: '保存',
       cancelButtonText: '取消',
-      inputValue: session.title,
+      inputValue: conversation.title,
       inputPlaceholder: '请输入会话标题',
       inputValidator: (val) => !!val.trim() || '标题不能为空',
     })
 
     const newTitle = value.trim()
-    if (newTitle === session.title) return
+    if (newTitle === conversation.title) return
 
-    await updateSession({
-      oldTitle: session.title,
-      title: newTitle,
-      projectId: String(projectId.value),
-    })
-
-    removeFromFilterMap(session.title)
-    filterMap.set(newTitle, session.id)
-
-    const target = sessions.value.find((item) => item.id === session.id)
+    await updateConversation(conversation.id, newTitle)
+    const target = conversations.value.find((item) => item.id === conversation.id)
     if (target) {
       target.title = newTitle
+    }
+    if (activeConversationId.value === conversation.id) {
+      sessionContext.selectConversation(conversation.id)
     }
 
     ElMessage.success('标题修改成功')
@@ -288,49 +262,26 @@ function handleSwitchProject() {
 }
 
 watch(searchKeyword, () => {
-  void fetchSessionList()
+  void fetchConversationList()
 })
 
 watch(
-  () => props.userNicknameOverride,
-  (nickname) => {
-    if (nickname) nickName.value = nickname
-  },
-)
-
-watch(
-  () => sessionContext.lastCreatedSession.value,
+  () => sessionContext.lastCreatedConversation.value,
   (payload) => {
     if (!payload) return
-    addCreatedSession(payload)
-    sessionContext.lastCreatedSession.value = null
+    addCreatedConversation(payload)
+    sessionContext.lastCreatedConversation.value = null
   },
 )
 
 watch(projectId, (id) => {
-  if (id) {
-    void fetchSessionList()
-  }
-})
-
-onMounted(async () => {
-  try {
-    const res = await getUserInfo()
-    nickName.value = res.nickname
-  } catch {
-    // 错误提示由 axios 拦截器统一处理
-  }
-
-  if (projectId.value) {
-    await fetchSessionList()
-  }
-})
+  if (id) void fetchConversationList()
+}, { immediate: true })
 
 onUnmounted(() => {
   if (searchDebounceTimer) {
     clearTimeout(searchDebounceTimer)
   }
-  filterMap.clear()
 })
 </script>
 
@@ -358,7 +309,7 @@ onUnmounted(() => {
 
       <el-input v-model="searchInput" class="session-search" placeholder="搜索会话" :prefix-icon="Search" clearable @input="handleSearchInput" />
 
-      <div v-loading="listLoading" class="session-list">
+      <div v-loading="listLoading" class="session-list" @scroll.passive="handleSessionListScroll">
         <div v-if="isPendingNewSession" class="session-item session-item--active" @click="handleCreateSession">
           <div class="session-item-row">
             <span class="session-item-title">新会话</span>
@@ -369,25 +320,25 @@ onUnmounted(() => {
         </div>
 
         <div
-          v-for="session in sessions"
-          :key="session.id"
+          v-for="conversation in conversations"
+          :key="conversation.id"
           class="session-item"
-          :class="{ 'session-item--active': session.id === activeSessionId }"
-          @click="handleSelectSession(session.id)"
+          :class="{ 'session-item--active': conversation.id === activeConversationId }"
+          @click="handleSelectSession(conversation.id)"
         >
           <div class="session-item-row">
-            <span class="session-item-title">{{ getSessionTitle(session) }}</span>
-            <span class="session-item-time">{{ formatSessionTime(session.createdAt) }}</span>
+            <span class="session-item-title">{{ getSessionTitle(conversation) }}</span>
+            <span class="session-item-time">{{ formatSessionTime(conversation.updatedAt) }}</span>
           </div>
           <div class="session-item-row session-item-row--bottom">
-            <span class="session-item-preview">{{ getSessionPreview(session) }}</span>
+            <span class="session-item-preview">{{ getSessionPreview(conversation) }}</span>
             <div class="session-item-actions" @click.stop>
-              <button type="button" class="session-item-action" title="修改标题" @click.stop="handleRenameSession(session)">
+              <button type="button" class="session-item-action" title="修改标题" @click.stop="handleRenameSession(conversation)">
                 <el-icon>
                   <Edit />
                 </el-icon>
               </button>
-              <button type="button" class="session-item-action session-item-action--delete" title="删除会话" @click.stop="handleDeleteSession(session)">
+              <button type="button" class="session-item-action session-item-action--delete" title="删除会话" @click.stop="handleDeleteSession(conversation)">
                 <el-icon>
                   <Delete />
                 </el-icon>
@@ -396,7 +347,8 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-if="!listLoading && !isPendingNewSession && sessions.length === 0" class="session-empty">暂无会话</div>
+        <div v-if="loadingMore" class="session-empty">正在加载更多...</div>
+        <div v-if="!listLoading && !isPendingNewSession && conversations.length === 0" class="session-empty">暂无会话</div>
       </div>
     </section>
 

@@ -2,9 +2,9 @@
 import SvgIcon from '@/components/SvgIcon.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getSessionList, type sessionItem } from '@/http/session'
+import { getConversationMessages, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
-import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/sessionContext'
+import { PENDING_CONVERSATION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
 import ConversationRail from './ConversationRail.vue'
 import type { ChatMessage } from './types'
@@ -74,6 +74,10 @@ function handleContextMeterDocumentClick(event: MouseEvent) {
 
 /** 消息列表 */
 const messages = ref<ChatMessage[]>([])
+const messagesHasMore = ref(false)
+const messagesNextCursor = ref<number | null>(null)
+const loadingOlderMessages = ref(false)
+const conversationImageTasks = ref<ImageGenerationTask[]>([])
 const imageTaskControllers = new Map<number, AbortController>()
 const TERMINAL_IMAGE_STATUSES = new Set(['succeeded', 'failed'])
 /** 当前用户头像 */
@@ -149,7 +153,7 @@ let streamingAssistantId: string | null = null
 /** 当前正在订阅的后端消息 id */
 let streamingBackendMessageId: number | null = null
 
-/** 新会话拿到后端 id 后，跳过一次由 activeSessionId 变更触发的重载 */
+/** 新会话拿到后端 id 后，跳过一次由 activeConversationId 变更触发的重载 */
 let skipNextSessionLoad = false
 
 /** 消息 id 自增计数（本地临时消息） */
@@ -202,13 +206,6 @@ function createPendingImageId(): string {
 function clearPendingImages() {
   revokePendingImagePreviews(pendingImages.value)
   pendingImages.value = []
-}
-
-/**
- * @param item 会话项
- */
-function getSessionKey(item: sessionItem) {
-  return item.title.trim() || item.content?.trim() || String(item.id)
 }
 
 /**
@@ -266,14 +263,6 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
  * @param list 接口返回列表
  * @param sessionId 当前会话 id
  */
-function pickSessionMessages(list: sessionItem[], sessionId: number) {
-  const target = list.find((item) => item.id === sessionId)
-  if (!target) return []
-
-  const sessionKey = getSessionKey(target)
-  return list.filter((item) => getSessionKey(item) === sessionKey || item.id === sessionId)
-}
-
 function stopImageTaskSubscriptions() {
   for (const controller of imageTaskControllers.values()) controller.abort()
   imageTaskControllers.clear()
@@ -323,6 +312,7 @@ function reconnectAssistantImageTask(message: ChatMessage, task: ImageGeneration
 }
 
 async function loadConversationImageTasks(conversationId?: number) {
+  conversationImageTasks.value = []
   if (!conversationId) return
   const loaded: ImageGenerationTask[] = []
   let page = 1
@@ -334,11 +324,46 @@ async function loadConversationImageTasks(conversationId?: number) {
     page += 1
   } while (hasMore)
 
-  for (const task of loaded) {
-    const message = messages.value.find((item) => item.sessionId === task.assistantSessionId)
+  conversationImageTasks.value = loaded
+  attachImageTasks(messages.value)
+}
+
+function attachImageTasks(targetMessages: ChatMessage[]) {
+  for (const task of conversationImageTasks.value) {
+    const message = targetMessages.find((item) => item.sessionId === task.assistantSessionId)
     if (!message) continue
     mergeImageTask(message, task)
     reconnectAssistantImageTask(message, task)
+  }
+}
+
+async function loadOlderMessages() {
+  const conversationId = sessionContext.activeConversationId.value
+  if (!conversationId || !messagesHasMore.value || !messagesNextCursor.value || loadingOlderMessages.value) return
+  loadingOlderMessages.value = true
+  try {
+    const scrollContainer = messagesRef.value
+    const previousScrollHeight = scrollContainer?.scrollHeight ?? 0
+    const result = await getConversationMessages(conversationId, {
+      beforeId: messagesNextCursor.value,
+      limit: 50,
+    })
+    const olderMessages = result.list
+      .map(mapSessionItemToMessage)
+      .filter((item): item is ChatMessage => !!item)
+    attachImageTasks(olderMessages)
+    const existingIds = new Set(messages.value.map((item) => item.id))
+    messages.value = [...olderMessages.filter((item) => !existingIds.has(item.id)), ...messages.value]
+    messagesHasMore.value = result.pagination.hasMore
+    messagesNextCursor.value = result.pagination.nextCursor
+    await nextTick()
+    if (scrollContainer) {
+      scrollContainer.scrollTop += scrollContainer.scrollHeight - previousScrollHeight
+    }
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
+  } finally {
+    loadingOlderMessages.value = false
   }
 }
 
@@ -353,6 +378,9 @@ async function loadSessionMessages() {
     stopStreaming()
     tokenUsage.resetConversation()
     messages.value = []
+    messagesHasMore.value = false
+    messagesNextCursor.value = null
+    conversationImageTasks.value = []
     inputText.value = ''
     clearPendingImages()
     sessionTitle.value = ''
@@ -363,11 +391,14 @@ async function loadSessionMessages() {
     return
   }
 
-  const sessionId = sessionContext.activeSessionId.value
-  if (!sessionId || sessionId === PENDING_SESSION_ID) {
+  const conversationId = sessionContext.activeConversationId.value
+  if (!conversationId || conversationId === PENDING_CONVERSATION_ID) {
     stopStreaming()
     tokenUsage.resetConversation()
     messages.value = []
+    messagesHasMore.value = false
+    messagesNextCursor.value = null
+    conversationImageTasks.value = []
     inputText.value = ''
     clearPendingImages()
     sessionTitle.value = ''
@@ -382,25 +413,21 @@ async function loadSessionMessages() {
 
   // 切换会话时不能复用上一会话的 conversationId，否则统计接口会返回旧上下文。
   tokenUsage.resetConversation()
+  tokenUsage.setConversationId(conversationId)
   messagesLoading.value = true
   try {
-    const list = await getSessionList({ projectId: currentProjectId })
-    const target = list.find((item) => item.id === sessionId)
-    if (target) {
-      sessionTitle.value = getSessionKey(target)
-      backendSessionTitle.value = target.title.trim()
-    } else {
-      sessionTitle.value = ''
-      backendSessionTitle.value = ''
-    }
-
-    const sessionMessages = pickSessionMessages(list, sessionId)
+    const result = await getConversationMessages(conversationId, { limit: 50 })
+    sessionTitle.value = result.conversation.title.trim()
+    backendSessionTitle.value = result.conversation.title.trim()
+    const sessionMessages = result.list
       .map(mapSessionItemToMessage)
       .filter((item): item is ChatMessage => !!item)
       .sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime())
 
     messages.value = sessionMessages
-    await loadConversationImageTasks(target?.conversationId)
+    messagesHasMore.value = result.pagination.hasMore
+    messagesNextCursor.value = result.pagination.nextCursor
+    await loadConversationImageTasks(conversationId)
     await scrollToBottom()
 
     const lastItem = sessionMessages[sessionMessages.length - 1]
@@ -409,7 +436,7 @@ async function loadSessionMessages() {
     }
 
     syncLogSession(currentProjectId, getLogSessionTitle())
-    void tokenUsage.refreshConversation({ projectId: currentProjectId, title: getLogSessionTitle() })
+    void tokenUsage.refreshConversation()
     void tokenUsage.refreshProject(currentProjectId)
   } catch {
     // 错误提示由 axios 拦截器统一处理
@@ -420,14 +447,18 @@ async function loadSessionMessages() {
 
 /** 切换会话时加载历史消息 */
 watch(
-  () => [sessionContext.activeSessionId.value, sessionContext.isPendingNewSession.value] as const,
-  ([nextSessionId], oldValue) => {
+  () => [
+    sessionContext.activeConversationId.value,
+    sessionContext.isPendingNewSession.value,
+    sessionContext.chatResetSignal.value,
+  ] as const,
+  ([nextConversationId], oldValue) => {
     if (skipNextSessionLoad) {
       skipNextSessionLoad = false
       return
     }
-    const prevSessionId = oldValue?.[0]
-    if (prevSessionId && nextSessionId !== prevSessionId) {
+    const prevConversationId = oldValue?.[0]
+    if (prevConversationId && nextConversationId !== prevConversationId) {
       stopStreaming()
     }
     void loadSessionMessages()
@@ -748,25 +779,6 @@ function stopStreaming(shouldCancel = false) {
 }
 
 /**
- * 确保已解析当前会话 title
- */
-async function ensureSessionTitle() {
-  if (sessionTitle.value) return sessionTitle.value
-
-  const sessionId = sessionContext.activeSessionId.value
-  const currentProjectId = projectId()
-  if (!sessionId || !currentProjectId) return ''
-
-  const list = await getSessionList({ projectId: currentProjectId })
-  const target = list.find((item) => item.id === sessionId)
-  if (target) {
-    sessionTitle.value = getSessionKey(target)
-    backendSessionTitle.value = target.title.trim()
-  }
-  return sessionTitle.value
-}
-
-/**
  * 将 AI 文本片段追加到消息气泡
  * @param assistantId AI 消息 id
  * @param text 文本片段
@@ -793,13 +805,13 @@ function ensureVisionMessage(assistantId: string) {
 function updateAssistantBackendIds(assistantId: string, data: unknown) {
   if (!data || typeof data !== 'object') return
   const payload = data as {
-    userSessionId?: unknown
     assistantSessionId?: unknown
     assistantMessageId?: unknown
+    conversationId?: unknown
   }
   const assistantMessageId = Number(payload.assistantMessageId)
   const assistantSessionId = Number(payload.assistantSessionId)
-  const userSessionId = Number(payload.userSessionId)
+  const conversationId = Number(payload.conversationId)
 
   const assistantMessage = findMessageById(assistantId)
   if (assistantMessage) {
@@ -811,15 +823,17 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
   }
 
   // 待创建，或无选中会话时直接首聊：绑定返回的会话 id，避免后续消息反复新建
-  const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
-  if (Number.isFinite(userSessionId) && (sessionContext.isPendingNewSession.value || hasNoSession)) {
+  const hasNoConversation = !sessionContext.activeConversationId.value
+    || sessionContext.activeConversationId.value === PENDING_CONVERSATION_ID
+  if (Number.isFinite(conversationId) && (sessionContext.isPendingNewSession.value || hasNoConversation)) {
     skipNextSessionLoad = true
     sessionContext.isPendingNewSession.value = false
-    sessionContext.activeSessionId.value = userSessionId
-    sessionContext.lastCreatedSession.value = {
-      id: userSessionId,
-      content: '创建成功',
+    sessionContext.activeConversationId.value = conversationId
+    sessionContext.lastCreatedConversation.value = {
+      id: conversationId,
+      title: backendSessionTitle.value.trim(),
       firstMessage: messages.value.find((item) => item.role === 'user')?.content ?? '',
+      createdAt: new Date().toISOString(),
     }
   }
 }
@@ -1008,8 +1022,9 @@ async function handleSend() {
   if (!content || isStreaming.value || hasUploadingImage.value) return
 
   const isPending = sessionContext.isPendingNewSession.value
-  const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
-  const needsNewBackendSession = isPending || hasNoSession
+  const activeConversationId = sessionContext.activeConversationId.value
+  const hasNoConversation = !activeConversationId || activeConversationId === PENDING_CONVERSATION_ID
+  const needsNewBackendSession = isPending || hasNoConversation
 
   messages.value.push({
     id: createMessageId(),
@@ -1037,7 +1052,7 @@ async function handleSend() {
   await scrollToBottom()
 
   const currentProjectId = projectId()
-  const resolvedChatTitle = needsNewBackendSession ? content.slice(0, 30) : backendSessionTitle.value.trim() || (await ensureSessionTitle())
+  const resolvedChatTitle = needsNewBackendSession ? content.slice(0, 30) : backendSessionTitle.value.trim()
   const chatTitle = resolvedChatTitle.trim() || undefined
   if (needsNewBackendSession) {
     sessionTitle.value = resolvedChatTitle
@@ -1063,6 +1078,7 @@ async function handleSend() {
     await chatWithAI({
       prompt: content,
       projectId: currentProjectId,
+      conversationId: needsNewBackendSession ? undefined : activeConversationId,
       title: chatTitle,
       imageUrls,
       signal: abortController.signal,
@@ -1135,6 +1151,11 @@ function handleActionClick() {
     <div class="chat-panel-conversation">
       <ConversationRail :messages="messages" :active-message-id="activeRailMessageId" @select="scrollToRailMessage" />
       <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages" @scroll.passive="updateActiveRailMessage">
+        <div v-if="messagesHasMore" class="chat-history-more">
+          <button type="button" :disabled="loadingOlderMessages" @click="loadOlderMessages">
+            {{ loadingOlderMessages ? '正在加载...' : '加载更早消息' }}
+          </button>
+        </div>
         <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
         <div v-for="message in messages" :key="message.id" class="chat-message-anchor" :data-chat-message-id="message.id" :data-chat-message-role="message.role">
           <ChatMessageItem :message="message" :user-avatar="userAvatar" />
@@ -1296,6 +1317,29 @@ function handleActionClick() {
 
 .chat-message-anchor {
   scroll-margin-top: 16px;
+}
+
+.chat-history-more {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 0.5rem;
+}
+
+.chat-history-more button {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.chat-history-more button:hover:not(:disabled) {
+  color: var(--app-accent);
+}
+
+.chat-history-more button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .chat-panel-messages::-webkit-scrollbar {
