@@ -174,8 +174,19 @@ onUnmounted(() => {
 /**
  * 项目文件变更后刷新预览标题（模板升级、版本还原等）
  */
-function handleProjectFilesChanged() {
+async function handleProjectFilesChanged(event: Event) {
   void loadProjectTitle()
+  const detail = event instanceof CustomEvent
+    ? event.detail as { previewAlreadySynced?: boolean } | undefined
+    : undefined
+  if (!previewUrl.value || detail?.previewAlreadySynced) return
+
+  try {
+    await refreshProjectTempPreview()
+    iframeKey.value += 1
+  } catch (error) {
+    console.warn('[Preview] 项目文件变更后刷新失败', error)
+  }
 }
 
 onMounted(() => {

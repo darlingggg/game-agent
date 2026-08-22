@@ -43,6 +43,7 @@ const BASE_EDITOR_OPTIONS = {
   lineHeight: 22,
   fontLigatures: true,
   minimap: { enabled: false },
+  fixedOverflowWidgets: true,
   scrollBeyondLastLine: false,
   wordWrap: 'on' as const,
   tabSize: 2,
@@ -136,5 +137,30 @@ onMounted(async () => {
   min-height: 0;
   width: 100%;
   background-color: #1e1e1e;
+}
+
+.file-editor-wrap :deep(.monaco-editor .find-widget) {
+  z-index: 50;
+  max-width: calc(100% - 12px) !important;
+}
+
+.file-editor-wrap :deep(.monaco-editor .find-widget > .find-part) {
+  min-width: 0;
+}
+
+.file-editor-wrap :deep(.monaco-editor .find-widget .monaco-findInput) {
+  min-width: 72px;
+}
+
+.file-editor-wrap :deep(.monaco-editor .find-widget .find-actions) {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  pointer-events: auto;
+}
+
+.file-editor-wrap :deep(.monaco-editor .find-widget > .button.codicon-widget-close) {
+  z-index: 1;
+  pointer-events: auto;
 }
 </style>

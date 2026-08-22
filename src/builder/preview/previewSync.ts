@@ -1,4 +1,4 @@
-import { fetchProjectTempFileContent, normalizeRelativePath } from '../file/projectTempFiles'
+import { fetchProjectTempFileContent, fetchProjectTempFileContents, normalizeRelativePath } from '../file/projectTempFiles'
 import type { SnapshotRestorePlan } from '../snapshot/snapshotRestore'
 import { previewIframeReloadSignal, refreshProjectTempPreview, removePreviewFile, requestPreviewIframeReloadDebounced, syncPreviewFile } from './webcontainer'
 
@@ -31,6 +31,13 @@ interface UpsertFileResult {
   data?: UpsertFileResultItem[]
 }
 
+interface DownloadFileResult {
+  success?: boolean
+  data?: {
+    relativePath?: string
+  }
+}
+
 /** write_file_content 工具名称 */
 export const WRITE_FILE_CONTENT_TOOL = 'write_file_content'
 
@@ -39,6 +46,9 @@ export const UPSERT_FILE_TOOL = 'upsert_file'
 
 /** delete_file 工具名称 */
 export const DELETE_FILE_TOOL = 'delete_file'
+
+/** download_file 工具名称 */
+export const DOWNLOAD_FILE_TOOL = 'download_file'
 
 /**
  * 从文件工具参数中解析相对路径
@@ -89,6 +99,16 @@ function parseUpsertFileRelativePaths(resultJson: string): string[] {
   }
 }
 
+function parseDownloadFileRelativePath(resultJson: string): string | null {
+  try {
+    const result = JSON.parse(resultJson) as DownloadFileResult
+    const relativePath = result.data?.relativePath
+    return typeof relativePath === 'string' && relativePath ? normalizeRelativePath(relativePath) : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * write_file_content 执行成功后，将文件同步到 WebContainer 触发预览热更新
  * @param paramsJson tool_start 阶段记录的参数 JSON
@@ -127,6 +147,22 @@ export async function syncUpsertFileToPreview(resultJson: string): Promise<void>
       console.warn('[Preview] upsert_file 同步失败', relativePath, error)
     }
   }
+}
+
+/**
+ * download_file 成功后按原始字节同步到 WebContainer，并通知文件树刷新。
+ * @param resultJson 工具返回 JSON
+ */
+export async function syncDownloadedFileToPreview(resultJson: string): Promise<void> {
+  const relativePath = parseDownloadFileRelativePath(resultJson)
+  if (!relativePath) return
+
+  const contents = await fetchProjectTempFileContents(relativePath)
+  await syncPreviewFile(relativePath, contents)
+  requestPreviewIframeReloadDebounced()
+  window.dispatchEvent(new CustomEvent('project-files-changed', {
+    detail: { previewAlreadySynced: true },
+  }))
 }
 
 /**

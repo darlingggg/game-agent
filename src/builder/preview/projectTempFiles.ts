@@ -1,8 +1,9 @@
 import type { FileSystemTree } from '@webcontainer/api'
 import {
-  fetchProjectTempFileContent,
+  fetchProjectTempFileContents,
   fetchProjectTempFileList,
   normalizeRelativePath,
+  type ProjectTempFileContents,
 } from '../file/projectTempFiles'
 
 /** 不挂载到 WebContainer 的文件或目录 */
@@ -19,7 +20,7 @@ const EXCLUDED_PATHS = [
  * @param relativePath 相对 projectTemp 的路径
  * @param contents 文件内容
  */
-function setFileInTree(tree: FileSystemTree, relativePath: string, contents: string) {
+function setFileInTree(tree: FileSystemTree, relativePath: string, contents: ProjectTempFileContents) {
   const parts = relativePath.split('/').filter(Boolean)
   const fileName = parts.pop()
   if (!fileName) return
@@ -52,7 +53,7 @@ export async function buildProjectTempFileTree(): Promise<FileSystemTree> {
     }
 
     try {
-      const contents = await fetchProjectTempFileContent(relativePath)
+      const contents = await fetchProjectTempFileContents(relativePath)
       setFileInTree(tree, relativePath, contents)
     } catch (error) {
       // 单个文件读取失败时跳过，避免阻断整个预览流程
