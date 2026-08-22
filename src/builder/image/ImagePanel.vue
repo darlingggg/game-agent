@@ -820,7 +820,47 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--image-muted) 48%, transparent) transparent;
+}
+
+.image-lab-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.image-lab-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.image-lab-scroll::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.image-lab-scroll::-webkit-scrollbar-thumb {
+  min-height: 56px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--image-muted) 48%, transparent);
+  background-clip: padding-box;
+  transition: background-color 160ms ease;
+}
+
+.image-lab-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--image-blue) 58%, var(--image-muted));
+  background-clip: padding-box;
+}
+
+.image-lab-scroll::-webkit-scrollbar-thumb:active {
+  background: var(--image-blue);
+  background-clip: padding-box;
+}
+
+.image-lab-scroll::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .image-lab-header,
