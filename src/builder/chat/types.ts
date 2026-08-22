@@ -31,6 +31,8 @@ export interface ChatMessage {
   vision?: ChatVisionResult
   /** 是否正在流式输出 */
   streaming?: boolean
+  /** 当前回复是否由用户手动收起，仅用于前端展示 */
+  replyCollapsed?: boolean
   /** 消息创建时间 */
   createdAt?: string
 }

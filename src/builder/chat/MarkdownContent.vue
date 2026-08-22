@@ -9,10 +9,12 @@ defineOptions({
 const props = defineProps<{
   /** Markdown 原文 */
   content: string
+  /** 不在正文中重复渲染的图片地址 */
+  hiddenImageUrls?: string[]
 }>()
 
 /** 渲染后的安全 HTML */
-const html = computed(() => renderMarkdown(props.content))
+const html = computed(() => renderMarkdown(props.content, props.hiddenImageUrls))
 </script>
 
 <template>

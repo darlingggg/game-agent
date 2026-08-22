@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SvgIcon from '@/components/SvgIcon.vue'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
+import { useVirtualizer, type VirtualItem } from '@tanstack/vue-virtual'
 import { ElMessage } from 'element-plus'
 import { getConversationMessages, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
@@ -143,6 +144,41 @@ const userAborted = ref(false)
 /** 消息列表容器，用于滚动到底部 */
 const messagesRef = ref<HTMLElement | null>(null)
 const activeRailMessageId = ref('')
+
+const virtualItemCount = computed(() => messages.value.length + (activeToolLabel.value ? 1 : 0))
+const messageVirtualizer = useVirtualizer<HTMLElement, HTMLElement>(
+  computed(() => ({
+    count: virtualItemCount.value,
+    getScrollElement: () => messagesRef.value,
+    estimateSize: (index: number) => {
+      const message = messages.value[index]
+      if (!message) return 48
+      return message.role === 'user' ? 76 : 180
+    },
+    getItemKey: (index: number) => messages.value[index]?.id ?? 'active-tool-status',
+    anchorTo: 'end' as const,
+    followOnAppend: true,
+    scrollEndThreshold: 80,
+    overscan: 5,
+    paddingStart: messagesHasMore.value ? 48 : 16,
+    paddingEnd: 24,
+    useAnimationFrameWithResizeObserver: true,
+  })),
+)
+const virtualItems = computed(() => messageVirtualizer.value.getVirtualItems())
+const virtualTotalSize = computed(() => messageVirtualizer.value.getTotalSize())
+
+function measureVirtualItem(element: Element | ComponentPublicInstance | null) {
+  if (element instanceof HTMLElement) messageVirtualizer.value.measureElement(element)
+}
+
+function virtualItemStyle(item: VirtualItem) {
+  return { transform: `translateY(${item.start}px)` }
+}
+
+function setReplyCollapsed(message: ChatMessage, collapsed: boolean) {
+  message.replyCollapsed = collapsed
+}
 
 /** 当前 SSE 中止控制器 */
 let abortController: AbortController | null = null
@@ -342,8 +378,6 @@ async function loadOlderMessages() {
   if (!conversationId || !messagesHasMore.value || !messagesNextCursor.value || loadingOlderMessages.value) return
   loadingOlderMessages.value = true
   try {
-    const scrollContainer = messagesRef.value
-    const previousScrollHeight = scrollContainer?.scrollHeight ?? 0
     const result = await getConversationMessages(conversationId, {
       beforeId: messagesNextCursor.value,
       limit: 50,
@@ -357,9 +391,7 @@ async function loadOlderMessages() {
     messagesHasMore.value = result.pagination.hasMore
     messagesNextCursor.value = result.pagination.nextCursor
     await nextTick()
-    if (scrollContainer) {
-      scrollContainer.scrollTop += scrollContainer.scrollHeight - previousScrollHeight
-    }
+    updateActiveRailMessage()
   } catch {
     // 错误提示由 axios 拦截器统一处理
   } finally {
@@ -688,9 +720,7 @@ function createMessageId(): string {
  */
 async function scrollToBottom() {
   await nextTick()
-  const el = messagesRef.value
-  if (!el) return
-  el.scrollTop = el.scrollHeight
+  messageVirtualizer.value.scrollToEnd({ behavior: 'instant' })
   updateActiveRailMessage()
 }
 
@@ -698,32 +728,33 @@ function updateActiveRailMessage() {
   const container = messagesRef.value
   if (!container) return
 
-  const anchors = Array.from(container.querySelectorAll<HTMLElement>('[data-chat-message-role="user"]'))
-  if (!anchors.length) {
+  if (!messages.value.some((message) => message.role === 'user')) {
     activeRailMessageId.value = ''
     return
   }
 
   const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 24
   if (isAtBottom) {
-    activeRailMessageId.value = anchors.at(-1)?.dataset.chatMessageId ?? ''
+    for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+      if (messages.value[index]?.role === 'user') {
+        activeRailMessageId.value = messages.value[index]!.id
+        return
+      }
+    }
     return
   }
 
-  const threshold = container.getBoundingClientRect().top + Math.min(container.clientHeight * 0.3, 120)
-  const visibleAnchor = anchors.reduce((active, anchor) => (anchor.getBoundingClientRect().top <= threshold ? anchor : active), anchors[0]!)
-  activeRailMessageId.value = visibleAnchor.dataset.chatMessageId ?? ''
+  const threshold = container.scrollTop + Math.min(container.clientHeight * 0.3, 120)
+  const thresholdItem = messageVirtualizer.value.getVirtualItemForOffset(threshold)
+  let messageIndex = Math.min(thresholdItem?.index ?? 0, messages.value.length - 1)
+  while (messageIndex >= 0 && messages.value[messageIndex]?.role !== 'user') messageIndex -= 1
+  activeRailMessageId.value = messages.value[messageIndex]?.id ?? messages.value.find((message) => message.role === 'user')?.id ?? ''
 }
 
 function scrollToRailMessage(messageId: string) {
-  const container = messagesRef.value
-  if (!container) return
-
-  const target = Array.from(container.querySelectorAll<HTMLElement>('[data-chat-message-id]')).find((item) => item.dataset.chatMessageId === messageId)
-  if (!target) return
-
-  const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
-  container.scrollTo({ top, behavior: 'smooth' })
+  const messageIndex = messages.value.findIndex((message) => message.id === messageId)
+  if (messageIndex < 0) return
+  messageVirtualizer.value.scrollToIndex(messageIndex, { align: 'start', behavior: 'smooth' })
   activeRailMessageId.value = messageId
 }
 
@@ -1150,19 +1181,30 @@ function handleActionClick() {
   <div class="chat-panel">
     <div class="chat-panel-conversation">
       <ConversationRail :messages="messages" :active-message-id="activeRailMessageId" @select="scrollToRailMessage" />
-      <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages" @scroll.passive="updateActiveRailMessage">
-        <div v-if="messagesHasMore" class="chat-history-more">
-          <button type="button" :disabled="loadingOlderMessages" @click="loadOlderMessages">
-            {{ loadingOlderMessages ? '正在加载...' : '加载更早消息' }}
-          </button>
-        </div>
+      <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages"
+        @scroll.passive="updateActiveRailMessage">
         <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
-        <div v-for="message in messages" :key="message.id" class="chat-message-anchor" :data-chat-message-id="message.id" :data-chat-message-role="message.role">
-          <ChatMessageItem :message="message" :user-avatar="userAvatar" />
-        </div>
-        <div v-if="activeToolLabel" class="chat-tool-status" :class="{ 'chat-tool-status--done': activeToolCompleted }">
-          <span class="chat-tool-status-dot" />{{ activeToolCompleted ? '调用完毕' : '正在调用' }} {{ activeToolLabel
-          }}<span v-if="!activeToolCompleted" class="chat-tool-status-dots">...</span>
+        <div v-else class="chat-message-virtual-list" :style="{ height: `${virtualTotalSize}px` }">
+          <div v-if="messagesHasMore" class="chat-history-more">
+            <button type="button" :disabled="loadingOlderMessages" @click="loadOlderMessages">
+              {{ loadingOlderMessages ? '正在加载...' : '加载更早消息' }}
+            </button>
+          </div>
+          <div v-for="virtualItem in virtualItems" :key="String(virtualItem.key)" :ref="measureVirtualItem"
+            :data-index="virtualItem.index" class="chat-message-virtual-item" :style="virtualItemStyle(virtualItem)">
+            <div v-if="messages[virtualItem.index]" class="chat-message-anchor"
+              :data-chat-message-id="messages[virtualItem.index]!.id"
+              :data-chat-message-role="messages[virtualItem.index]!.role">
+              <ChatMessageItem :message="messages[virtualItem.index]!" :user-avatar="userAvatar"
+                @reply-collapse-change="setReplyCollapsed(messages[virtualItem.index]!, $event)" />
+            </div>
+            <div v-else-if="activeToolLabel" class="chat-tool-status-anchor">
+              <div class="chat-tool-status" :class="{ 'chat-tool-status--done': activeToolCompleted }">
+                <span class="chat-tool-status-dot" />{{ activeToolCompleted ? '调用完毕' : '正在调用' }} {{ activeToolLabel
+                }}<span v-if="!activeToolCompleted" class="chat-tool-status-dots">...</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1170,86 +1212,81 @@ function handleActionClick() {
     <div class="chat-panel-input-area">
       <div class="chat-panel-input-shell">
         <div v-if="pendingImages.length > 0" class="chat-panel-image-preview">
-          <div
-            v-for="(image, index) in pendingImages"
-            :key="image.id"
-            class="chat-panel-image-preview-item"
-            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }"
-          >
-            <img :src="image.uploading ? image.blobUrl : image.cosUrl" :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
+          <div v-for="(image, index) in pendingImages" :key="image.id" class="chat-panel-image-preview-item"
+            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }">
+            <img :src="image.uploading ? image.blobUrl : image.cosUrl"
+              :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
             <div v-if="image.uploading" class="chat-panel-image-loading">
               <span class="chat-panel-image-loading-spinner" aria-label="上传中" />
             </div>
-            <button type="button" class="chat-panel-image-remove" title="移除图片" :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
+            <button type="button" class="chat-panel-image-remove" title="移除图片"
+              :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
           </div>
         </div>
-        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple class="chat-panel-file-input" @change="handleImageSelect" />
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple
+          class="chat-panel-file-input" @change="handleImageSelect" />
         <div class="chat-panel-input-body">
-          <textarea
-            ref="inputRef"
-            v-model="inputText"
-            class="chat-panel-input"
-            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送"
-            rows="5"
-            :disabled="isStreaming"
-            @keydown="handleInputKeydown"
-            @paste="handleInputPaste"
-          />
+          <textarea ref="inputRef" v-model="inputText" class="chat-panel-input"
+            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送" rows="5" :disabled="isStreaming"
+            @keydown="handleInputKeydown" @paste="handleInputPaste" />
           <div class="chat-panel-input-footer">
-            <button
-              type="button"
-              class="chat-panel-upload-btn"
-              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
-              title="上传图片（可多选）"
-              :disabled="isStreaming"
-              @click="handleUploadClick"
-            >
+            <button type="button" class="chat-panel-upload-btn"
+              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }" title="上传图片（可多选）" :disabled="isStreaming"
+              @click="handleUploadClick">
               <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
               <SvgIcon v-else name="upload-image" />
             </button>
             <button type="button" class="chat-context-meter" title="查看当前会话上下文用量" @click="contextDialogVisible = true">
-              <span class="chat-context-meter-ring" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
+              <span class="chat-context-meter-ring"
+                :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
               <div v-if="contextPopoverVisible" class="context-usage-popover">
-                <div class="context-usage-popover-head"><b>Context Usage</b><button type="button" @click="contextPopoverVisible = false">×</button></div>
+                <div class="context-usage-popover-head"><b>Context Usage</b><button type="button"
+                    @click="contextPopoverVisible = false">×</button></div>
                 <div class="context-usage-popover-summary">
-                  <strong>{{ Math.round(tokenUsage.contextRatio * 100) }}% Full</strong
-                  ><span>~{{ tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }} Tokens</span>
+                  <strong>{{ Math.round(tokenUsage.contextRatio * 100) }}% Full</strong><span>~{{
+                    tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }}
+                    Tokens</span>
                 </div>
-                <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" /></div>
-                <div class="context-usage-popover-row">
-                  <span><i class="usage-dot usage-dot--blue" />Conversation</span><b>{{ tokenUsage.contextTokens.toLocaleString() }}</b>
+                <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" />
                 </div>
                 <div class="context-usage-popover-row">
-                  <span><i class="usage-dot usage-dot--violet" />Session total</span><b>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
+                  <span><i class="usage-dot usage-dot--blue" />Conversation</span><b>{{
+                    tokenUsage.contextTokens.toLocaleString() }}</b>
+                </div>
+                <div class="context-usage-popover-row">
+                  <span><i class="usage-dot usage-dot--violet" />Session total</span><b>{{
+                    (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
                 </div>
               </div>
             </button>
             <div class="chat-panel-submit-actions">
-              <button type="button" class="chat-context-trigger" title="Context usage" @click="contextPopoverVisible = !contextPopoverVisible">
-                <span class="chat-context-meter-ring" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
+              <button type="button" class="chat-context-trigger" title="Context usage"
+                @click="contextPopoverVisible = !contextPopoverVisible">
+                <span class="chat-context-meter-ring"
+                  :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
                 <div v-if="contextPopoverVisible" class="context-usage-popover">
-                  <div class="context-usage-popover-head"><b>上下文用量</b><button type="button" @click.stop="contextPopoverVisible = false">x</button></div>
+                  <div class="context-usage-popover-head"><b>上下文用量</b><button type="button"
+                      @click.stop="contextPopoverVisible = false">x</button></div>
                   <div class="context-usage-popover-summary">
-                    <strong>已使用 {{ Math.round(tokenUsage.contextRatio * 100) }}%</strong
-                    ><span>约 {{ tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }} Token</span>
+                    <strong>已使用 {{ Math.round(tokenUsage.contextRatio * 100) }}%</strong><span>约 {{
+                      tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }}
+                      Token</span>
                   </div>
-                  <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" /></div>
-                  <div class="context-usage-popover-row">
-                    <span><i class="usage-dot usage-dot--blue" />当前上下文</span><b>{{ tokenUsage.contextTokens.toLocaleString() }}</b>
+                  <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" />
                   </div>
                   <div class="context-usage-popover-row">
-                    <span><i class="usage-dot usage-dot--violet" />会话累计</span><b>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
+                    <span><i class="usage-dot usage-dot--blue" />当前上下文</span><b>{{
+                      tokenUsage.contextTokens.toLocaleString() }}</b>
+                  </div>
+                  <div class="context-usage-popover-row">
+                    <span><i class="usage-dot usage-dot--violet" />会话累计</span><b>{{
+                      (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
                   </div>
                 </div>
               </button>
-              <button
-                type="button"
-                class="chat-panel-action-btn"
-                :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-                :title="isStreaming ? '终止' : '发送'"
-                :disabled="hasUploadingImage"
-                @click="handleActionClick"
-              >
+              <button type="button" class="chat-panel-action-btn"
+                :class="{ 'chat-panel-action-btn--stop': isStreaming }" :title="isStreaming ? '终止' : '发送'"
+                :disabled="hasUploadingImage" @click="handleActionClick">
                 <SvgIcon :name="isStreaming ? 'stop' : 'send'" />
               </button>
             </div>
@@ -1260,18 +1297,18 @@ function handleActionClick() {
     <el-dialog v-model="contextDialogVisible" title="会话 Token 用量" width="min(420px, calc(100vw - 32px))" append-to-body>
       <div class="context-usage-dialog">
         <div class="context-usage-hero">
-          <span class="chat-context-meter-ring chat-context-meter-ring--large" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }"
-            ><strong>{{ Math.round(tokenUsage.contextRatio * 100) }}%</strong></span
-          >
+          <span class="chat-context-meter-ring chat-context-meter-ring--large"
+            :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }"><strong>{{
+              Math.round(tokenUsage.contextRatio * 100) }}%</strong></span>
           <div>
-            <b>{{ tokenUsage.isCompressing ? '正在压缩上下文' : '当前上下文占用' }}</b
-            ><small>{{ tokenUsage.usageEstimated ? '本轮含估算Token' : '基于后端统计' }}</small>
+            <b>{{ tokenUsage.isCompressing ? '正在压缩上下文' : '当前上下文占用' }}</b><small>{{ tokenUsage.usageEstimated ?
+              '本轮含估算Token' : '基于后端统计' }}</small>
           </div>
         </div>
         <div class="context-usage-grid">
-          <span>当前上下文</span><strong>{{ tokenUsage.contextTokens.toLocaleString() }}</strong
-          ><span>上下文上限</span><strong>{{ tokenUsage.contextLimit.toLocaleString() }}</strong
-          ><span>会话累计消耗</span><strong>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</strong>
+          <span>当前上下文</span><strong>{{ tokenUsage.contextTokens.toLocaleString() }}</strong><span>上下文上限</span><strong>{{
+            tokenUsage.contextLimit.toLocaleString() }}</strong><span>会话累计消耗</span><strong>{{
+              (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</strong>
         </div>
       </div>
     </el-dialog>
@@ -1300,7 +1337,7 @@ function handleActionClick() {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 0;
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(36, 99, 220, 0.06) 0%, transparent 55%),
     radial-gradient(ellipse 60% 40% at 100% 100%, rgba(155, 114, 203, 0.04) 0%, transparent 50%), var(--app-surface);
@@ -1319,10 +1356,29 @@ function handleActionClick() {
   scroll-margin-top: 16px;
 }
 
+.chat-message-virtual-list {
+  position: relative;
+  width: 100%;
+}
+
+.chat-message-virtual-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 0 1rem;
+  box-sizing: border-box;
+}
+
 .chat-history-more {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   display: flex;
   justify-content: center;
-  padding-bottom: 0.5rem;
+  padding: 0.75rem 1rem 0.5rem;
+  box-sizing: border-box;
 }
 
 .chat-history-more button {
@@ -1371,11 +1427,16 @@ function handleActionClick() {
   font-size: 1rem;
   font-weight: 700;
 }
+
+.chat-tool-status-anchor {
+  padding-top: 0.5rem;
+}
+
 .chat-tool-status {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  margin: 0.5rem 0 0 2.5rem;
+  margin-left: 2.5rem;
   padding: 0.45rem 0.65rem;
   border: 1px solid var(--app-border);
   border-radius: 0.5rem;
@@ -1383,6 +1444,7 @@ function handleActionClick() {
   font-size: 0.75rem;
   background: var(--app-bg-subtle);
 }
+
 .chat-tool-status-dot {
   width: 0.45rem;
   height: 0.45rem;
@@ -1390,13 +1452,16 @@ function handleActionClick() {
   background: var(--app-accent);
   animation: chat-tool-pulse 1.2s ease-in-out infinite;
 }
+
 .chat-tool-status-dots {
   letter-spacing: 0.1em;
 }
+
 .chat-tool-status--done .chat-tool-status-dot {
   background: #22c55e;
   animation: none;
 }
+
 @keyframes chat-tool-pulse {
   50% {
     opacity: 0.35;
@@ -1942,6 +2007,7 @@ html.dark .chat-panel-messages {
   .context-usage-popover-head {
     font-size: 0.9rem;
   }
+
   .context-usage-popover-summary {
     gap: 0.5rem;
     font-size: 0.8rem;

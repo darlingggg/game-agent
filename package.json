@@ -17,6 +17,7 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
     "@guolao/vue-monaco-editor": "^1.6.0",
+    "@tanstack/vue-virtual": "^3.13.35",
     "@webcontainer/api": "^1.6.4",
     "axios": "^1.17.0",
     "cos-js-sdk-v5": "^1.10.1",

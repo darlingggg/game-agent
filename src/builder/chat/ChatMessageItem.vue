@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { AI_AVATAR_URL } from './chatAvatars'
 import SvgIcon from '@/components/SvgIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -16,6 +16,10 @@ export type { ChatMessage, ChatRole } from './types'
 const props = defineProps<{
   message: ChatMessage
   userAvatar?: string | null
+}>()
+
+const emit = defineEmits<{
+  replyCollapseChange: [collapsed: boolean]
 }>()
 
 /** 是否为当前用户消息 */
@@ -37,14 +41,21 @@ const hasVisionContent = computed(() => hasVisionReasoning.value || hasVisionAns
 
 const hasImageTasks = computed(() => Boolean(props.message.imageTasks?.length))
 
+/** 已由任务卡片展示的生成图，避免在 Markdown 正文中再次出现 */
+const generatedImageUrls = computed(() =>
+  (props.message.imageTasks ?? [])
+    .flatMap((task) => [task.url, task.temporaryUrl])
+    .filter((url): url is string => Boolean(url)),
+)
+
 /** 流式输出中且尚无内容时展示 loading */
 const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value && !hasImageTasks.value)
 
 /** AI 回复是否可折叠（流式结束后且有正文） */
 const canCollapse = computed(() => !isUser.value && !props.message.streaming && (!!props.message.content.trim() || hasVisionContent.value || hasImageTasks.value))
 
-/** AI 回复折叠面板是否展开 */
-const replyExpanded = ref(!!props.message.streaming || hasImageTasks.value)
+/** AI 回复默认展开，用户手动收起后状态由消息模型保存 */
+const replyExpanded = computed(() => !props.message.replyCollapsed)
 
 /** 图像思考区块是否展开，默认折叠 */
 const visionReasoningExpanded = ref(false)
@@ -83,27 +94,11 @@ const userMessageParts = computed(() => {
 /** 用户消息是否包含图片 */
 const hasUserImages = computed(() => userMessageParts.value.imageUrls.length > 0)
 
-watch(
-  () => props.message.streaming,
-  (streaming) => {
-    if (streaming) {
-      replyExpanded.value = true
-    }
-  },
-)
-
-watch(
-  () => props.message.imageTasks?.length ?? 0,
-  (count) => {
-    if (count > 0) replyExpanded.value = true
-  },
-)
-
 /**
  * 切换 AI 回复折叠状态
  */
 function toggleReply() {
-  replyExpanded.value = !replyExpanded.value
+  emit('replyCollapseChange', replyExpanded.value)
 }
 
 /**
@@ -137,7 +132,13 @@ function toggleVisionReasoning() {
           </div>
         </template>
         <template v-else>
-          <button v-if="canCollapse" type="button" class="chat-message-reply-toggle" @click="toggleReply">
+          <button
+            v-if="canCollapse"
+            type="button"
+            class="chat-message-reply-toggle"
+            :aria-expanded="replyExpanded"
+            @click="toggleReply"
+          >
             <span>Agent 回复</span>
             <SvgIcon name="chevron-down" class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" />
           </button>
@@ -166,7 +167,7 @@ function toggleVisionReasoning() {
               </div>
             </div>
             <ChatImageTasks v-if="message.imageTasks?.length" :tasks="message.imageTasks" />
-            <MarkdownContent v-if="message.content" :content="message.content" />
+            <MarkdownContent v-if="message.content" :content="message.content" :hidden-image-urls="generatedImageUrls" />
             <span v-if="message.streaming && message.content" class="chat-message-cursor" />
           </div>
         </template>

@@ -38,7 +38,7 @@ function formatBytes(value: number | null) {
     <article v-for="task in tasks" :key="task.taskId" class="chat-image-task" :class="'is-' + task.status">
       <div class="chat-image-task__preview">
         <el-image v-if="task.status === 'succeeded' && task.url" :src="task.url" :preview-src-list="previewUrls"
-          fit="cover" crossorigin="anonymous" preview-teleported hide-on-click-modal />
+          fit="contain" crossorigin="anonymous" preview-teleported hide-on-click-modal />
         <div v-else-if="task.status === 'failed'" class="chat-image-task__state is-error">
           <el-icon>
             <Warning />
@@ -72,13 +72,15 @@ function formatBytes(value: number | null) {
 <style scoped>
 .chat-image-tasks {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 20rem));
   gap: 0.75rem;
   width: 100%;
   margin: 0.625rem 0;
 }
 
 .chat-image-task {
+  width: 100%;
+  max-width: 20rem;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--app-border);
@@ -88,7 +90,8 @@ function formatBytes(value: number | null) {
 
 .chat-image-task__preview {
   position: relative;
-  aspect-ratio: 4 / 3;
+  height: min(13.75rem, 60vw);
+  min-height: 10rem;
   overflow: hidden;
   background-color: var(--app-bg-subtle);
   background-image: linear-gradient(var(--app-border) 1px, transparent 1px), linear-gradient(90deg, var(--app-border) 1px, transparent 1px);

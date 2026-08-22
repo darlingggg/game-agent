@@ -858,10 +858,15 @@ html.dark .builder-shell .main-content-panel {
 }
 
 .builder-shell .chat-panel-messages {
-  padding: 18px 20px 30px;
+  padding: 0;
   background-color: var(--builder-surface);
   background-image: linear-gradient(var(--builder-grid) 1px, transparent 1px), linear-gradient(90deg, var(--builder-grid) 1px, transparent 1px);
   background-size: 32px 32px;
+}
+
+.builder-shell .chat-message-virtual-item {
+  padding-right: 20px;
+  padding-left: 20px;
 }
 
 .builder-shell .chat-message {
@@ -1864,7 +1869,12 @@ html.dark .builder-shell .phone-frame {
   }
 
   .container.builder-shell .main-content .chat-panel-messages {
-    padding: 10px 8px 20px;
+    padding: 0;
+  }
+
+  .container.builder-shell .main-content .chat-message-virtual-item {
+    padding-right: 8px;
+    padding-left: 8px;
   }
 
   .container.builder-shell .main-content .chat-message {
