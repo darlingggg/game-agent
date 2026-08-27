@@ -4,6 +4,7 @@ import { fetchWithAuth, showRequestError } from '@/ajax'
 export interface ChatBody {
   prompt: string
   projectId: number
+  conversationId?: number
   title?: string
   imageUrls?: string[]
 }
@@ -27,8 +28,11 @@ export interface ChatSseOptions extends ChatBody {
  * @param options 请求参数与事件回调
  */
 export async function chatWithAI(options: ChatSseOptions) {
-  const { prompt, projectId, title, imageUrls, onEvent, signal } = options
+  const { prompt, projectId, conversationId, title, imageUrls, onEvent, signal } = options
   const body: ChatBody = { prompt, projectId }
+  if (conversationId) {
+    body.conversationId = conversationId
+  }
   if (title?.trim()) {
     body.title = title.trim()
   }

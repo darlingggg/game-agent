@@ -1,4 +1,5 @@
 import {
+  fetchProjectAssetBlob,
   getFileContent,
   getFileList,
   type ProjectTempFileItem,
@@ -8,6 +9,9 @@ import { pinia } from '@/stores'
 import { useProjectStore } from '@/stores/project'
 
 export type { ProjectTempFileItem }
+
+/** WebContainer 可直接写入的文本或二进制文件内容 */
+export type ProjectTempFileContents = string | Uint8Array
 
 /**
  * 获取当前项目目录绝对路径
@@ -175,6 +179,21 @@ export async function fetchProjectTempFileContent(relativePath: string): Promise
   }
 
   return content
+}
+
+/**
+ * 读取项目文件用于预览挂载；二进制文件保持原始字节，文本文件保持字符串。
+ * @param relativePath 相对 projectTemp 根目录的路径
+ */
+export async function fetchProjectTempFileContents(relativePath: string): Promise<ProjectTempFileContents> {
+  const normalized = normalizeRelativePath(relativePath)
+  if (!isBinaryRelativePath(normalized)) return fetchProjectTempFileContent(normalized)
+
+  const blob = await fetchProjectAssetBlob({
+    dirPath: getProjectDirPath(),
+    path: normalized,
+  })
+  return new Uint8Array(await blob.arrayBuffer())
 }
 
 /**

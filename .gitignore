@@ -35,6 +35,9 @@ coverage
 # Vitest
 __screenshots__/
 
+# Playwright CLI
+.playwright-cli/
+
 # Vite
 *.timestamp-*-*.mjs
 

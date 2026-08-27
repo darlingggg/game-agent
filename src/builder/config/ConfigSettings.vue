@@ -9,6 +9,7 @@ import { syncPreviewFile } from '../preview/webcontainer'
 import { fetchProjectTempFileContent } from '../file/projectTempFiles'
 import { INDEX_HTML_PATH, parseProjectHtmlConfig } from './projectHtmlConfig'
 import type { ThemeMode } from './appearanceConfig'
+import { useTokenUsageStore } from '@/stores/tokenUsage'
 
 defineOptions({
   name: 'ConfigSettings',
@@ -22,6 +23,7 @@ const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
 
 const appearanceStore = useAppearanceStore()
 const projectStore = useProjectStore()
+const tokenUsage = useTokenUsageStore()
 const { theme, backgroundColor, effectiveBackgroundColor } = storeToRefs(appearanceStore)
 
 /** 项目信息表单 */
@@ -53,7 +55,10 @@ onMounted(async () => {
   } finally {
     projectLoading.value = false
   }
+  void tokenUsage.refreshProject(projectStore.currentProject?.id ?? 0)
 })
+
+watch(() => projectStore.currentProject?.id, (id) => { if (id) void tokenUsage.refreshProject(id) })
 
 watch(backgroundColor, (color) => {
   pickerColor.value = color || null
@@ -120,6 +125,19 @@ async function handleSaveProject() {
 
 <template>
   <div class="config-settings">
+    <section class="config-section">
+      <div class="config-section-card config-usage-card">
+        <div class="config-section-head">
+          <h2 class="config-section-title">项目 Token 消耗</h2>
+          <p class="config-section-desc">来自后端累计统计，包含所有会话与工具调用</p>
+        </div>
+        <div class="config-usage-body">
+          <strong>{{ (tokenUsage.project?.totalTokens ?? 0).toLocaleString() }}</strong><span>tokens</span>
+          <div class="config-usage-meta"><span>输入 {{ (tokenUsage.project?.promptTokens ?? 0).toLocaleString() }}</span><span>输出 {{ (tokenUsage.project?.completionTokens ?? 0).toLocaleString() }}</span></div>
+        </div>
+      </div>
+    </section>
+
     <section class="config-section">
       <div v-loading="projectLoading" class="config-section-card">
         <div class="config-section-head">
@@ -244,6 +262,11 @@ async function handleSaveProject() {
   color: var(--config-accent-text-muted);
   line-height: 1.45;
 }
+
+.config-usage-body { padding: 1rem 0.875rem; }
+.config-usage-body strong { font-size: 1.5rem; letter-spacing: 0; color: var(--config-accent-text); }
+.config-usage-body > span { margin-left: 0.4rem; color: var(--app-text-secondary); font-size: 0.75rem; }
+.config-usage-meta { display: flex; gap: 1rem; margin-top: 0.45rem; color: var(--app-text-secondary); font-size: 0.75rem; }
 
 .config-form {
   padding: 0.875rem;

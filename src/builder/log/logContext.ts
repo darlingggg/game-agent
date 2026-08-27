@@ -2,9 +2,11 @@ import { inject, ref, type InjectionKey, type Ref } from 'vue'
 import { addLog, getLogList } from '@/http/log'
 import {
   DELETE_FILE_TOOL,
+  DOWNLOAD_FILE_TOOL,
   UPSERT_FILE_TOOL,
   WRITE_FILE_CONTENT_TOOL,
   syncDeleteFileToPreview,
+  syncDownloadedFileToPreview,
   syncUpsertFileToPreview,
   syncWriteFileContentToPreview,
 } from '../preview/previewSync'
@@ -261,6 +263,8 @@ export function createLogContext(): LogContext {
         await syncUpsertFileToPreview(parsed.result)
       } else if (parsed.toolName === DELETE_FILE_TOOL) {
         await syncDeleteFileToPreview(targetEntry.params)
+      } else if (parsed.toolName === DOWNLOAD_FILE_TOOL) {
+        await syncDownloadedFileToPreview(parsed.result)
       }
     }
   }

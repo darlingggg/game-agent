@@ -181,11 +181,7 @@ function isSilentBusinessFail(config: InternalAxiosRequestConfig, businessCode: 
  * @param businessCode 业务状态码
  * @param message 错误文案
  */
-function rejectBusinessError(
-  config: InternalAxiosRequestConfig,
-  businessCode: number,
-  message: string,
-): Promise<never> {
+function rejectBusinessError(config: InternalAxiosRequestConfig, businessCode: number, message: string): Promise<never> {
   if (!isSilentBusinessFail(config, businessCode)) {
     showRequestError(message)
   }
@@ -238,9 +234,7 @@ function parseRefreshResponse(payload: unknown): string {
     if (accessToken) return accessToken
   }
 
-  const message = isApiResponse(payload) || isStatusApiResponse(payload)
-    ? payload.message
-    : undefined
+  const message = isApiResponse(payload) || isStatusApiResponse(payload) ? payload.message : undefined
   throw new Error(message || '刷新 Token 失败')
 }
 
@@ -420,20 +414,23 @@ instance.interceptors.response.use(
     // 非统一格式响应（如文件流）直接返回原始数据
     return payload
   },
-  async (error: AxiosError<ApiResponse>) => {
+  async (error: AxiosError<ApiResponse | StatusApiResponse>) => {
     const { config, response } = error
     const status = response?.status
     const message = response?.data?.message || error.message || '网络异常，请稍后重试'
 
     // Access Token 过期时尝试用 Refresh Token 静默刷新并重试
-    if (
-      status !== undefined
-      && isUnauthorizedBusinessCode(status)
-      && config
-      && !(config as RetryAxiosRequestConfig)._retry
-    ) {
-      console.log('[auth] 刷新成功，重试原请求 config:', config)
+    if (status === 401 && config && !(config as RetryAxiosRequestConfig)._retry) {
       return retryWithRefreshedToken(config as RetryAxiosRequestConfig)
+    }
+
+    // 管理端权限不足不清除登录态，返回前台继续使用普通功能。
+    if (status === 403 && config && getRequestPath(config).startsWith('/admin') && message === '无管理端访问权限') {
+      ElMessage.warning(message)
+      if (router.currentRoute.value.path.startsWith('/admin')) {
+        void router.replace('/')
+      }
+      return Promise.reject(new Error(message))
     }
 
     // 刷新失败或 Refresh Token 无效时跳转登录页

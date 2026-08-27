@@ -3,6 +3,7 @@ import axios from '@/ajax'
 export interface sessionItem {
   id: number
   projectId: number
+  conversationId?: number
   messageId?: number
   title: string
   account: string
@@ -14,10 +15,47 @@ export interface sessionItem {
   updatedAt?: string
 }
 
+export interface ConversationSummary {
+  id: number
+  projectId: number
+  title: string
+  preview: string
+  messageCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ConversationListPage {
+  list: ConversationSummary[]
+  pagination: {
+    page: number
+    pageSize: number
+    hasMore: boolean
+  }
+}
+
+export interface ConversationMessagesPage {
+  conversation: {
+    id: number
+    projectId: number
+    title: string
+    createdAt: string
+    updatedAt: string
+  }
+  list: sessionItem[]
+  pagination: {
+    limit: number
+    hasMore: boolean
+    nextCursor: number | null
+  }
+}
+
 interface RawSessionItem {
   id: number
   projectId?: number
   project_id?: number
+  conversationId?: number | null
+  conversation_id?: number | null
   messageId?: number | null
   message_id?: number | null
   title?: string
@@ -27,6 +65,20 @@ interface RawSessionItem {
   status?: sessionItem['status']
   errorMsg?: string | null
   error_msg?: string | null
+  createdAt?: string
+  created_at?: string
+  updatedAt?: string
+  updated_at?: string
+}
+
+interface RawConversationSummary {
+  id: number
+  projectId?: number
+  project_id?: number
+  title?: string
+  preview?: string
+  messageCount?: number
+  message_count?: number
   createdAt?: string
   created_at?: string
   updatedAt?: string
@@ -59,6 +111,7 @@ function normalizeSessionItem(item: RawSessionItem): sessionItem {
   return {
     id: item.id,
     projectId: item.projectId ?? item.project_id ?? 0,
+    conversationId: item.conversationId ?? item.conversation_id ?? undefined,
     messageId: messageId === null ? undefined : messageId,
     title: item.title ?? '',
     account: item.account ?? '',
@@ -70,6 +123,66 @@ function normalizeSessionItem(item: RawSessionItem): sessionItem {
     updatedAt: item.updatedAt ?? item.updated_at ?? undefined,
   }
 }
+
+function normalizeConversationSummary(item: RawConversationSummary): ConversationSummary {
+  return {
+    id: Number(item.id),
+    projectId: Number(item.projectId ?? item.project_id ?? 0),
+    title: item.title ?? '',
+    preview: item.preview ?? '',
+    messageCount: Number(item.messageCount ?? item.message_count ?? 0),
+    createdAt: item.createdAt ?? item.created_at ?? '',
+    updatedAt: item.updatedAt ?? item.updated_at ?? '',
+  }
+}
+
+export const getConversationList = async (params: {
+  projectId: number
+  keyword?: string
+  page: number
+  pageSize: number
+}): Promise<ConversationListPage> => {
+  const result = await axios.get<unknown, { list: RawConversationSummary[]; pagination: ConversationListPage['pagination'] }>(
+    '/conversation/list',
+    { params },
+  )
+  return {
+    list: result.list.map(normalizeConversationSummary),
+    pagination: result.pagination,
+  }
+}
+
+export const getConversationMessages = async (
+  conversationId: number,
+  params: { beforeId?: number; limit?: number } = {},
+): Promise<ConversationMessagesPage> => {
+  const result = await axios.get<unknown, {
+    conversation: RawConversationSummary
+    list: RawSessionItem[]
+    pagination: ConversationMessagesPage['pagination']
+  }>(`/conversation/${conversationId}/messages`, { params })
+  const conversation = normalizeConversationSummary(result.conversation)
+  return {
+    conversation: {
+      id: conversation.id,
+      projectId: conversation.projectId,
+      title: conversation.title,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    },
+    list: result.list.map(normalizeSessionItem),
+    pagination: result.pagination,
+  }
+}
+
+export const updateConversation = (
+  conversationId: number,
+  title: string,
+): Promise<{ id: number; title: string }> => axios.patch(`/conversation/${conversationId}`, { title })
+
+export const deleteConversation = (
+  conversationId: number,
+): Promise<{ id: number; affectedRows: number }> => axios.delete(`/conversation/${conversationId}`)
 
 // 获取会话列表
 export const getSessionList = async (params: { projectId: number; title?: string }): Promise<sessionItem[]> => {

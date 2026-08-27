@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import SvgIcon from '@/components/SvgIcon.vue'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
+import { useVirtualizer, type VirtualItem } from '@tanstack/vue-virtual'
 import { ElMessage } from 'element-plus'
-import { getSessionList, type sessionItem } from '@/http/session'
+import { getConversationMessages, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
-import { PENDING_SESSION_ID, useSessionContext } from '@/builder/session/sessionContext'
+import { PENDING_CONVERSATION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
+import ConversationRail from './ConversationRail.vue'
 import type { ChatMessage } from './types'
 import { chatWithAI, reconnectChatStream, type ChatSseEvent } from '@/http/chat'
 import { uploadImageToCos } from '@/http/cos'
 import { getUserInfo } from '@/http/user'
 import { useLogContext } from '@/builder/log/logContext'
+import { useTokenUsageStore } from '@/stores/tokenUsage'
+import { cancelChatMessage } from '@/http/tokenUsage'
+import {
+  getImageGenerationTasks,
+  reconnectImageGenerationTask,
+  type ImageGenerationSseEvent,
+  type ImageGenerationTask,
+} from '@/http/imageGeneration'
 
 defineOptions({
   name: 'ChatPanel',
@@ -29,9 +39,48 @@ const props = withDefaults(defineProps<Props>(), {
 const projectStore = useProjectStore()
 const sessionContext = useSessionContext()
 const logContext = useLogContext()
+const tokenUsage = useTokenUsageStore()
+const contextPopoverVisible = ref(false)
+const activeToolLabel = ref('')
+const activeToolCompleted = ref(false)
+const TOOL_LABELS: Record<string, string> = {
+  get_file_list: '文件列表',
+  get_file_content: '读取文件',
+  write_file_content: '写入文件',
+  delete_file: '删除文件',
+  download_file: '下载文件',
+  upsert_file: '更新文件',
+  generate_image: '生成图片',
+}
+
+function getToolDisplayName(raw: string): string {
+  const match = raw.match(/(?:tool\s*:\s*|正在执行工具\s*:\s*)([\w-]+)/i)
+  const toolName = match?.[1] ?? raw.trim().split(/\s+/)[0] ?? ''
+  return TOOL_LABELS[toolName] ?? '项目工具'
+}
+const contextDialogVisible = computed({
+  get: () => false,
+  set: () => {
+    contextPopoverVisible.value = true
+  },
+})
+
+function handleContextMeterDocumentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  if (target?.closest('.context-usage-popover')) return
+  if (target?.closest('.chat-context-meter')) {
+    contextPopoverVisible.value = !contextPopoverVisible.value
+  }
+}
 
 /** 消息列表 */
 const messages = ref<ChatMessage[]>([])
+const messagesHasMore = ref(false)
+const messagesNextCursor = ref<number | null>(null)
+const loadingOlderMessages = ref(false)
+const conversationImageTasks = ref<ImageGenerationTask[]>([])
+const imageTaskControllers = new Map<number, AbortController>()
+const TERMINAL_IMAGE_STATUSES = new Set(['succeeded', 'failed'])
 /** 当前用户头像 */
 const userAvatar = ref('')
 
@@ -94,6 +143,42 @@ const userAborted = ref(false)
 
 /** 消息列表容器，用于滚动到底部 */
 const messagesRef = ref<HTMLElement | null>(null)
+const activeRailMessageId = ref('')
+
+const virtualItemCount = computed(() => messages.value.length + (activeToolLabel.value ? 1 : 0))
+const messageVirtualizer = useVirtualizer<HTMLElement, HTMLElement>(
+  computed(() => ({
+    count: virtualItemCount.value,
+    getScrollElement: () => messagesRef.value,
+    estimateSize: (index: number) => {
+      const message = messages.value[index]
+      if (!message) return 48
+      return message.role === 'user' ? 76 : 180
+    },
+    getItemKey: (index: number) => messages.value[index]?.id ?? 'active-tool-status',
+    anchorTo: 'end' as const,
+    followOnAppend: true,
+    scrollEndThreshold: 80,
+    overscan: 5,
+    paddingStart: messagesHasMore.value ? 48 : 16,
+    paddingEnd: 24,
+    useAnimationFrameWithResizeObserver: true,
+  })),
+)
+const virtualItems = computed(() => messageVirtualizer.value.getVirtualItems())
+const virtualTotalSize = computed(() => messageVirtualizer.value.getTotalSize())
+
+function measureVirtualItem(element: Element | ComponentPublicInstance | null) {
+  if (element instanceof HTMLElement) messageVirtualizer.value.measureElement(element)
+}
+
+function virtualItemStyle(item: VirtualItem) {
+  return { transform: `translateY(${item.start}px)` }
+}
+
+function setReplyCollapsed(message: ChatMessage, collapsed: boolean) {
+  message.replyCollapsed = collapsed
+}
 
 /** 当前 SSE 中止控制器 */
 let abortController: AbortController | null = null
@@ -104,7 +189,7 @@ let streamingAssistantId: string | null = null
 /** 当前正在订阅的后端消息 id */
 let streamingBackendMessageId: number | null = null
 
-/** 新会话拿到后端 id 后，跳过一次由 activeSessionId 变更触发的重载 */
+/** 新会话拿到后端 id 后，跳过一次由 activeConversationId 变更触发的重载 */
 let skipNextSessionLoad = false
 
 /** 消息 id 自增计数（本地临时消息） */
@@ -160,13 +245,6 @@ function clearPendingImages() {
 }
 
 /**
- * @param item 会话项
- */
-function getSessionKey(item: sessionItem) {
-  return item.title.trim() || item.content?.trim() || String(item.id)
-}
-
-/**
  * 获取当前会话用于日志接口的 title（与 chat/stream 保持一致）
  */
 function getLogSessionTitle(): string {
@@ -197,6 +275,7 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
       id: String(item.id),
       role: 'user',
       content,
+      sessionId: item.id,
       createdAt: item.createdAt,
     }
   }
@@ -209,6 +288,7 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
     role: 'assistant',
     content,
     messageId: item.messageId,
+    sessionId: item.id,
     streaming: item.status === 'streaming',
     createdAt: item.createdAt,
   }
@@ -219,12 +299,104 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
  * @param list 接口返回列表
  * @param sessionId 当前会话 id
  */
-function pickSessionMessages(list: sessionItem[], sessionId: number) {
-  const target = list.find((item) => item.id === sessionId)
-  if (!target) return []
+function stopImageTaskSubscriptions() {
+  for (const controller of imageTaskControllers.values()) controller.abort()
+  imageTaskControllers.clear()
+}
 
-  const sessionKey = getSessionKey(target)
-  return list.filter((item) => getSessionKey(item) === sessionKey || item.id === sessionId)
+function mergeImageTask(message: ChatMessage, patch: Partial<ImageGenerationTask> & { taskId?: number }) {
+  const taskId = Number(patch.taskId)
+  if (!Number.isFinite(taskId)) return
+  const tasks = message.imageTasks ?? (message.imageTasks = [])
+  const index = tasks.findIndex((task) => task.taskId === taskId)
+  if (index >= 0) {
+    tasks[index] = { ...tasks[index], ...patch, taskId } as ImageGenerationTask
+  } else if (patch.prompt && patch.status) {
+    tasks.push({ ...patch, taskId } as ImageGenerationTask)
+  }
+}
+
+function handleImageTaskEvent(message: ChatMessage, event: ImageGenerationSseEvent) {
+  const data = event.data ?? {}
+  if (event.event === 'error') {
+    mergeImageTask(message, {
+      ...data,
+      status: 'failed',
+      errorMessage: data.message || data.errorMessage || '图片生成失败',
+    })
+    return
+  }
+  if (event.event === 'status' || event.event === 'stored') mergeImageTask(message, data)
+}
+
+function reconnectAssistantImageTask(message: ChatMessage, task: ImageGenerationTask) {
+  if (TERMINAL_IMAGE_STATUSES.has(task.status) || imageTaskControllers.has(task.taskId)) return
+  const controller = new AbortController()
+  imageTaskControllers.set(task.taskId, controller)
+  void reconnectImageGenerationTask({
+    taskId: task.taskId,
+    signal: controller.signal,
+    onEvent: (event) => handleImageTaskEvent(message, event),
+  })
+    .catch((error) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      ElMessage.warning('生图任务状态连接中断，可刷新页面重连')
+    })
+    .finally(() => {
+      if (imageTaskControllers.get(task.taskId) === controller) imageTaskControllers.delete(task.taskId)
+    })
+}
+
+async function loadConversationImageTasks(conversationId?: number) {
+  conversationImageTasks.value = []
+  if (!conversationId) return
+  const loaded: ImageGenerationTask[] = []
+  let page = 1
+  let hasMore = false
+  do {
+    const result = await getImageGenerationTasks({ conversationId, page, pageSize: 50 })
+    loaded.push(...result.list.filter((task) => task.assistantSessionId))
+    hasMore = result.pagination.hasMore
+    page += 1
+  } while (hasMore)
+
+  conversationImageTasks.value = loaded
+  attachImageTasks(messages.value)
+}
+
+function attachImageTasks(targetMessages: ChatMessage[]) {
+  for (const task of conversationImageTasks.value) {
+    const message = targetMessages.find((item) => item.sessionId === task.assistantSessionId)
+    if (!message) continue
+    mergeImageTask(message, task)
+    reconnectAssistantImageTask(message, task)
+  }
+}
+
+async function loadOlderMessages() {
+  const conversationId = sessionContext.activeConversationId.value
+  if (!conversationId || !messagesHasMore.value || !messagesNextCursor.value || loadingOlderMessages.value) return
+  loadingOlderMessages.value = true
+  try {
+    const result = await getConversationMessages(conversationId, {
+      beforeId: messagesNextCursor.value,
+      limit: 50,
+    })
+    const olderMessages = result.list
+      .map(mapSessionItemToMessage)
+      .filter((item): item is ChatMessage => !!item)
+    attachImageTasks(olderMessages)
+    const existingIds = new Set(messages.value.map((item) => item.id))
+    messages.value = [...olderMessages.filter((item) => !existingIds.has(item.id)), ...messages.value]
+    messagesHasMore.value = result.pagination.hasMore
+    messagesNextCursor.value = result.pagination.nextCursor
+    await nextTick()
+    updateActiveRailMessage()
+  } catch {
+    // 错误提示由 axios 拦截器统一处理
+  } finally {
+    loadingOlderMessages.value = false
+  }
 }
 
 /**
@@ -232,10 +404,15 @@ function pickSessionMessages(list: sessionItem[], sessionId: number) {
  */
 async function loadSessionMessages() {
   const currentProjectId = projectId()
+  stopImageTaskSubscriptions()
 
   if (sessionContext.isPendingNewSession.value) {
     stopStreaming()
+    tokenUsage.resetConversation()
     messages.value = []
+    messagesHasMore.value = false
+    messagesNextCursor.value = null
+    conversationImageTasks.value = []
     inputText.value = ''
     clearPendingImages()
     sessionTitle.value = ''
@@ -246,10 +423,14 @@ async function loadSessionMessages() {
     return
   }
 
-  const sessionId = sessionContext.activeSessionId.value
-  if (!sessionId || sessionId === PENDING_SESSION_ID) {
+  const conversationId = sessionContext.activeConversationId.value
+  if (!conversationId || conversationId === PENDING_CONVERSATION_ID) {
     stopStreaming()
+    tokenUsage.resetConversation()
     messages.value = []
+    messagesHasMore.value = false
+    messagesNextCursor.value = null
+    conversationImageTasks.value = []
     inputText.value = ''
     clearPendingImages()
     sessionTitle.value = ''
@@ -262,24 +443,23 @@ async function loadSessionMessages() {
 
   if (!currentProjectId) return
 
+  // 切换会话时不能复用上一会话的 conversationId，否则统计接口会返回旧上下文。
+  tokenUsage.resetConversation()
+  tokenUsage.setConversationId(conversationId)
   messagesLoading.value = true
   try {
-    const list = await getSessionList({ projectId: currentProjectId })
-    const target = list.find((item) => item.id === sessionId)
-    if (target) {
-      sessionTitle.value = getSessionKey(target)
-      backendSessionTitle.value = target.title.trim()
-    } else {
-      sessionTitle.value = ''
-      backendSessionTitle.value = ''
-    }
-
-    const sessionMessages = pickSessionMessages(list, sessionId)
+    const result = await getConversationMessages(conversationId, { limit: 50 })
+    sessionTitle.value = result.conversation.title.trim()
+    backendSessionTitle.value = result.conversation.title.trim()
+    const sessionMessages = result.list
       .map(mapSessionItemToMessage)
       .filter((item): item is ChatMessage => !!item)
       .sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime())
 
     messages.value = sessionMessages
+    messagesHasMore.value = result.pagination.hasMore
+    messagesNextCursor.value = result.pagination.nextCursor
+    await loadConversationImageTasks(conversationId)
     await scrollToBottom()
 
     const lastItem = sessionMessages[sessionMessages.length - 1]
@@ -288,6 +468,8 @@ async function loadSessionMessages() {
     }
 
     syncLogSession(currentProjectId, getLogSessionTitle())
+    void tokenUsage.refreshConversation()
+    void tokenUsage.refreshProject(currentProjectId)
   } catch {
     // 错误提示由 axios 拦截器统一处理
   } finally {
@@ -297,14 +479,18 @@ async function loadSessionMessages() {
 
 /** 切换会话时加载历史消息 */
 watch(
-  () => [sessionContext.activeSessionId.value, sessionContext.isPendingNewSession.value] as const,
-  ([nextSessionId], oldValue) => {
+  () => [
+    sessionContext.activeConversationId.value,
+    sessionContext.isPendingNewSession.value,
+    sessionContext.chatResetSignal.value,
+  ] as const,
+  ([nextConversationId], oldValue) => {
     if (skipNextSessionLoad) {
       skipNextSessionLoad = false
       return
     }
-    const prevSessionId = oldValue?.[0]
-    if (prevSessionId && nextSessionId !== prevSessionId) {
+    const prevConversationId = oldValue?.[0]
+    if (prevConversationId && nextConversationId !== prevConversationId) {
       stopStreaming()
     }
     void loadSessionMessages()
@@ -321,6 +507,8 @@ onMounted(async () => {
     // 错误提示由 axios 拦截器统一处理
   }
 })
+
+onMounted(() => document.addEventListener('click', handleContextMeterDocumentClick))
 
 /**
  * 将待发送图片转为 Markdown 片段
@@ -532,10 +720,48 @@ function createMessageId(): string {
  */
 async function scrollToBottom() {
   await nextTick()
-  const el = messagesRef.value
-  if (!el) return
-  el.scrollTop = el.scrollHeight
+  messageVirtualizer.value.scrollToEnd({ behavior: 'instant' })
+  updateActiveRailMessage()
 }
+
+function updateActiveRailMessage() {
+  const container = messagesRef.value
+  if (!container) return
+
+  if (!messages.value.some((message) => message.role === 'user')) {
+    activeRailMessageId.value = ''
+    return
+  }
+
+  const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 24
+  if (isAtBottom) {
+    for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+      if (messages.value[index]?.role === 'user') {
+        activeRailMessageId.value = messages.value[index]!.id
+        return
+      }
+    }
+    return
+  }
+
+  const threshold = container.scrollTop + Math.min(container.clientHeight * 0.3, 120)
+  const thresholdItem = messageVirtualizer.value.getVirtualItemForOffset(threshold)
+  let messageIndex = Math.min(thresholdItem?.index ?? 0, messages.value.length - 1)
+  while (messageIndex >= 0 && messages.value[messageIndex]?.role !== 'user') messageIndex -= 1
+  activeRailMessageId.value = messages.value[messageIndex]?.id ?? messages.value.find((message) => message.role === 'user')?.id ?? ''
+}
+
+function scrollToRailMessage(messageId: string) {
+  const messageIndex = messages.value.findIndex((message) => message.id === messageId)
+  if (messageIndex < 0) return
+  messageVirtualizer.value.scrollToIndex(messageIndex, { align: 'start', behavior: 'smooth' })
+  activeRailMessageId.value = messageId
+}
+
+watch(
+  () => messages.value.length,
+  () => nextTick(updateActiveRailMessage),
+)
 
 /**
  * 根据 id 查找消息
@@ -559,9 +785,15 @@ function finishAssistantStreaming(assistantId: string) {
 /**
  * 停止当前 AI 流式回复
  */
-function stopStreaming() {
+function stopStreaming(shouldCancel = false) {
   if (isStreaming.value) {
-    userAborted.value = true
+    if (shouldCancel) {
+      userAborted.value = true
+      tokenUsage.generationStatus = 'cancelling'
+      if (streamingBackendMessageId) {
+        void cancelChatMessage(streamingBackendMessageId)
+      }
+    }
   }
 
   abortController?.abort()
@@ -573,25 +805,8 @@ function stopStreaming() {
     finishAssistantStreaming(streamingAssistantId)
     streamingAssistantId = null
   }
-}
-
-/**
- * 确保已解析当前会话 title
- */
-async function ensureSessionTitle() {
-  if (sessionTitle.value) return sessionTitle.value
-
-  const sessionId = sessionContext.activeSessionId.value
-  const currentProjectId = projectId()
-  if (!sessionId || !currentProjectId) return ''
-
-  const list = await getSessionList({ projectId: currentProjectId })
-  const target = list.find((item) => item.id === sessionId)
-  if (target) {
-    sessionTitle.value = getSessionKey(target)
-    backendSessionTitle.value = target.title.trim()
-  }
-  return sessionTitle.value
+  activeToolLabel.value = ''
+  activeToolCompleted.value = false
 }
 
 /**
@@ -621,12 +836,13 @@ function ensureVisionMessage(assistantId: string) {
 function updateAssistantBackendIds(assistantId: string, data: unknown) {
   if (!data || typeof data !== 'object') return
   const payload = data as {
-    userSessionId?: unknown
     assistantSessionId?: unknown
     assistantMessageId?: unknown
+    conversationId?: unknown
   }
   const assistantMessageId = Number(payload.assistantMessageId)
-  const userSessionId = Number(payload.userSessionId)
+  const assistantSessionId = Number(payload.assistantSessionId)
+  const conversationId = Number(payload.conversationId)
 
   const assistantMessage = findMessageById(assistantId)
   if (assistantMessage) {
@@ -634,18 +850,21 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
       assistantMessage.messageId = assistantMessageId
       streamingBackendMessageId = assistantMessageId
     }
+    if (Number.isFinite(assistantSessionId)) assistantMessage.sessionId = assistantSessionId
   }
 
   // 待创建，或无选中会话时直接首聊：绑定返回的会话 id，避免后续消息反复新建
-  const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
-  if (Number.isFinite(userSessionId) && (sessionContext.isPendingNewSession.value || hasNoSession)) {
+  const hasNoConversation = !sessionContext.activeConversationId.value
+    || sessionContext.activeConversationId.value === PENDING_CONVERSATION_ID
+  if (Number.isFinite(conversationId) && (sessionContext.isPendingNewSession.value || hasNoConversation)) {
     skipNextSessionLoad = true
     sessionContext.isPendingNewSession.value = false
-    sessionContext.activeSessionId.value = userSessionId
-    sessionContext.lastCreatedSession.value = {
-      id: userSessionId,
-      content: '创建成功',
+    sessionContext.activeConversationId.value = conversationId
+    sessionContext.lastCreatedConversation.value = {
+      id: conversationId,
+      title: backendSessionTitle.value.trim(),
       firstMessage: messages.value.find((item) => item.role === 'user')?.content ?? '',
+      createdAt: new Date().toISOString(),
     }
   }
 }
@@ -660,6 +879,56 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
 
   if (event.event === 'message') {
     updateAssistantBackendIds(assistantId, event.data)
+    if (event.data && typeof event.data === 'object') {
+      const id = Number((event.data as Record<string, unknown>).conversationId)
+      if (Number.isFinite(id)) tokenUsage.setConversationId(id)
+    }
+    return
+  }
+
+  if (event.event === 'image_task' && event.data && typeof event.data === 'object') {
+    const task = event.data as unknown as ImageGenerationTask
+    const assistantMessage = findMessageById(assistantId)
+      ?? messages.value.find((item) => item.sessionId === task.assistantSessionId)
+    if (assistantMessage) {
+      mergeImageTask(assistantMessage, task)
+      reconnectAssistantImageTask(assistantMessage, task)
+      void scrollToBottom()
+    }
+    return
+  }
+
+  if (event.event === 'context_compress_start' && event.data && typeof event.data === 'object') {
+    tokenUsage.isCompressing = true
+    const data = event.data as Record<string, unknown>
+    tokenUsage.updateConversation({ currentContextTokens: Number(data.beforeTokens) || 0, contextLimit: Number(data.contextLimit) || 0 })
+    return
+  }
+
+  if (event.event === 'context_compress_done' && event.data && typeof event.data === 'object') {
+    tokenUsage.isCompressing = false
+    tokenUsage.updateConversation({ currentContextTokens: Number((event.data as Record<string, unknown>).afterTokens) || 0 })
+    return
+  }
+
+  if (event.event === 'context_compress_error') {
+    tokenUsage.isCompressing = false
+    ElMessage.warning(typeof event.data === 'string' ? event.data : '上下文压缩失败')
+    return
+  }
+
+  if (event.event === 'usage' && event.data && typeof event.data === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = event.data as Record<string, any>
+    tokenUsage.usageEstimated = Boolean(data.turn?.estimated)
+    tokenUsage.updateConversation(data.conversation ?? {})
+    void tokenUsage.refreshProject(currentProjectId)
+    return
+  }
+
+  if (event.event === 'usage_error') {
+    void tokenUsage.refreshConversation({ projectId: currentProjectId, title: getLogSessionTitle() })
+    void tokenUsage.refreshProject(currentProjectId)
     return
   }
 
@@ -705,17 +974,33 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
   }
 
   if (event.event === 'tool_start' && typeof event.data === 'string') {
+    activeToolLabel.value = getToolDisplayName(event.data)
+    activeToolCompleted.value = false
     logContext.handleToolStart(event.data, currentProjectId)
     return
   }
 
   if (event.event === 'tool_end' && typeof event.data === 'string') {
+    activeToolCompleted.value = true
     void logContext.handleToolEnd(event.data, currentProjectId)
     return
   }
 
   if (event.event === 'done') {
+    activeToolLabel.value = ''
+    activeToolCompleted.value = false
+    tokenUsage.generationStatus = 'completed'
     void scrollToBottom()
+  }
+  if (event.event === 'cancelled') {
+    activeToolLabel.value = ''
+    activeToolCompleted.value = false
+    tokenUsage.generationStatus = 'cancelled'
+  }
+  if (event.event === 'error') {
+    activeToolLabel.value = ''
+    activeToolCompleted.value = false
+    tokenUsage.generationStatus = 'failed'
   }
 }
 
@@ -727,6 +1012,7 @@ async function reconnectStreamingAssistant(message: ChatMessage) {
   streamingAssistantId = message.id
   streamingBackendMessageId = message.messageId
   isStreaming.value = true
+  tokenUsage.generationStatus = 'streaming'
   userAborted.value = false
   abortController = new AbortController()
 
@@ -745,6 +1031,9 @@ async function reconnectStreamingAssistant(message: ChatMessage) {
       message.content = '回复失败，请重试'
     }
   } finally {
+    tokenUsage.isCompressing = false
+    activeToolLabel.value = ''
+    activeToolCompleted.value = false
     finishAssistantStreaming(message.id)
     streamingAssistantId = null
     streamingBackendMessageId = null
@@ -764,8 +1053,9 @@ async function handleSend() {
   if (!content || isStreaming.value || hasUploadingImage.value) return
 
   const isPending = sessionContext.isPendingNewSession.value
-  const hasNoSession = !sessionContext.activeSessionId.value || sessionContext.activeSessionId.value === PENDING_SESSION_ID
-  const needsNewBackendSession = isPending || hasNoSession
+  const activeConversationId = sessionContext.activeConversationId.value
+  const hasNoConversation = !activeConversationId || activeConversationId === PENDING_CONVERSATION_ID
+  const needsNewBackendSession = isPending || hasNoConversation
 
   messages.value.push({
     id: createMessageId(),
@@ -793,7 +1083,7 @@ async function handleSend() {
   await scrollToBottom()
 
   const currentProjectId = projectId()
-  const resolvedChatTitle = needsNewBackendSession ? content.slice(0, 30) : backendSessionTitle.value.trim() || (await ensureSessionTitle())
+  const resolvedChatTitle = needsNewBackendSession ? content.slice(0, 30) : backendSessionTitle.value.trim()
   const chatTitle = resolvedChatTitle.trim() || undefined
   if (needsNewBackendSession) {
     sessionTitle.value = resolvedChatTitle
@@ -819,6 +1109,7 @@ async function handleSend() {
     await chatWithAI({
       prompt: content,
       projectId: currentProjectId,
+      conversationId: needsNewBackendSession ? undefined : activeConversationId,
       title: chatTitle,
       imageUrls,
       signal: abortController.signal,
@@ -830,15 +1121,20 @@ async function handleSend() {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return
     }
+    tokenUsage.generationStatus = 'failed'
     const assistantMessage = findMessageById(assistantId)
     if (assistantMessage && !assistantMessage.content) {
       assistantMessage.content = '回复失败，请重试'
     }
   } finally {
+    tokenUsage.isCompressing = false
+    activeToolLabel.value = ''
+    activeToolCompleted.value = false
     finishAssistantStreaming(assistantId)
 
     if (userAborted.value) {
       await logContext.handleAiAbort(currentProjectId)
+      tokenUsage.generationStatus = 'cancelled'
       userAborted.value = false
     } else {
       await logContext.finalizeAiStream(currentProjectId)
@@ -852,7 +1148,9 @@ async function handleSend() {
 }
 
 onUnmounted(() => {
+  document.removeEventListener('click', handleContextMeterDocumentClick)
   stopStreaming()
+  stopImageTaskSubscriptions()
   clearPendingImages()
 })
 
@@ -872,7 +1170,7 @@ function handleInputKeydown(event: KeyboardEvent) {
  */
 function handleActionClick() {
   if (isStreaming.value) {
-    stopStreaming()
+    stopStreaming(true)
     return
   }
   void handleSend()
@@ -881,65 +1179,139 @@ function handleActionClick() {
 
 <template>
   <div class="chat-panel">
-    <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages">
-      <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
-      <ChatMessageItem v-for="message in messages" :key="message.id" :message="message" :user-avatar="userAvatar" />
+    <div class="chat-panel-conversation">
+      <ConversationRail :messages="messages" :active-message-id="activeRailMessageId" @select="scrollToRailMessage" />
+      <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages"
+        @scroll.passive="updateActiveRailMessage">
+        <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
+        <div v-else class="chat-message-virtual-list" :style="{ height: `${virtualTotalSize}px` }">
+          <div v-if="messagesHasMore" class="chat-history-more">
+            <button type="button" :disabled="loadingOlderMessages" @click="loadOlderMessages">
+              {{ loadingOlderMessages ? '正在加载...' : '加载更早消息' }}
+            </button>
+          </div>
+          <div v-for="virtualItem in virtualItems" :key="String(virtualItem.key)" :ref="measureVirtualItem"
+            :data-index="virtualItem.index" class="chat-message-virtual-item" :style="virtualItemStyle(virtualItem)">
+            <div v-if="messages[virtualItem.index]" class="chat-message-anchor"
+              :data-chat-message-id="messages[virtualItem.index]!.id"
+              :data-chat-message-role="messages[virtualItem.index]!.role">
+              <ChatMessageItem :message="messages[virtualItem.index]!" :user-avatar="userAvatar"
+                @reply-collapse-change="setReplyCollapsed(messages[virtualItem.index]!, $event)" />
+            </div>
+            <div v-else-if="activeToolLabel" class="chat-tool-status-anchor">
+              <div class="chat-tool-status" :class="{ 'chat-tool-status--done': activeToolCompleted }">
+                <span class="chat-tool-status-dot" />{{ activeToolCompleted ? '调用完毕' : '正在调用' }} {{ activeToolLabel
+                }}<span v-if="!activeToolCompleted" class="chat-tool-status-dots">...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="chat-panel-input-area">
       <div class="chat-panel-input-shell">
         <div v-if="pendingImages.length > 0" class="chat-panel-image-preview">
-          <div
-            v-for="(image, index) in pendingImages"
-            :key="image.id"
-            class="chat-panel-image-preview-item"
-            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }"
-          >
-            <img :src="image.uploading ? image.blobUrl : image.cosUrl" :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
+          <div v-for="(image, index) in pendingImages" :key="image.id" class="chat-panel-image-preview-item"
+            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }">
+            <img :src="image.uploading ? image.blobUrl : image.cosUrl"
+              :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
             <div v-if="image.uploading" class="chat-panel-image-loading">
               <span class="chat-panel-image-loading-spinner" aria-label="上传中" />
             </div>
-            <button type="button" class="chat-panel-image-remove" title="移除图片" :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
+            <button type="button" class="chat-panel-image-remove" title="移除图片"
+              :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
           </div>
         </div>
-        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple class="chat-panel-file-input" @change="handleImageSelect" />
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple
+          class="chat-panel-file-input" @change="handleImageSelect" />
         <div class="chat-panel-input-body">
-          <textarea
-            ref="inputRef"
-            v-model="inputText"
-            class="chat-panel-input"
-            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送"
-            rows="5"
-            :disabled="isStreaming"
-            @keydown="handleInputKeydown"
-            @paste="handleInputPaste"
-          />
+          <textarea ref="inputRef" v-model="inputText" class="chat-panel-input"
+            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送" rows="5" :disabled="isStreaming"
+            @keydown="handleInputKeydown" @paste="handleInputPaste" />
           <div class="chat-panel-input-footer">
-            <button
-              type="button"
-              class="chat-panel-upload-btn"
-              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
-              title="上传图片（可多选）"
-              :disabled="isStreaming"
-              @click="handleUploadClick"
-            >
+            <button type="button" class="chat-panel-upload-btn"
+              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }" title="上传图片（可多选）" :disabled="isStreaming"
+              @click="handleUploadClick">
               <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
               <SvgIcon v-else name="upload-image" />
             </button>
-            <button
-              type="button"
-              class="chat-panel-action-btn"
-              :class="{ 'chat-panel-action-btn--stop': isStreaming }"
-              :title="isStreaming ? '终止' : '发送'"
-              :disabled="hasUploadingImage"
-              @click="handleActionClick"
-            >
-              <SvgIcon :name="isStreaming ? 'stop' : 'send'" />
+            <button type="button" class="chat-context-meter" title="查看当前会话上下文用量" @click="contextDialogVisible = true">
+              <span class="chat-context-meter-ring"
+                :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
+              <div v-if="contextPopoverVisible" class="context-usage-popover">
+                <div class="context-usage-popover-head"><b>Context Usage</b><button type="button"
+                    @click="contextPopoverVisible = false">×</button></div>
+                <div class="context-usage-popover-summary">
+                  <strong>{{ Math.round(tokenUsage.contextRatio * 100) }}% Full</strong><span>~{{
+                    tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }}
+                    Tokens</span>
+                </div>
+                <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" />
+                </div>
+                <div class="context-usage-popover-row">
+                  <span><i class="usage-dot usage-dot--blue" />Conversation</span><b>{{
+                    tokenUsage.contextTokens.toLocaleString() }}</b>
+                </div>
+                <div class="context-usage-popover-row">
+                  <span><i class="usage-dot usage-dot--violet" />Session total</span><b>{{
+                    (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
+                </div>
+              </div>
             </button>
+            <div class="chat-panel-submit-actions">
+              <button type="button" class="chat-context-trigger" title="Context usage"
+                @click="contextPopoverVisible = !contextPopoverVisible">
+                <span class="chat-context-meter-ring"
+                  :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
+                <div v-if="contextPopoverVisible" class="context-usage-popover">
+                  <div class="context-usage-popover-head"><b>上下文用量</b><button type="button"
+                      @click.stop="contextPopoverVisible = false">x</button></div>
+                  <div class="context-usage-popover-summary">
+                    <strong>已使用 {{ Math.round(tokenUsage.contextRatio * 100) }}%</strong><span>约 {{
+                      tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }}
+                      Token</span>
+                  </div>
+                  <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" />
+                  </div>
+                  <div class="context-usage-popover-row">
+                    <span><i class="usage-dot usage-dot--blue" />当前上下文</span><b>{{
+                      tokenUsage.contextTokens.toLocaleString() }}</b>
+                  </div>
+                  <div class="context-usage-popover-row">
+                    <span><i class="usage-dot usage-dot--violet" />会话累计</span><b>{{
+                      (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
+                  </div>
+                </div>
+              </button>
+              <button type="button" class="chat-panel-action-btn"
+                :class="{ 'chat-panel-action-btn--stop': isStreaming }" :title="isStreaming ? '终止' : '发送'"
+                :disabled="hasUploadingImage" @click="handleActionClick">
+                <SvgIcon :name="isStreaming ? 'stop' : 'send'" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+    <el-dialog v-model="contextDialogVisible" title="会话 Token 用量" width="min(420px, calc(100vw - 32px))" append-to-body>
+      <div class="context-usage-dialog">
+        <div class="context-usage-hero">
+          <span class="chat-context-meter-ring chat-context-meter-ring--large"
+            :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }"><strong>{{
+              Math.round(tokenUsage.contextRatio * 100) }}%</strong></span>
+          <div>
+            <b>{{ tokenUsage.isCompressing ? '正在压缩上下文' : '当前上下文占用' }}</b><small>{{ tokenUsage.usageEstimated ?
+              '本轮含估算Token' : '基于后端统计' }}</small>
+          </div>
+        </div>
+        <div class="context-usage-grid">
+          <span>当前上下文</span><strong>{{ tokenUsage.contextTokens.toLocaleString() }}</strong><span>上下文上限</span><strong>{{
+            tokenUsage.contextLimit.toLocaleString() }}</strong><span>会话累计消耗</span><strong>{{
+              (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</strong>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -965,12 +1337,65 @@ function handleActionClick() {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 0;
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(36, 99, 220, 0.06) 0%, transparent 55%),
     radial-gradient(ellipse 60% 40% at 100% 100%, rgba(155, 114, 203, 0.04) 0%, transparent 50%), var(--app-surface);
   scrollbar-width: thin;
   scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+}
+
+.chat-panel-conversation {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+}
+
+.chat-message-anchor {
+  scroll-margin-top: 16px;
+}
+
+.chat-message-virtual-list {
+  position: relative;
+  width: 100%;
+}
+
+.chat-message-virtual-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 0 1rem;
+  box-sizing: border-box;
+}
+
+.chat-history-more {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 0.75rem 1rem 0.5rem;
+  box-sizing: border-box;
+}
+
+.chat-history-more button {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.chat-history-more button:hover:not(:disabled) {
+  color: var(--app-accent);
+}
+
+.chat-history-more button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .chat-panel-messages::-webkit-scrollbar {
@@ -1001,6 +1426,47 @@ function handleActionClick() {
   color: var(--app-text-primary);
   font-size: 1rem;
   font-weight: 700;
+}
+
+.chat-tool-status-anchor {
+  padding-top: 0.5rem;
+}
+
+.chat-tool-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: 2.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  background: var(--app-bg-subtle);
+}
+
+.chat-tool-status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--app-accent);
+  animation: chat-tool-pulse 1.2s ease-in-out infinite;
+}
+
+.chat-tool-status-dots {
+  letter-spacing: 0.1em;
+}
+
+.chat-tool-status--done .chat-tool-status-dot {
+  background: #22c55e;
+  animation: none;
+}
+
+@keyframes chat-tool-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
 }
 
 .chat-panel-input-area {
@@ -1227,6 +1693,205 @@ function handleActionClick() {
   pointer-events: none;
 }
 
+.chat-context-meter {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.chat-context-meter {
+  display: none;
+}
+
+.chat-context-trigger {
+  position: relative;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+
+.chat-context-trigger:hover {
+  background: var(--app-bg-subtle);
+}
+
+.chat-panel-submit-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.chat-context-meter-wrap {
+  position: relative;
+}
+
+.chat-context-meter-ring {
+  width: 1.55rem;
+  height: 1.55rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--app-accent) var(--context-progress), var(--app-border) 0deg);
+  position: relative;
+}
+
+.chat-context-meter-ring::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--app-surface);
+}
+
+.chat-context-meter-ring strong {
+  position: relative;
+  z-index: 1;
+  font-size: 0.5rem;
+  font-weight: 700;
+}
+
+.chat-context-meter-ring--large {
+  width: 4.5rem;
+  height: 4.5rem;
+}
+
+.chat-context-meter-ring--large::after {
+  inset: 6px;
+}
+
+.chat-context-meter-ring--large strong {
+  font-size: 0.9rem;
+}
+
+.context-usage-dialog {
+  color: var(--app-text-primary);
+}
+
+.context-usage-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.context-usage-hero b,
+.context-usage-hero small {
+  display: block;
+}
+
+.context-usage-hero small {
+  margin-top: 0.35rem;
+  color: var(--app-text-secondary);
+}
+
+.context-usage-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  font-size: 0.875rem;
+}
+
+.context-usage-grid span {
+  color: var(--app-text-secondary);
+}
+
+.context-usage-popover {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 5.5rem;
+  z-index: 2000;
+  width: 20rem;
+  padding: 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.75rem;
+  background: var(--app-surface);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  color: var(--app-text-primary);
+}
+
+.context-usage-popover-head,
+.context-usage-popover-summary,
+.context-usage-popover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.context-usage-popover-head {
+  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.context-usage-popover-head button {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.context-usage-popover-summary {
+  font-size: 0.7rem;
+  color: var(--app-text-secondary);
+}
+
+.context-usage-popover-summary strong {
+  color: var(--app-text-primary);
+}
+
+.context-usage-popover-bar {
+  height: 0.3rem;
+  margin: 0.6rem 0 0.75rem;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--app-border);
+}
+
+.context-usage-popover-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--app-accent);
+}
+
+.context-usage-popover-row {
+  padding: 0.3rem 0;
+  font-size: 0.72rem;
+}
+
+.context-usage-popover-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--app-text-secondary);
+}
+
+.usage-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 2px;
+  background: var(--app-accent);
+}
+
+.usage-dot--violet {
+  background: #9b72cb;
+}
+
 .chat-panel-upload-spinner {
   display: inline-block;
   width: 1rem;
@@ -1292,6 +1957,66 @@ html.dark .chat-panel-messages {
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(91, 140, 255, 0.1) 0%, transparent 55%),
     radial-gradient(ellipse 60% 40% at 0% 100%, rgba(138, 180, 248, 0.05) 0%, transparent 50%), linear-gradient(180deg, #12151c 0%, #0f1115 100%);
+}
+
+@media (max-width: 600px) {
+  .chat-panel-input-footer {
+    padding-inline: 0.35rem;
+  }
+
+  .chat-panel-submit-actions {
+    gap: 0.5rem;
+  }
+
+  .chat-panel-upload-btn,
+  .chat-panel-action-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .chat-panel-upload-btn svg {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+
+  .chat-panel-action-btn svg {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+
+  .chat-context-trigger,
+  .chat-context-meter {
+    width: 2.35rem;
+    height: 2.35rem;
+  }
+
+  .chat-context-meter-ring {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .context-usage-popover {
+    right: 0.75rem;
+    bottom: 5rem;
+    width: 20rem;
+    max-width: calc(100vw - 1.5rem);
+    padding: 0.85rem;
+    font-size: 0.875rem;
+  }
+
+  .context-usage-popover-head {
+    font-size: 0.9rem;
+  }
+
+  .context-usage-popover-summary {
+    gap: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .context-usage-popover-row {
+    padding-block: 0.4rem;
+    font-size: 0.8rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

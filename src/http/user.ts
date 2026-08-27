@@ -11,6 +11,7 @@ interface AuthTokenResponse {
   id: string
   account: string
   nickname: string
+  role?: UserRole
   accessToken: string
   refreshToken: string
 }
@@ -20,10 +21,13 @@ interface LoginUserParams {
   password: string
 }
 
+export type UserRole = 'super' | 'admin' | 'normal' | 'disabled'
+
 export interface UserInfoResponse {
   id: number
   account: string
   nickname: string
+  role: UserRole
   avatar?: string | null
   bindings?: {
     qq: boolean

@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { WebContainer, type WebContainerProcess } from '@webcontainer/api'
 import { assertCrossOriginIsolated } from '@/utils/crossOriginIsolation'
+import type { ProjectTempFileContents } from '../file/projectTempFiles'
 import { buildProjectTempFileTree } from './projectTempFiles'
 
 /** WebContainer 单例实例 */
@@ -294,7 +295,7 @@ export async function removePreviewFile(relativePath: string): Promise<void> {
  * @param relativePath 相对 projectTemp 根目录的路径
  * @param content 文件内容
  */
-export async function syncPreviewFile(relativePath: string, content: string): Promise<void> {
+export async function syncPreviewFile(relativePath: string, content: ProjectTempFileContents): Promise<void> {
   if (!webcontainerInstance || !shouldSyncPreviewFile(relativePath)) {
     return
   }

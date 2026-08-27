@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Camera, ChatDotRound, CopyDocument, Document, Notebook, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, Camera, ChatDotRound, CopyDocument, Document, Notebook, Picture, Setting } from '@element-plus/icons-vue'
 import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type Component } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -9,10 +9,10 @@ import { getProjectList } from '@/http/project'
 import type { UpdateUserProfileResponse } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
 import { PROJECT_TYPE_LABEL, resolveProjectType } from '@/utils/projectType'
-import { ChatPanel, ConfigPanel, FilePanel, LogPanel, PreviewPanel, SessionPanel, SnapshotPanel, TempPanel } from './panels'
+import { ChatPanel, ConfigPanel, FilePanel, ImagePanel, LogPanel, PreviewPanel, SessionPanel, SnapshotPanel, TempPanel } from './panels'
 import { createBuildContext, buildContextKey } from './build/buildContext'
 import { createLogContext, logContextKey } from './log/logContext'
-import { PENDING_SESSION_ID, sessionContextKey, type CreatedSessionPayload } from './session/sessionContext'
+import { PENDING_CONVERSATION_ID, sessionContextKey, type CreatedConversationPayload } from './session/sessionContext'
 
 defineOptions({
   name: 'BuilderIndex',
@@ -62,7 +62,7 @@ function handleBackHome() {
 }
 
 /** 当前激活会话 id */
-const activeSessionId = ref<number | null>(null)
+const activeConversationId = ref<number | null>(null)
 
 /** 是否处于待创建新会话状态 */
 const isPendingNewSession = ref(false)
@@ -71,7 +71,7 @@ const isPendingNewSession = ref(false)
 const chatResetSignal = ref(0)
 
 /** 首条消息创建会话完成通知 */
-const lastCreatedSession = ref<CreatedSessionPayload | null>(null)
+const lastCreatedConversation = ref<CreatedConversationPayload | null>(null)
 
 /** 会话栏是否收起 */
 const sessionPanelCollapsed = ref(false)
@@ -115,30 +115,30 @@ function handleShellKeydown(event: KeyboardEvent) {
 function startNewSession() {
   if (isPendingNewSession.value) return
   isPendingNewSession.value = true
-  activeSessionId.value = PENDING_SESSION_ID
+  activeConversationId.value = PENDING_CONVERSATION_ID
   chatResetSignal.value++
 }
 
 /**
  * 切换会话
- * @param sessionId 会话 id
+ * @param conversationId 会话 id
  * @param resetChat 是否重置聊天区
  */
-function selectSession(sessionId: number, resetChat = true) {
+function selectConversation(conversationId: number, resetChat = true) {
   isPendingNewSession.value = false
-  activeSessionId.value = sessionId
+  activeConversationId.value = conversationId
   if (resetChat) {
     chatResetSignal.value++
   }
 }
 
 provide(sessionContextKey, {
-  activeSessionId,
+  activeConversationId,
   isPendingNewSession,
   chatResetSignal,
-  lastCreatedSession,
+  lastCreatedConversation,
   startNewSession,
-  selectSession,
+  selectConversation,
   sessionPanelCollapsed,
   toggleSessionPanelCollapsed,
 })
@@ -164,6 +164,7 @@ watch(
 
 const tabs: TabItem[] = [
   { key: 'chat', label: '对话', meta: 'AI COLLAB', icon: ChatDotRound },
+  { key: 'image', label: '图像', meta: 'IMAGE LAB', icon: Picture },
   { key: 'file', label: '文件', meta: 'SOURCE', icon: Document },
   { key: 'config', label: '配置', meta: 'SETUP', icon: Setting },
   { key: 'snapshot', label: '版本', meta: 'HISTORY', icon: Camera },
@@ -432,7 +433,7 @@ onUnmounted(() => {
     <button v-if="isNarrowLayout && !sessionPanelCollapsed" type="button" class="builder-drawer-scrim" aria-label="关闭会话栏" @click="toggleSessionPanelCollapsed" />
 
     <section class="left" aria-label="会话列表">
-      <SessionPanel :user-nickname-override="latestUserProfile?.nickname" />
+      <SessionPanel />
     </section>
     <main class="main">
       <div class="main-tab">
@@ -475,6 +476,12 @@ onUnmounted(() => {
             class="main-content-panel"
             :class="getPanelTransitionClass('file')"
             :aria-hidden="activeTabKey !== 'file' && leavingTabKey !== 'file'"
+          />
+          <ImagePanel
+            v-if="shouldMountTabPanel('image')"
+            class="main-content-panel"
+            :class="getPanelTransitionClass('image')"
+            :aria-hidden="activeTabKey !== 'image' && leavingTabKey !== 'image'"
           />
           <ConfigPanel
             v-if="shouldMountTabPanel('config')"
