@@ -1,0 +1,11 @@
+{
+  "version": "1.0.1",
+  "description": "构建栈与工具模板统一为 Vite 5，并统一 pnpm 版本与依赖构建白名单",
+  "createdAt": "2026-08-28 20:59:57",
+  "files": [
+    { "path": "package.json", "description": "统一 Vite 5 构建栈与 pnpm 版本", "action": "update" },
+    { "path": "pnpm-lock.yaml", "description": "更新依赖锁文件并移除 Rolldown", "action": "update" },
+    { "path": "pnpm-workspace.yaml", "description": "添加 pnpm 依赖构建白名单", "action": "add" },
+    { "path": "agent_base/version.json", "description": "更新模板版本", "action": "update" }
+  ]
+}
