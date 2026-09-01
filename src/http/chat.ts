@@ -1,4 +1,5 @@
 import { fetchWithAuth, showRequestError } from '@/ajax'
+import { consumeSseResponse } from '@/http/sse'
 
 /** 聊天请求体 */
 export interface ChatBody {
@@ -21,6 +22,22 @@ export interface ChatSseOptions extends ChatBody {
   onEvent?: (event: ChatSseEvent) => void
   /** 中止信号 */
   signal?: AbortSignal
+}
+
+const CHAT_TERMINAL_EVENTS = new Set(['done', 'cancelled', 'error'])
+
+async function consumeChatSseResponse(response: Response, onEvent?: (event: ChatSseEvent) => void): Promise<void> {
+  const terminalEvent = await consumeSseResponse(response, (event) => onEvent?.(event as ChatSseEvent), { stopWhen: (event) => CHAT_TERMINAL_EVENTS.has(event.event) })
+
+  if (!terminalEvent) {
+    throw new Error('AI 响应流意外中断')
+  }
+
+  if (terminalEvent.event === 'error') {
+    const message = typeof terminalEvent.data === 'string' ? terminalEvent.data : 'AI 回复失败'
+    showRequestError(message)
+    throw new Error(message)
+  }
 }
 
 /**
@@ -54,52 +71,7 @@ export async function chatWithAI(options: ChatSseOptions) {
     throw new Error(message)
   }
 
-  // 获取响应的可读流
-  const reader = response.body?.getReader()
-  if (!reader) {
-    const message = '获取响应的可读流失败'
-    showRequestError(message)
-    throw new Error(message)
-  }
-  const decoder = new TextDecoder('utf-8')
-
-  let buffer = '' // 解决数据分包粘包问题
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    // 解码二进制数据
-    buffer += decoder.decode(value, { stream: true })
-
-    // 按行分割（SSE 标准协议以 \n\n 分隔事件，但大多数实现以 \n 分隔）
-    const lines = buffer.split('\n')
-    // 保留最后一个可能不完整的行
-    buffer = lines.pop() ?? ''
-
-    for (const line of lines) {
-      if (!line.startsWith('data:')) continue
-
-      const raw = line.slice(5).trim()
-      if (!raw) continue
-
-      let json: ChatSseEvent
-      try {
-        json = JSON.parse(raw) as ChatSseEvent
-      } catch {
-        // 忽略不完整 JSON
-        continue
-      }
-
-      if (json.event === 'error') {
-        const message = typeof json.data === 'string' ? json.data : 'AI 回复失败'
-        showRequestError(message)
-        throw new Error(message)
-      }
-
-      onEvent?.(json)
-    }
-  }
+  await consumeChatSseResponse(response, onEvent)
 }
 
 export interface ReconnectChatSseOptions {
@@ -128,46 +100,4 @@ export async function reconnectChatStream(options: ReconnectChatSseOptions) {
   }
 
   await consumeChatSseResponse(response, onEvent)
-}
-
-async function consumeChatSseResponse(response: Response, onEvent?: (event: ChatSseEvent) => void) {
-  const reader = response.body?.getReader()
-  if (!reader) {
-    const message = '获取响应的可读流失败'
-    showRequestError(message)
-    throw new Error(message)
-  }
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-
-    for (const line of lines) {
-      if (!line.startsWith('data:')) continue
-
-      const raw = line.slice(5).trim()
-      if (!raw) continue
-
-      let json: ChatSseEvent
-      try {
-        json = JSON.parse(raw) as ChatSseEvent
-      } catch {
-        continue
-      }
-
-      if (json.event === 'error') {
-        const message = typeof json.data === 'string' ? json.data : 'AI 回复失败'
-        showRequestError(message)
-        throw new Error(message)
-      }
-
-      onEvent?.(json)
-    }
-  }
 }
