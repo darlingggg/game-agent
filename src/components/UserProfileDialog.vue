@@ -316,33 +316,13 @@ onBeforeUnmount(releaseAvatarPreview)
             </div>
             <div class="profile-password-fields">
               <el-form-item class="profile-password-current" label="原密码" prop="currentPassword">
-                <el-input
-                  v-model="form.currentPassword"
-                  type="password"
-                  placeholder="请手动输入原密码"
-                  autocomplete="off"
-                  data-1p-ignore
-                  data-lpignore="true"
-                />
+                <el-input v-model="form.currentPassword" type="password" placeholder="请手动输入原密码" autocomplete="off" data-1p-ignore data-lpignore="true" />
               </el-form-item>
               <el-form-item label="新密码" prop="password">
-                <el-input
-                  v-model="form.password"
-                  type="password"
-                  show-password
-                  placeholder="不修改请留空"
-                  autocomplete="new-password"
-                  @input="handleNewPasswordInput"
-                />
+                <el-input v-model="form.password" type="password" show-password placeholder="不修改请留空" autocomplete="new-password" @input="handleNewPasswordInput" />
               </el-form-item>
               <el-form-item label="确认新密码" prop="confirmPassword">
-                <el-input
-                  v-model="form.confirmPassword"
-                  type="password"
-                  show-password
-                  placeholder="再次输入新密码"
-                  autocomplete="new-password"
-                />
+                <el-input v-model="form.confirmPassword" type="password" show-password placeholder="再次输入新密码" autocomplete="new-password" />
               </el-form-item>
             </div>
           </div>
@@ -399,10 +379,10 @@ onBeforeUnmount(releaseAvatarPreview)
   max-height: calc(100vh - 32px);
   max-width: calc(100vw - 32px);
   overflow: hidden;
-  border: 1px solid var(--app-border-strong);
-  border-radius: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--brand-radius-md);
   background: var(--app-surface);
-  box-shadow: 0 24px 64px rgba(21, 29, 45, 0.18);
+  box-shadow: var(--brand-shadow-float);
   font-size: 16px;
   flex-direction: column;
 }
@@ -436,11 +416,7 @@ onBeforeUnmount(releaseAvatarPreview)
 
 <style scoped>
 .profile-dialog-heading > span {
-  color: var(--app-accent);
-  font-family: Consolas, 'SFMono-Regular', monospace;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
+  display: none;
 }
 
 .profile-dialog-heading h2 {
@@ -480,7 +456,7 @@ onBeforeUnmount(releaseAvatarPreview)
   border: 1px solid var(--app-border-strong);
   border-radius: 6px;
   background: var(--app-surface);
-  box-shadow: 7px 7px 0 var(--app-accent-soft);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--app-accent) 12%, transparent);
 }
 
 .profile-avatar-frame--pending {

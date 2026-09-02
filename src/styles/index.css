@@ -1,8 +1,18 @@
 @import './root.css';
+@import './workstation.css';
+@import './message-box.css';
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: 0;
 }
 
 /** 会话栏收起/展开按钮（SessionPanel 与主 Tab 栏共用） */

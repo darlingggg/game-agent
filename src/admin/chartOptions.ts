@@ -22,6 +22,7 @@ function tooltipValueFormatter(formatter?: (value: number) => string) {
 
 export function createBarOption(data: ChartDatum[], formatter?: (value: number) => string): EChartsOption {
   return {
+    backgroundColor: 'transparent',
     animationDuration: 420,
     grid: { left: 2, right: 38, top: 2, bottom: 2, containLabel: true },
     tooltip: {
@@ -80,6 +81,7 @@ export function createDonutOption(data: ChartDatum[], centerLabel: string, forma
     : [{ name: '暂无数据', value: 1, itemStyle: { color: gridLine }, label: { show: true, position: 'center' as const, formatter: '暂无数据', color: mutedText, fontSize: 10 } }]
 
   return {
+    backgroundColor: 'transparent',
     animationDuration: 420,
     tooltip: total ? { trigger: 'item', valueFormatter: tooltipValueFormatter(formatter) } : { show: false },
     legend:
@@ -111,6 +113,7 @@ export function createDonutOption(data: ChartDatum[], centerLabel: string, forma
 
 export function createLineOption(labels: string[], series: LineDatum[], formatter?: (value: number) => string): EChartsOption {
   return {
+    backgroundColor: 'transparent',
     animationDuration: 450,
     color: series.map((item, index) => item.color ?? palette[index % palette.length] ?? '#315efb'),
     grid: { left: 8, right: 8, top: series.length > 1 ? 25 : 10, bottom: 20, containLabel: true },

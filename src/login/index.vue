@@ -198,16 +198,16 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .auth-page {
-  --auth-canvas: #f7f7f4;
+  --auth-canvas: var(--brand-canvas);
   --auth-stage: var(--brand-stage);
   --auth-ink: var(--brand-ink);
-  --auth-blue: #2673ff;
-  --auth-line: #dfe1e4;
-  --auth-muted: #74777d;
+  --auth-blue: var(--brand-blue);
+  --auth-line: var(--brand-line);
+  --auth-muted: var(--brand-muted);
   display: grid;
   width: 100%;
   min-height: 100vh;
-  grid-template-columns: minmax(0, 1.25fr) minmax(27rem, 0.75fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(27rem, 0.72fr);
   background: var(--auth-canvas);
 }
 
@@ -222,9 +222,9 @@ onBeforeUnmount(() => {
 .auth-grid {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
-  background-size: 4.5rem 4.5rem;
-  mask-image: linear-gradient(to bottom, #000 42%, transparent 100%);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 5rem 5rem;
+  mask-image: linear-gradient(to bottom, #000 25%, transparent 82%);
 }
 
 .auth-brand {
@@ -235,10 +235,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  font-family: Arial, sans-serif;
+  font-family: var(--brand-font-body);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0;
 }
 
 .auth-brand-mark {
@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 43%;
   left: 60%;
-  width: 31rem;
+  width: 25rem;
   max-width: 70%;
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
@@ -286,6 +286,7 @@ onBeforeUnmount(() => {
 .auth-orbit-ring--inner {
   inset: 17%;
   border-color: rgba(63, 130, 255, 0.58);
+  animation: orbit-ring-pulse 4.8s ease-in-out infinite;
 }
 
 .auth-orbit-core {
@@ -294,7 +295,8 @@ onBeforeUnmount(() => {
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: var(--auth-blue);
-  box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.28);
+  animation: orbit-core-breathe 4.8s ease-in-out infinite;
 }
 
 .auth-orbit-core::before {
@@ -306,7 +308,10 @@ onBeforeUnmount(() => {
 }
 
 .auth-orbit-node {
-  animation: orbit-spin linear infinite;
+  animation-name: orbit-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
 }
 
 .auth-orbit-node::after {
@@ -338,11 +343,17 @@ onBeforeUnmount(() => {
   inset: 0;
   animation-duration: 23s;
   animation-delay: -8.6s;
+  animation-direction: reverse;
 }
 
-.auth-orbit-node--two::after,
-.auth-orbit-node--three::after {
+.auth-orbit-node--two::after {
   background: #ff5b45;
+}
+
+.auth-orbit-node--three::after {
+  width: 0.48rem;
+  height: 0.48rem;
+  background: #75a0ff;
 }
 
 .auth-visual-copy {
@@ -355,10 +366,10 @@ onBeforeUnmount(() => {
 .auth-kicker,
 .auth-visual-index,
 .auth-panel-eyebrow {
-  font-family: Arial, sans-serif;
+  font-family: var(--brand-font-body);
   font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0;
 }
 
 .auth-kicker {
@@ -367,24 +378,21 @@ onBeforeUnmount(() => {
 
 .auth-visual-copy h1 {
   margin: 0.85rem 0 0;
-  font-family: 'Arial Narrow', 'Microsoft YaHei', sans-serif;
-  font-size: 3.8rem;
+  font-family: var(--brand-font-display);
+  font-size: 2.8rem;
   font-weight: 650;
-  line-height: 1.08;
+  line-height: 1.12;
   letter-spacing: 0;
 }
 
 .auth-visual-copy p {
   margin: 1rem 0 0;
-  color: rgba(248, 248, 244, 0.62);
+  color: rgba(248, 248, 244, 0.72);
   font-size: 0.86rem;
 }
 
 .auth-visual-index {
-  position: absolute;
-  right: 2.25rem;
-  bottom: 2.1rem;
-  color: rgba(248, 248, 244, 0.42);
+  display: none;
 }
 
 .auth-panel {
@@ -392,14 +400,14 @@ onBeforeUnmount(() => {
   min-height: 100vh;
   flex-direction: column;
   justify-content: center;
-  padding: 2.4rem 3.6rem 1.5rem;
+  padding: 2.4rem 3.2rem 1.5rem;
   background: var(--auth-canvas);
   color: var(--auth-ink);
 }
 
 .auth-panel-inner {
   width: 100%;
-  max-width: 28rem;
+  max-width: 26rem;
   margin: auto;
 }
 
@@ -409,15 +417,16 @@ onBeforeUnmount(() => {
 
 .auth-panel-heading h2 {
   margin: 0.7rem 0 0;
-  font-size: 2rem;
-  font-weight: 680;
+  font-family: var(--brand-font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
   line-height: 1.2;
   letter-spacing: 0;
 }
 
 .auth-panel-heading p {
   margin: 0.6rem 0 0;
-  color: #74777d;
+  color: var(--app-text-secondary);
   font-size: 0.86rem;
 }
 
@@ -431,12 +440,12 @@ onBeforeUnmount(() => {
 .oauth-option {
   display: grid;
   min-width: 0;
-  height: 4.5rem;
+  height: 3.9rem;
   align-items: center;
   padding: 0 0.9rem;
   border: 1px solid var(--auth-line);
   border-radius: 0.4rem;
-  background: #fff;
+  background: var(--app-surface);
   color: var(--auth-ink);
   cursor: pointer;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -444,14 +453,12 @@ onBeforeUnmount(() => {
   text-align: left;
   transition:
     border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
+    background-color 0.2s ease;
 }
 
 .oauth-option:hover {
-  border-color: #9aa3af;
-  box-shadow: 0 0.8rem 1.8rem rgba(17, 19, 24, 0.08);
-  transform: translateY(-2px);
+  border-color: var(--app-border-strong);
+  background: var(--app-surface-hover);
 }
 
 .oauth-option:disabled {
@@ -474,14 +481,14 @@ onBeforeUnmount(() => {
 
 .oauth-option small {
   overflow: hidden;
-  color: #85888e;
+  color: var(--app-text-secondary);
   font-size: 0.66rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .oauth-option > .el-icon {
-  color: #8d9198;
+  color: var(--app-text-muted);
   font-size: 0.8rem;
 }
 
@@ -490,7 +497,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.8rem;
   margin: 1.5rem 0 1.25rem;
-  color: #96999f;
+  color: var(--app-text-muted);
   font-size: 0.68rem;
 }
 
@@ -509,7 +516,7 @@ onBeforeUnmount(() => {
 .auth-form :deep(.el-form-item__label) {
   height: auto;
   margin-bottom: 0.38rem;
-  color: #3e4147;
+  color: var(--app-text-secondary);
   font-size: 0.76rem;
   font-weight: 600;
   line-height: 1.2;
@@ -518,7 +525,7 @@ onBeforeUnmount(() => {
 .auth-form :deep(.el-input__wrapper) {
   min-height: 2.8rem;
   border-radius: 0.3rem;
-  background: #fff;
+  background: var(--app-surface);
   box-shadow: 0 0 0 1px var(--auth-line) inset;
 }
 
@@ -529,14 +536,14 @@ onBeforeUnmount(() => {
 }
 
 .auth-form :deep(.el-input__inner) {
-  color: #20242b;
+  color: var(--app-text-primary);
   caret-color: var(--auth-blue);
-  -webkit-text-fill-color: #20242b;
+  -webkit-text-fill-color: var(--app-text-primary);
 }
 
 .auth-form :deep(.el-input__inner::placeholder) {
-  color: #989ea8;
-  -webkit-text-fill-color: #989ea8;
+  color: var(--app-text-muted);
+  -webkit-text-fill-color: var(--app-text-muted);
 }
 
 .auth-submit {
@@ -544,12 +551,13 @@ onBeforeUnmount(() => {
   height: 3rem;
   margin-top: 0.2rem;
   border-radius: 0.3rem;
-  background: #17191d;
+  border-color: var(--auth-blue);
+  background: var(--auth-blue);
   font-weight: 650;
 }
 
 .auth-submit:hover {
-  background: #2673ff;
+  background: var(--brand-blue-strong);
 }
 
 .auth-submit .el-icon {
@@ -575,7 +583,7 @@ onBeforeUnmount(() => {
 
 .auth-legal {
   margin: 1.5rem auto 0;
-  color: #9a9da2;
+  color: var(--app-text-muted);
   font-size: 0.65rem;
   text-align: center;
 }
@@ -586,10 +594,34 @@ onBeforeUnmount(() => {
   }
 }
 
+@keyframes orbit-ring-pulse {
+  0%,
+  100% {
+    border-color: rgba(63, 130, 255, 0.45);
+  }
+
+  50% {
+    border-color: rgba(88, 148, 255, 0.78);
+  }
+}
+
+@keyframes orbit-core-breathe {
+  0%,
+  100% {
+    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.28);
+  }
+
+  50% {
+    box-shadow:
+      0 1.5rem 4rem rgba(0, 0, 0, 0.28),
+      0 0 0 0.55rem rgba(61, 104, 232, 0.08);
+  }
+}
+
 @media (max-width: 860px) {
   .auth-page {
     display: block;
-    background: #f7f7f4;
+    background: var(--auth-canvas);
   }
 
   .auth-visual {
@@ -740,7 +772,9 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-orbit-node {
+  .auth-orbit-node,
+  .auth-orbit-ring--inner,
+  .auth-orbit-core {
     animation: none;
   }
 

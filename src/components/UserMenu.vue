@@ -304,8 +304,8 @@ onMounted(() => {
 
 <style>
 .user-account-menu {
-  min-width: 12.25rem;
-  padding: 0.25rem !important;
+  min-width: 13rem;
+  padding: 0.3rem !important;
 }
 
 .user-account-menu .user-account-summary {
@@ -436,7 +436,7 @@ onMounted(() => {
 .user-account-menu .user-logout-item {
   height: 2.1rem;
   margin-top: 0.2rem;
-  background-color: #fff1f1;
+  background-color: transparent;
   color: #c93636;
 }
 
@@ -466,12 +466,12 @@ html.dark .user-role-badge--disabled {
 
 .user-account-menu .user-logout-item:not(.is-disabled):hover,
 .user-account-menu .user-logout-item:not(.is-disabled):focus {
-  background-color: #ffe2e2;
+  background-color: color-mix(in srgb, var(--app-danger) 9%, var(--app-surface));
   color: #b42323;
 }
 
 html.dark .user-account-menu .user-logout-item {
-  background-color: rgba(255, 92, 92, 0.12);
+  background-color: transparent;
   color: #ff8e8e;
 }
 
