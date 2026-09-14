@@ -22,6 +22,9 @@ const buildContext = useBuildContext()
 /** 版本快照最大保存数量 */
 const MAX_SNAPSHOT_COUNT = 5
 
+/** 快照类型：构建部署产生的版本快照 */
+const SNAPSHOT_TYPE_USER = 0
+
 /** 当前项目部署链接（projectItem.link） */
 const deployLink = computed(() => projectStore.currentProject?.link?.trim() ?? '')
 
@@ -35,7 +38,7 @@ const isSnapshotLimitReached = computed(() => buildContext.snapshotVersionCount.
 const isBuildDisabled = computed(() => building.value || buildContext.running.value || isSnapshotLimitReached.value)
 
 /** 构建按钮提示文案 */
-const buildTooltip = computed(() => (isSnapshotLimitReached.value ? '版本数最多5个，请先清理旧版本' : '构建部署'))
+const buildTooltip = computed(() => (isSnapshotLimitReached.value ? '版本快照最多5个，请先清理旧版本' : '构建部署'))
 
 /** 构建图标是否播放 3D 旋转动画 */
 const isBuildAnimating = computed(() => building.value || buildContext.running.value)
@@ -149,7 +152,9 @@ async function refreshSnapshotVersionCount() {
 
   try {
     const list = await getSnapshotList({ projectId: currentProjectId })
-    const versionCount = new Set(list.map((item) => item.version)).size
+    const versionCount = new Set(
+      list.filter((item) => item.type === SNAPSHOT_TYPE_USER).map((item) => item.version),
+    ).size
     buildContext.setSnapshotVersionCount(versionCount)
   } catch {
     // 列表加载失败时不阻断构建，仅保留已有计数
@@ -245,7 +250,7 @@ async function handleShare() {
  */
 function handleBuildClick() {
   if (isSnapshotLimitReached.value) {
-    ElMessage.warning('版本数最多5个，请先清理旧版本')
+    ElMessage.warning('版本快照最多5个，请先清理旧版本')
     return
   }
   void handleBuild()

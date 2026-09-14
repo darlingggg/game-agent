@@ -156,17 +156,7 @@ onBeforeUnmount(stopSession)
 </script>
 
 <template>
-  <el-dialog
-    :model-value="modelValue"
-    class="oauth-dialog"
-    width="26rem"
-    align-center
-    append-to-body
-    :lock-scroll="false"
-    destroy-on-close
-    :show-close="true"
-    @close="handleClose"
-  >
+  <el-dialog :model-value="modelValue" class="oauth-dialog" width="26rem" align-center append-to-body :lock-scroll="false" destroy-on-close :show-close="true" @close="handleClose">
     <template #header>
       <div class="oauth-dialog-header">
         <OAuthProviderIcon :provider="provider" :beta="provider === 'wechat'" />
@@ -204,7 +194,10 @@ onBeforeUnmount(stopSession)
 <style>
 .oauth-dialog {
   max-width: calc(100vw - 2rem);
-  border-radius: 0.5rem;
+  border: 1px solid var(--app-border);
+  border-radius: var(--brand-radius-md);
+  background: var(--app-surface);
+  box-shadow: var(--brand-shadow-float);
   overflow: hidden;
 }
 
@@ -266,7 +259,7 @@ onBeforeUnmount(stopSession)
   padding: 0.65rem;
   border: 1px solid var(--app-border-strong);
   background: #fff;
-  box-shadow: 0 1rem 2.5rem rgba(17, 19, 24, 0.1);
+  box-shadow: 0 8px 24px rgba(17, 19, 24, 0.1);
 }
 
 .oauth-qr,

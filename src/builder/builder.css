@@ -13,22 +13,22 @@
   --builder-shadow: var(--brand-shadow-soft);
 
   --app-bg: var(--builder-canvas);
-  --app-bg-subtle: #f1f3f6;
+  --app-bg-subtle: var(--brand-panel-muted);
   --app-bg-muted: var(--builder-panel);
   --app-surface: var(--builder-surface);
-  --app-surface-hover: #eef2f8;
+  --app-surface-hover: color-mix(in srgb, var(--builder-blue) 5%, var(--builder-surface));
   --app-border: var(--builder-line);
   --app-border-strong: var(--builder-line-strong);
   --app-text-primary: var(--builder-ink);
   --app-text-secondary: var(--builder-muted);
-  --app-text-muted: #939ba8;
+  --app-text-muted: color-mix(in srgb, var(--builder-muted) 78%, transparent);
   --app-accent: var(--builder-blue);
   --app-accent-soft: var(--builder-blue-soft);
   --app-card-border: var(--builder-line);
 
   display: grid;
-  grid-template-columns: clamp(250px, 17.5vw, 280px) minmax(0, 1fr) clamp(340px, 26vw, 420px);
-  grid-template-rows: 60px minmax(0, 1fr);
+  grid-template-columns: clamp(232px, 17vw, 264px) minmax(0, 1fr) clamp(332px, 25vw, 400px);
+  grid-template-rows: 52px minmax(0, 1fr);
   width: 100%;
   height: 100dvh;
   min-height: 0;
@@ -98,7 +98,7 @@ html.dark .builder-shell {
 }
 
 .builder-shell.container--session-collapsed {
-  grid-template-columns: 0 minmax(0, 1fr) clamp(340px, 26vw, 420px);
+  grid-template-columns: 0 minmax(0, 1fr) clamp(332px, 25vw, 400px);
 }
 
 .builder-shell.container--session-collapsed .main {
@@ -118,7 +118,8 @@ html.dark .builder-shell {
   padding: 0 14px 0 12px;
   border-bottom: 1px solid var(--builder-line);
   background: color-mix(in srgb, var(--builder-canvas) 90%, transparent);
-  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--builder-canvas) 95%, transparent);
+  backdrop-filter: blur(12px);
 }
 
 .builder-shell .builder-brand {
@@ -157,7 +158,7 @@ html.dark .builder-shell {
   height: 34px;
   padding: 0;
   place-items: center;
-  border: 1px solid var(--builder-ink);
+  border: 1px solid var(--builder-line-strong);
   border-radius: var(--brand-radius-sm);
   background: var(--builder-surface);
   color: var(--builder-ink);
@@ -169,8 +170,6 @@ html.dark .builder-shell {
   border-color: var(--builder-blue);
   background: var(--builder-blue-soft);
   color: var(--builder-blue);
-  box-shadow: 3px 3px 0 var(--builder-ink);
-  transform: translate(-1px, -1px);
 }
 
 .builder-shell .builder-brand-mark span {
@@ -190,7 +189,7 @@ html.dark .builder-shell {
 .builder-shell .builder-brand-copy strong {
   font-family: var(--brand-font-display);
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.1;
 }
 
@@ -199,8 +198,8 @@ html.dark .builder-shell {
 .builder-shell .builder-online-state {
   color: var(--builder-muted);
   font-family: var(--brand-font-mono);
-  font-size: 9px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1.1;
   text-transform: uppercase;
 }
@@ -229,7 +228,7 @@ html.dark .builder-shell {
   background: var(--builder-blue-soft);
   color: var(--builder-blue);
   font-family: var(--brand-font-mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -254,7 +253,7 @@ html.dark .builder-shell {
   height: 6px;
   border-radius: 50%;
   background: var(--builder-status-light);
-  animation: builder-status-breathe 2.4s ease-in-out infinite;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--builder-status-light) 14%, transparent);
 }
 
 .builder-shell .builder-topbar-actions .theme-toggle,
@@ -303,39 +302,12 @@ html.dark .builder-shell {
   color: var(--builder-blue);
   font-size: 11px;
   font-weight: 700;
-  animation: builder-session-beacon 2.4s ease-in-out infinite;
 }
 
 .builder-shell .builder-topbar-actions .builder-topbar-session-toggle:hover {
   border-color: var(--builder-blue);
   background: var(--builder-blue);
   color: #fff;
-}
-
-@keyframes builder-session-beacon {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--builder-blue) 0%, transparent);
-  }
-
-  50% {
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--builder-blue) 14%, transparent);
-  }
-}
-
-@keyframes builder-status-breathe {
-  0%,
-  100% {
-    opacity: 0.82;
-    transform: scale(0.92);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--builder-status-light) 18%, transparent);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.08);
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--builder-status-light) 0%, transparent);
-  }
 }
 
 .builder-shell .builder-mobile-switch {
@@ -353,7 +325,7 @@ html.dark .builder-shell {
 }
 
 .builder-shell .session-panel-header {
-  min-height: 54px;
+  min-height: 48px;
   padding: 0 14px 0 16px;
   border-bottom: 1px solid var(--builder-line);
   background: color-mix(in srgb, var(--builder-panel) 92%, transparent);
@@ -369,7 +341,7 @@ html.dark .builder-shell {
 .builder-shell .session-panel-heading > span {
   color: var(--builder-blue);
   font-family: var(--brand-font-mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
 }
@@ -377,7 +349,7 @@ html.dark .builder-shell {
 .builder-shell .session-panel-heading .session-panel-title {
   color: var(--builder-ink);
   font-family: var(--brand-font-display);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.15;
 }
 
@@ -405,7 +377,7 @@ html.dark .builder-shell {
 
 .builder-shell .session-panel-title {
   color: var(--builder-ink);
-  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-family: var(--brand-font-display);
   font-size: 15px;
   font-weight: 750;
 }
@@ -415,8 +387,8 @@ html.dark .builder-shell {
   display: block;
   margin-top: 2px;
   color: var(--builder-muted);
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 8px;
+  font-family: var(--brand-font-mono);
+  font-size: 10px;
   font-weight: 600;
   line-height: 1;
 }
@@ -448,7 +420,7 @@ html.dark .builder-shell {
   isolation: isolate;
   justify-content: flex-start;
   gap: 9px;
-  height: 40px;
+  height: 38px;
   margin-bottom: 10px;
   padding: 0 11px 0 8px;
   overflow: hidden;
@@ -456,26 +428,17 @@ html.dark .builder-shell {
   border-radius: 6px;
   background: var(--builder-blue);
   color: #fff;
-  box-shadow: 0 4px 10px rgba(49, 94, 251, 0.18);
+  box-shadow: none;
   font-size: 13px;
   font-weight: 750;
   transform: none;
   transition:
-    transform 180ms ease,
     border-color 180ms ease,
-    background-color 180ms ease,
-    box-shadow 180ms ease;
+    background-color 180ms ease;
 }
 
 .container.builder-shell .left .session-create-btn::after {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 12px 12px;
-  opacity: 0.55;
-  content: '';
-  pointer-events: none;
+  content: none;
 }
 
 .container.builder-shell .left .session-create-icon {
@@ -490,27 +453,21 @@ html.dark .builder-shell {
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
   font-size: 14px;
-  transition:
-    background-color 180ms ease,
-    transform 180ms ease;
+  transition: background-color 180ms ease;
 }
 
 .container.builder-shell .left .session-create-btn:not(:disabled):hover {
   border-color: var(--builder-blue-strong);
   background: var(--builder-blue-strong);
   color: #fff;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(49, 94, 251, 0.24);
 }
 
 .container.builder-shell .left .session-create-btn:not(:disabled):hover .session-create-icon {
   background: rgba(255, 255, 255, 0.22);
-  transform: translateX(1px);
 }
 
 .container.builder-shell .left .session-create-btn:not(:disabled):active {
-  transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(49, 94, 251, 0.2);
+  filter: brightness(0.95);
 }
 
 .container.builder-shell .left .session-create-btn:focus-visible {
@@ -582,7 +539,7 @@ html.dark .builder-shell {
 }
 
 .builder-shell .session-item {
-  min-height: 64px;
+  min-height: 58px;
   padding: 10px 12px;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -615,7 +572,7 @@ html.dark .builder-shell .session-item--active {
 }
 
 .builder-shell .session-item-time {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--brand-font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -653,14 +610,14 @@ html.dark .builder-shell .session-item--active {
 }
 
 .builder-shell .project-card-label {
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--brand-font-mono);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .builder-shell .project-card-name {
-  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-family: var(--brand-font-display);
 }
 
 .builder-shell .project-card-switch {
@@ -676,7 +633,7 @@ html.dark .builder-shell .session-item--active {
 
 /* Main navigation */
 .builder-shell .main-tab {
-  min-height: 64px;
+  min-height: 48px;
   padding: 0;
   border-bottom: 1px solid var(--builder-line);
   background: var(--builder-surface);
@@ -694,8 +651,8 @@ html.dark .builder-shell .session-item--active {
 
 .builder-shell .main-tab-context-label {
   color: var(--builder-muted);
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 9px;
+  font-family: var(--brand-font-mono);
+  font-size: 10px;
   font-weight: 700;
   line-height: 1.1;
   text-transform: uppercase;
@@ -704,7 +661,7 @@ html.dark .builder-shell .session-item--active {
 .builder-shell .main-tab-context-title {
   overflow: hidden;
   color: var(--builder-ink);
-  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-family: var(--brand-font-display);
   font-size: 14px;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -714,7 +671,7 @@ html.dark .builder-shell .session-item--active {
 .builder-shell .main-tab-list {
   align-self: stretch;
   width: 100%;
-  height: 64px;
+  height: 48px;
   gap: 0;
   padding: 0;
   border: 0;
@@ -735,9 +692,9 @@ html.dark .builder-shell .session-item--active {
   justify-content: flex-start;
   min-width: 76px;
   max-width: none;
-  height: 64px;
-  gap: 8px;
-  padding: 0 10px;
+  height: 48px;
+  gap: 7px;
+  padding: 0 9px;
   border: 0;
   border-right: 1px solid var(--builder-line);
   border-radius: 0;
@@ -748,8 +705,7 @@ html.dark .builder-shell .session-item--active {
     color 160ms ease,
     background-color 160ms ease,
     border-color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
+    box-shadow 160ms ease;
 }
 
 .builder-shell .main-tab-item:hover {
@@ -761,10 +717,8 @@ html.dark .builder-shell .session-item--active {
 .builder-shell .main-tab-item--active {
   border-color: var(--builder-line);
   background-color: var(--builder-blue-soft);
-  background-image: linear-gradient(var(--builder-grid) 1px, transparent 1px), linear-gradient(90deg, var(--builder-grid) 1px, transparent 1px);
-  background-size: 12px 12px;
   color: var(--builder-ink);
-  box-shadow: inset 0 -3px 0 var(--builder-blue);
+  box-shadow: inset 0 -2px 0 var(--builder-blue);
 }
 
 .builder-shell .main-tab-item--active:hover {
@@ -780,15 +734,15 @@ html.dark .builder-shell .session-item--active {
 
 .builder-shell .main-tab-item-icon {
   display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
   place-items: center;
   border: 1px solid var(--builder-line);
   border-radius: var(--brand-radius-sm);
   background: var(--builder-panel);
   color: var(--builder-blue);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .builder-shell .main-tab-item-copy {
@@ -805,7 +759,7 @@ html.dark .builder-shell .session-item--active {
 .builder-shell .main-tab-item-label {
   color: inherit;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -813,8 +767,8 @@ html.dark .builder-shell .session-item--active {
   overflow: hidden;
   color: var(--builder-muted);
   font-family: var(--brand-font-mono);
-  font-size: 7px;
-  font-weight: 700;
+  font-size: 9px;
+  font-weight: 600;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -832,17 +786,15 @@ html.dark .builder-shell .session-item--active {
 }
 
 .builder-shell .main-content {
-  padding: 8px;
+  padding: 6px;
   background-color: var(--builder-canvas);
-  background-image: linear-gradient(var(--builder-grid) 1px, transparent 1px), linear-gradient(90deg, var(--builder-grid) 1px, transparent 1px);
-  background-size: 24px 24px;
 }
 
 .builder-shell .main-content-panel {
   border: 1px solid var(--builder-line);
-  border-radius: 6px;
+  border-radius: var(--brand-radius-sm);
   background: var(--builder-surface);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -860,8 +812,6 @@ html.dark .builder-shell .main-content-panel {
 .builder-shell .chat-panel-messages {
   padding: 0;
   background-color: var(--builder-surface);
-  background-image: linear-gradient(var(--builder-grid) 1px, transparent 1px), linear-gradient(90deg, var(--builder-grid) 1px, transparent 1px);
-  background-size: 32px 32px;
 }
 
 .builder-shell .chat-message-virtual-item {
@@ -904,7 +854,7 @@ html.dark .builder-shell .main-content-panel {
 .builder-shell .chat-message--user .chat-message-bubble {
   border: 1px solid var(--builder-line);
   background: var(--builder-blue-soft);
-  box-shadow: 3px 3px 0 color-mix(in srgb, var(--builder-ink) 14%, transparent);
+  box-shadow: none;
 }
 
 .builder-shell .chat-message-reply-toggle {
@@ -922,8 +872,7 @@ html.dark .builder-shell .main-content-panel {
 .builder-shell .preview-status--live i,
 .builder-shell .temp-panel-status-dot {
   --builder-status-light: currentColor;
-
-  animation: builder-status-breathe 2.4s ease-in-out infinite;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--builder-status-light) 14%, transparent);
 }
 
 .builder-shell .chat-panel-input-area {
@@ -934,7 +883,7 @@ html.dark .builder-shell .main-content-panel {
 
 .builder-shell .chat-panel-input-shell {
   padding: 2px;
-  border-radius: 18px;
+  border-radius: var(--brand-radius-md);
 }
 
 .container.builder-shell .main-content .chat-panel-input:focus-visible {
@@ -974,7 +923,7 @@ html.dark .builder-shell .main-content-panel {
 .builder-shell .file-panel-tree-title,
 .builder-shell .file-panel-content-path {
   color: var(--builder-ink);
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--brand-font-mono);
   font-size: 12px;
 }
 
@@ -1052,7 +1001,7 @@ html.dark .builder-shell .main-content .temp-panel {
 .builder-shell .config-panel-title,
 .builder-shell .snapshot-panel-title,
 .builder-shell .temp-panel-title {
-  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-family: var(--brand-font-display);
   font-size: 18px;
   font-weight: 750;
 }
@@ -1062,8 +1011,8 @@ html.dark .builder-shell .main-content .temp-panel {
 .builder-shell .temp-panel-title::before {
   content: 'WORKSPACE / ';
   color: var(--builder-blue);
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 9px;
+  font-family: var(--brand-font-mono);
+  font-size: 10px;
   font-weight: 700;
   vertical-align: middle;
 }
@@ -1270,7 +1219,7 @@ html.dark .builder-shell .snapshot-panel-online {
 
 .builder-shell .temp-panel .temp-panel-card-version {
   color: var(--temp-accent-text);
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--brand-font-mono);
   font-size: 15px;
 }
 
@@ -1367,7 +1316,7 @@ html.dark .builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-
 
 .builder-shell .preview-toolbar-title {
   color: #edf0f5;
-  font-family: 'Arial Narrow', 'Bahnschrift SemiCondensed', 'Microsoft YaHei', sans-serif;
+  font-family: var(--brand-font-display);
   font-size: 15px;
   font-weight: 750;
 }
@@ -1377,8 +1326,8 @@ html.dark .builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-
   display: block;
   margin-top: 2px;
   color: #8f98a6;
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 8px;
+  font-family: var(--brand-font-mono);
+  font-size: 9px;
   line-height: 1;
 }
 
@@ -1501,11 +1450,11 @@ html.dark .builder-shell .phone-frame {
 
 @media (max-width: 1439px) {
   .container.builder-shell {
-    grid-template-columns: clamp(240px, 18vw, 260px) minmax(0, 1fr) clamp(340px, 26vw, 380px);
+    grid-template-columns: clamp(228px, 18vw, 252px) minmax(0, 1fr) clamp(328px, 26vw, 372px);
   }
 
   .builder-shell.container--session-collapsed {
-    grid-template-columns: 0 minmax(0, 1fr) clamp(340px, 26vw, 380px);
+    grid-template-columns: 0 minmax(0, 1fr) clamp(328px, 26vw, 372px);
   }
 
   .builder-shell .main-tab-item {
@@ -1527,7 +1476,7 @@ html.dark .builder-shell .phone-frame {
   .builder-shell.container--session-collapsed .left {
     position: fixed;
     z-index: 24;
-    top: 60px;
+    top: 52px;
     bottom: 0;
     left: 0;
     width: min(280px, calc(100vw - 48px));
@@ -1550,7 +1499,7 @@ html.dark .builder-shell .phone-frame {
   .builder-shell .builder-drawer-scrim {
     position: fixed;
     z-index: 20;
-    top: 60px;
+    top: 52px;
     right: 0;
     bottom: 0;
     left: 0;

@@ -1,0 +1,10 @@
+{
+  "version": "1.0.2",
+  "description": "统一 pnpm 版本并添加依赖构建白名单",
+  "createdAt": "2026-08-28 20:59:57",
+  "files": [
+    { "path": "package.json", "description": "统一 pnpm 版本", "action": "update" },
+    { "path": "pnpm-workspace.yaml", "description": "添加 pnpm 依赖构建白名单", "action": "add" },
+    { "path": "agent_base/version.json", "description": "更新模板版本", "action": "update" }
+  ]
+}

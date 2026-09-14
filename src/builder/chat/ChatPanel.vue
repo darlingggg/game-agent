@@ -1007,6 +1007,7 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
 async function reconnectStreamingAssistant(message: ChatMessage) {
   if (!message.messageId || streamingBackendMessageId === message.messageId) return
 
+  const currentProjectId = projectId()
   stopStreaming()
   message.streaming = true
   streamingAssistantId = message.id
@@ -1027,6 +1028,7 @@ async function reconnectStreamingAssistant(message: ChatMessage) {
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return
+    tokenUsage.generationStatus = 'failed'
     if (!message.content) {
       message.content = '回复失败，请重试'
     }
@@ -1035,6 +1037,15 @@ async function reconnectStreamingAssistant(message: ChatMessage) {
     activeToolLabel.value = ''
     activeToolCompleted.value = false
     finishAssistantStreaming(message.id)
+
+    if (userAborted.value) {
+      await logContext.handleAiAbort(currentProjectId)
+      tokenUsage.generationStatus = 'cancelled'
+      userAborted.value = false
+    } else {
+      await logContext.finalizeAiStream(currentProjectId)
+    }
+
     streamingAssistantId = null
     streamingBackendMessageId = null
     abortController = null

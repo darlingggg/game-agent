@@ -1,13 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Picture, Refresh, Search, View, Warning } from '@element-plus/icons-vue'
-import {
-  getAdminImageGeneration,
-  getAdminImageGenerations,
-  type AdminImageGeneration,
-  type AdminImageGenerationOrigin,
-  type AdminImageGenerationStatus,
-} from '@/http/admin'
+import { getAdminImageGeneration, getAdminImageGenerations, type AdminImageGeneration, type AdminImageGenerationOrigin, type AdminImageGenerationStatus } from '@/http/admin'
 
 defineOptions({ name: 'AdminImageGenerations' })
 
@@ -29,7 +23,7 @@ const filters = reactive<{
   origin: '' | AdminImageGenerationOrigin
 }>({ keyword: '', account: '', projectId: '', status: '', origin: '' })
 
-const successRate = computed(() => summary.total ? Math.round(summary.succeeded / summary.total * 100) : 0)
+const successRate = computed(() => (summary.total ? Math.round((summary.succeeded / summary.total) * 100) : 0))
 
 const STATUS_LABELS: Record<AdminImageGenerationStatus, string> = {
   queued: '等待中',
@@ -56,7 +50,7 @@ function formatDuration(row: AdminImageGeneration) {
   if (!row.completedAt) return '进行中'
   const seconds = Math.max(0, Math.round((new Date(row.completedAt).getTime() - new Date(row.createdAt).getTime()) / 1000))
   if (seconds < 60) return seconds + ' 秒'
-  return Math.floor(seconds / 60) + ' 分 ' + seconds % 60 + ' 秒'
+  return Math.floor(seconds / 60) + ' 分 ' + (seconds % 60) + ' 秒'
 }
 
 function originLabel(origin: AdminImageGenerationOrigin) {
@@ -112,12 +106,21 @@ onMounted(() => void load(1))
 <template>
   <div class="image-admin">
     <section class="image-admin__metrics" aria-label="AI 生图统计">
-      <article><span>任务总数</span><strong>{{ summary.total }}</strong><small>当前筛选范围</small></article>
-      <article><span>处理中</span><strong>{{ summary.processing }}</strong><small>生成与 COS 入库</small></article>
-      <article><span>成功率</span><strong>{{ successRate }}%</strong><small>{{ summary.succeeded }} 成功 / {{ summary.failed
-          }} 失败</small></article>
-      <article class="is-accent"><span>入库体积</span><strong>{{ formatBytes(summary.storedBytes) }}</strong><small>WebP
-          持久化总量</small></article>
+      <article>
+        <span>任务总数</span><strong>{{ summary.total }}</strong
+        ><small>当前筛选范围</small>
+      </article>
+      <article>
+        <span>处理中</span><strong>{{ summary.processing }}</strong
+        ><small>生成与 COS 入库</small>
+      </article>
+      <article>
+        <span>成功率</span><strong>{{ successRate }}%</strong><small>{{ summary.succeeded }} 成功 / {{ summary.failed }} 失败</small>
+      </article>
+      <article class="is-accent">
+        <span>入库体积</span><strong>{{ formatBytes(summary.storedBytes) }}</strong
+        ><small>WebP 持久化总量</small>
+      </article>
     </section>
 
     <section class="image-admin__dataset" aria-labelledby="image-generations-title">
@@ -132,11 +135,9 @@ onMounted(() => void load(1))
       </header>
 
       <div class="image-admin__filters">
-        <el-input v-model="filters.keyword" clearable :prefix-icon="Search" placeholder="提示词、任务 ID 或工具调用 ID"
-          @keyup.enter="load(1)" />
+        <el-input v-model="filters.keyword" clearable :prefix-icon="Search" placeholder="提示词、任务 ID 或工具调用 ID" @keyup.enter="load(1)" />
         <el-input v-model="filters.account" clearable placeholder="用户账号" @keyup.enter="load(1)" />
-        <el-input v-model="filters.projectId" clearable inputmode="numeric" placeholder="项目 ID"
-          @keyup.enter="load(1)" />
+        <el-input v-model="filters.projectId" clearable inputmode="numeric" placeholder="项目 ID" @keyup.enter="load(1)" />
         <el-select v-model="filters.origin" clearable placeholder="全部来源">
           <el-option label="主 AI 工具" value="agent_tool" />
           <el-option label="图像工作台" value="image_lab" />
@@ -144,8 +145,7 @@ onMounted(() => void load(1))
         <el-select v-model="filters.status" clearable placeholder="全部状态">
           <el-option v-for="(label, value) in STATUS_LABELS" :key="value" :label="label" :value="value" />
         </el-select>
-        <el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至"
-          start-placeholder="开始日期" end-placeholder="结束日期" />
+        <el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" />
         <button class="image-admin__search" type="button" @click="load(1)">查询</button>
         <button class="image-admin__reset" type="button" @click="resetFilters">重置</button>
       </div>
@@ -155,47 +155,56 @@ onMounted(() => void load(1))
           <el-table-column label="图片" width="92">
             <template #default="{ row }">
               <div class="task-thumb">
-                <img v-if="row.url" :src="row.url" alt="AI 生成图片" loading="lazy" crossorigin="anonymous"
-                  referrerpolicy="no-referrer" />
+                <img v-if="row.url" :src="row.url" alt="AI 生成图片" loading="lazy" crossorigin="anonymous" referrerpolicy="no-referrer" />
                 <Picture v-else />
               </div>
             </template>
           </el-table-column>
           <el-table-column label="任务" min-width="270">
             <template #default="{ row }">
-              <div class="task-main"><strong>#{{ row.id }} · {{ originLabel(row.origin) }}</strong>
-                <p>{{ row.prompt }}</p><small>{{ row.model }} · {{ row.imageSize }}</small>
+              <div class="task-main">
+                <strong>#{{ row.id }} · {{ originLabel(row.origin) }}</strong>
+                <p>{{ row.prompt }}</p>
+                <small>{{ row.model }} · {{ row.imageSize }}</small>
               </div>
             </template>
           </el-table-column>
           <el-table-column label="用户 / 项目" min-width="180">
             <template #default="{ row }">
-              <div class="task-owner"><strong>{{ row.userNickname || row.account }}</strong><span>@{{ row.account
-                  }}</span><small>{{ row.projectTitle || (row.projectId ? '项目 #' + row.projectId : '未关联项目') }}</small>
+              <div class="task-owner">
+                <strong>{{ row.userNickname || row.account }}</strong
+                ><span>@{{ row.account }}</span
+                ><small>{{ row.projectTitle || (row.projectId ? '项目 #' + row.projectId : '未关联项目') }}</small>
               </div>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="110">
-            <template #default="{ row }"><span class="task-status" :class="'is-' + row.status"><i />{{
-              STATUS_LABELS[row.status as AdminImageGenerationStatus] }}</span></template>
+            <template #default="{ row }"
+              ><span class="task-status" :class="'is-' + row.status"><i />{{ STATUS_LABELS[row.status as AdminImageGenerationStatus] }}</span></template
+            >
           </el-table-column>
           <el-table-column label="存储" width="145">
             <template #default="{ row }">
-              <div class="task-storage"><strong>{{ formatBytes(row.storedSize) }}</strong><small
-                  v-if="row.originalSize">原始 {{ formatBytes(row.originalSize) }}</small><small v-else>等待入库</small></div>
+              <div class="task-storage">
+                <strong>{{ formatBytes(row.storedSize) }}</strong
+                ><small v-if="row.originalSize">原始 {{ formatBytes(row.originalSize) }}</small
+                ><small v-else>等待入库</small>
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="耗时 / 创建时间" width="190">
             <template #default="{ row }">
-              <div class="task-time"><strong>{{ formatDuration(row) }}</strong><small>{{ formatDate(row.createdAt)
-                  }}</small></div>
+              <div class="task-time">
+                <strong>{{ formatDuration(row) }}</strong
+                ><small>{{ formatDate(row.createdAt) }}</small>
+              </div>
             </template>
           </el-table-column>
           <el-table-column width="60" align="right">
-            <template #default="{ row }"><button class="task-view" type="button" aria-label="查看任务详情"
-                @click.stop="openDetail(row)">
-                <View />
-              </button></template>
+            <template #default="{ row }"
+              ><button class="task-view" type="button" aria-label="查看任务详情" @click.stop="openDetail(row)">
+                <View /></button
+            ></template>
           </el-table-column>
           <template #empty>
             <div class="image-admin__empty">没有符合条件的生图任务</div>
@@ -203,27 +212,29 @@ onMounted(() => void load(1))
         </el-table>
       </div>
 
-      <el-pagination v-if="total > PAGE_SIZE" v-model:current-page="page" :page-size="PAGE_SIZE"
-        layout="prev, pager, next" :total="total" @current-change="load" />
+      <el-pagination v-if="total > PAGE_SIZE" v-model:current-page="page" :page-size="PAGE_SIZE" layout="prev, pager, next" :total="total" @current-change="load" />
     </section>
 
     <el-drawer v-model="detailVisible" class="image-task-drawer" size="min(42rem, 100%)" destroy-on-close>
       <template #header>
-        <div class="drawer-heading"><span>生图任务详情</span><small v-if="selected">TASK #{{ selected.id }}</small></div>
+        <div class="drawer-heading">
+          <span>生图任务详情</span><small v-if="selected">TASK #{{ selected.id }}</small>
+        </div>
       </template>
       <div v-loading="detailLoading" class="task-detail">
         <template v-if="selected">
           <div class="task-detail__preview">
-            <el-image v-if="selected.url" :src="selected.url" :preview-src-list="[selected.url]" fit="contain"
-              crossorigin="anonymous" preview-teleported />
+            <el-image v-if="selected.url" :src="selected.url" :preview-src-list="[selected.url]" fit="contain" crossorigin="anonymous" preview-teleported />
             <div v-else>
               <Warning v-if="selected.status === 'failed'" />
               <Picture v-else /><span>{{ STATUS_LABELS[selected.status] }}</span>
             </div>
           </div>
-          <div class="task-detail__headline"><span class="task-status" :class="'is-' + selected.status"><i />{{
-            STATUS_LABELS[selected.status] }}</span><strong>{{ originLabel(selected.origin) }}</strong><small>{{
-                formatDuration(selected) }}</small></div>
+          <div class="task-detail__headline">
+            <span class="task-status" :class="'is-' + selected.status"><i />{{ STATUS_LABELS[selected.status] }}</span
+            ><strong>{{ originLabel(selected.origin) }}</strong
+            ><small>{{ formatDuration(selected) }}</small>
+          </div>
           <section>
             <h3>提示词</h3>
             <p>{{ selected.prompt }}</p>
@@ -238,8 +249,9 @@ onMounted(() => void load(1))
           </section>
           <section v-if="selected.referenceImages.length">
             <h3>关联图片</h3>
-            <div class="reference-images"><a v-for="url in selected.referenceImages" :key="url" :href="url"
-                target="_blank" rel="noopener"><img :src="url" alt="关联图片" crossorigin="anonymous" /></a></div>
+            <div class="reference-images">
+              <a v-for="url in selected.referenceImages" :key="url" :href="url" target="_blank" rel="noopener"><img :src="url" alt="关联图片" crossorigin="anonymous" /></a>
+            </div>
           </section>
           <dl>
             <div>
@@ -298,23 +310,25 @@ onMounted(() => void load(1))
   display: grid;
   min-width: 0;
   max-width: 100%;
-  gap: 18px;
+  gap: 12px;
 }
 
 .image-admin__metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--brand-border);
+  border-radius: var(--brand-radius-sm);
   background: var(--admin-panel);
+  overflow: hidden;
 }
 
 .image-admin__metrics article {
   display: flex;
   min-width: 0;
-  min-height: 112px;
+  min-height: 82px;
   flex-direction: column;
   justify-content: center;
-  padding: 18px 20px;
+  padding: 12px 16px;
   border-right: 1px solid var(--brand-border);
 }
 
@@ -325,41 +339,44 @@ onMounted(() => void load(1))
 .image-admin__metrics span,
 .image-admin__metrics small {
   color: var(--brand-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .image-admin__metrics strong {
   margin: 4px 0;
   color: var(--brand-ink);
-  font-family: var(--brand-font-display);
-  font-size: clamp(24px, 3vw, 34px);
+  font-family: var(--brand-font-mono);
+  font-size: 21px;
+  font-weight: 600;
   line-height: 1.1;
 }
 
 .image-admin__metrics .is-accent {
-  box-shadow: inset 0 3px #42d3a2;
-  background: color-mix(in srgb, #42d3a2 6%, var(--admin-panel));
+  box-shadow: inset 0 2px var(--brand-blue);
+  background: color-mix(in srgb, var(--brand-blue) 4%, var(--admin-panel));
 }
 
 .image-admin__dataset {
   min-width: 0;
   max-width: 100%;
   border: 1px solid var(--brand-border);
+  border-radius: var(--brand-radius-sm);
   background: var(--admin-panel);
+  overflow: hidden;
 }
 
 .image-admin__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 84px;
+  min-height: 64px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--brand-border);
 }
 
 .image-admin__header p {
   margin: 0 0 3px;
-  color: #347d67;
+  color: var(--brand-blue);
   font-family: var(--brand-font-mono);
   font-size: 11px;
   font-weight: 700;
@@ -369,7 +386,7 @@ onMounted(() => void load(1))
   margin: 0;
   color: var(--brand-ink);
   font-family: var(--brand-font-display);
-  font-size: 21px;
+  font-size: 18px;
 }
 
 .image-admin__header button,
@@ -392,14 +409,34 @@ onMounted(() => void load(1))
 
 .image-admin__filters {
   display: grid;
-  grid-template-columns: minmax(210px, 1.5fr) repeat(4, minmax(120px, .7fr)) minmax(250px, 1fr) auto auto;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 9px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--brand-border);
 }
 
-.image-admin__filters>* {
+.image-admin__filters > * {
   min-width: 0;
+}
+
+.image-admin__filters > :nth-child(1) {
+  grid-column: span 4;
+}
+
+.image-admin__filters > :nth-child(2),
+.image-admin__filters > :nth-child(3),
+.image-admin__filters > :nth-child(4),
+.image-admin__filters > :nth-child(5) {
+  grid-column: span 2;
+}
+
+.image-admin__filters > :nth-child(6) {
+  grid-column: span 6;
+}
+
+.image-admin__filters > :nth-child(7),
+.image-admin__filters > :nth-child(8) {
+  grid-column: span 3;
 }
 
 .image-admin__filters :deep(.el-date-editor) {
@@ -423,6 +460,7 @@ onMounted(() => void load(1))
   background: var(--brand-ink);
   color: var(--brand-canvas);
   font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -442,12 +480,27 @@ onMounted(() => void load(1))
   min-width: 1040px;
   --el-table-border-color: var(--brand-border);
   --el-table-header-bg-color: color-mix(in srgb, var(--brand-ink) 4%, var(--admin-panel));
-  --el-table-row-hover-bg-color: color-mix(in srgb, #42d3a2 7%, var(--admin-panel));
+  --el-table-row-hover-bg-color: var(--app-surface-hover);
   background: transparent;
 }
 
 .image-admin__table :deep(.el-table__cell) {
   padding: 10px 0;
+}
+
+.image-admin__table :deep(th.el-table__cell) {
+  height: 38px;
+  color: var(--brand-muted);
+  font-size: 11px;
+}
+
+.image-admin__table :deep(.el-table__row td:first-child) {
+  box-shadow: inset 2px 0 transparent;
+  transition: box-shadow 160ms ease;
+}
+
+.image-admin__table :deep(.el-table__row:hover td:first-child) {
+  box-shadow: inset 2px 0 var(--brand-blue);
 }
 
 .task-thumb {
@@ -591,7 +644,7 @@ onMounted(() => void load(1))
   min-height: 280px;
 }
 
-.task-detail__preview>div {
+.task-detail__preview > div {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -621,8 +674,8 @@ onMounted(() => void load(1))
 
 .task-detail section {
   padding: 13px 15px;
-  border-left: 3px solid #42d3a2;
-  background: color-mix(in srgb, #42d3a2 5%, var(--admin-panel));
+  border-left: 2px solid var(--brand-blue);
+  background: color-mix(in srgb, var(--brand-blue) 5%, var(--admin-panel));
 }
 
 .task-detail section.is-error {
@@ -690,7 +743,7 @@ onMounted(() => void load(1))
 }
 
 .spinning {
-  animation: image-admin-spin .8s linear infinite;
+  animation: image-admin-spin 0.8s linear infinite;
 }
 
 @keyframes image-admin-spin {
@@ -708,12 +761,16 @@ onMounted(() => void load(1))
     border-right: 0;
   }
 
-  .image-admin__metrics article:nth-child(-n+2) {
+  .image-admin__metrics article:nth-child(-n + 2) {
     border-bottom: 1px solid var(--brand-border);
   }
 
   .image-admin__filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .image-admin__filters > * {
+    grid-column: span 1;
   }
 }
 
@@ -726,12 +783,16 @@ onMounted(() => void load(1))
     border-right: 0;
   }
 
-  .image-admin__metrics article:nth-child(-n+2) {
+  .image-admin__metrics article:nth-child(-n + 2) {
     border-bottom: 1px solid var(--brand-border);
   }
 
-  .image-admin__filters {
-    grid-template-columns: 1fr;
+  .image-admin .image-admin__filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .image-admin .image-admin__filters > * {
+    grid-column: 1 / -1;
   }
 
   .task-detail dl {

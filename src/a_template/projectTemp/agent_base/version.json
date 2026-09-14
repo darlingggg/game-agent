@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "ai构建器的基座(禁止用户修改基座)",
   "sourceDir": "projectTemp/agent_base",
   "versionsDir": "projectTemp/agent_base/versions",

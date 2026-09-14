@@ -391,8 +391,11 @@ onUnmounted(() => {
               <div class="project-card-visual" aria-hidden="true">
                 <span class="project-card-number">#{{ formatProjectId(project.id) }}</span>
                 <div class="project-card-orbit" />
-                <div class="project-card-icon">
-                  <SvgIcon :name="`project-${resolveProjectType(project.type)}`" />
+                <div class="project-card-icon-stack">
+                  <span class="project-card-icon-shadow" />
+                  <div class="project-card-icon">
+                    <SvgIcon :name="`project-${resolveProjectType(project.type)}`" />
+                  </div>
                 </div>
                 <span class="project-type-badge">{{ PROJECT_TYPE_LABEL[resolveProjectType(project.type)] }}</span>
               </div>
