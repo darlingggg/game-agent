@@ -42,11 +42,14 @@ function setFileInTree(tree: FileSystemTree, relativePath: string, contents: Pro
 /**
  * 构建 projectTemp 模板的 WebContainer 文件树
  */
-export async function buildProjectTempFileTree(): Promise<FileSystemTree> {
+export async function buildProjectTempFileTree(assertCurrent: () => void = () => {}): Promise<FileSystemTree> {
   const tree: FileSystemTree = {}
+  assertCurrent()
   const files = await fetchProjectTempFileList()
+  assertCurrent()
 
   for (const file of files) {
+    assertCurrent()
     const relativePath = normalizeRelativePath(file.relativePath)
     if (!relativePath || EXCLUDED_PATHS.some((item) => relativePath.includes(item))) {
       continue
@@ -54,8 +57,10 @@ export async function buildProjectTempFileTree(): Promise<FileSystemTree> {
 
     try {
       const contents = await fetchProjectTempFileContents(relativePath)
+      assertCurrent()
       setFileInTree(tree, relativePath, contents)
     } catch (error) {
+      assertCurrent()
       // 单个文件读取失败时跳过，避免阻断整个预览流程
       console.warn(`跳过无法读取的文件: ${relativePath}`, error)
     }
