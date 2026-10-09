@@ -3,7 +3,6 @@ import { ArrowLeft, Collection, Connection, Download, Folder, Link, Odometer, Pi
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import ThemeToggle from '@/components/ThemeToggle.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import AdminChart from './AdminChart.vue'
@@ -818,14 +817,17 @@ onBeforeUnmount(() => {
               <el-icon :class="{ spinning: loading || overviewLoading || assetsLoading }"><Refresh /></el-icon>
             </button>
           </el-tooltip>
-          <ThemeToggle />
           <UserMenu :nickname="currentUser?.nickname" :avatar="currentUser?.avatar" />
         </div>
       </header>
 
       <section class="admin-heading">
         <div>
+          <span class="admin-eyebrow">WORKSPACE / {{ activeView === 'overview' ? 'OVERVIEW' : activeView.toUpperCase() }}</span>
           <h1>{{ activeViewMeta.title }}</h1>
+          <p class="admin-heading-description">
+            {{ activeView === 'overview' ? '掌握平台运行状态，让每一次构建都清晰可见。' : activeView === 'models' ? '连接智能，掌控每一个模型。' : '集中管理平台资源与运行数据。' }}
+          </p>
         </div>
         <div class="admin-heading-actions">
           <div v-if="activeView === 'overview'" class="range-switch" aria-label="统计时间范围">
@@ -838,9 +840,38 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
+      <section v-if="activeView === 'overview'" class="lifetime-usage" aria-label="全站累计 Token 消耗" v-loading="overviewLoading">
+        <div class="lifetime-primary">
+          <span class="lifetime-label"
+            ><el-icon><Connection /></el-icon>累计总 Token
+            <AdminHelp label="累计 Token 统计口径" text="自首次记录至今的全站 AI 对话累计用量，包含已归档项目，不受近 7 天或近 30 天筛选影响。输入含上下文，输出含模型生成用量。"
+          /></span>
+          <strong>{{ overview ? overview.summary.ai.cumulativeTotalTokens.toLocaleString('zh-CN') : '—' }}</strong>
+          <small>从首次记录至今 · 全部项目</small>
+        </div>
+        <div class="lifetime-breakdown">
+          <div>
+            <span
+              ><el-icon><Download /></el-icon>累计输入</span
+            ><strong>{{ overview ? overview.summary.ai.cumulativePromptTokens.toLocaleString('zh-CN') : '—' }}</strong>
+          </div>
+          <div>
+            <span
+              ><el-icon><Link /></el-icon>累计输出</span
+            ><strong>{{ overview ? overview.summary.ai.cumulativeCompletionTokens.toLocaleString('zh-CN') : '—' }}</strong>
+          </div>
+          <div>
+            <span>近 {{ overviewDays }} 天消耗</span><strong>{{ overview ? overview.summary.ai.periodTotalTokens.toLocaleString('zh-CN') : '—' }}</strong>
+          </div>
+        </div>
+        <el-icon class="lifetime-decoration" aria-hidden="true"><Connection /></el-icon>
+      </section>
+
       <section v-if="activeView !== 'images' && activeView !== 'models'" class="admin-metrics" aria-label="平台统计">
         <article v-for="(metric, index) in viewMetrics" :key="metric.label" :class="{ 'admin-metric-accent': index === viewMetrics.length - 1 }">
-          <span>{{ metric.label }}</span
+          <span
+            ><el-icon><component :is="activeView === 'overview' ? [User, User, Folder, Connection][index] : [User, Folder, Collection, Connection][index]" /></el-icon
+            >{{ metric.label }}</span
           ><strong>{{ metric.value }}</strong>
         </article>
       </section>
