@@ -8,6 +8,8 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import UserMenu from '@/components/UserMenu.vue'
 import AdminChart from './AdminChart.vue'
 import AdminImageGenerations from './AdminImageGenerations.vue'
+import AdminModels from './AdminModels.vue'
+import AdminHelp from './AdminHelp.vue'
 import { createBarOption, createDonutOption, createLineOption } from './chartOptions'
 import {
   getAdminAssets,
@@ -30,7 +32,7 @@ import { getUserInfo, type UserInfoResponse, type UserRole } from '@/http/user'
 
 defineOptions({ name: 'AdminConsole' })
 
-type AdminView = 'overview' | 'users' | 'projects' | 'assets' | 'images'
+type AdminView = 'overview' | 'users' | 'projects' | 'assets' | 'images' | 'models'
 type ProjectStatusFilter = 'all' | 'active' | 'deleted'
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -51,6 +53,7 @@ const STORAGE_SYNC_POLL_INTERVAL = 1500
 const router = useRouter()
 const activeView = ref<AdminView>('overview')
 const imageGenerationsRef = ref<InstanceType<typeof AdminImageGenerations> | null>(null)
+const modelsRef = ref<InstanceType<typeof AdminModels> | null>(null)
 const loading = ref(false)
 const overviewLoading = ref(false)
 const storageSyncing = ref(false)
@@ -94,12 +97,13 @@ const originalEdit = reactive({ role: 'normal' as UserRole, qqOpenid: '', wxOpen
 let storageSyncPollTimer: number | null = null
 let manualStorageSyncPending = false
 
-const VIEW_META: Record<AdminView, { kicker: string; title: string; description: string }> = {
-  overview: { kicker: '运营', title: '运营总览', description: '查看全站用户、项目、AI 用量与 COS 存储状态。' },
-  users: { kicker: '用户', title: '用户与权限', description: '查看账户状态、第三方绑定和项目使用情况。' },
-  projects: { kicker: '项目', title: '全量项目', description: '查看所有用户的项目、运行状态与模型用量。' },
-  assets: { kicker: '素材', title: '上传素材', description: '查看各用户上传到 COS 的图片、文件与目录归属。' },
-  images: { kicker: 'AI 生图', title: '生图任务', description: '查看主 AI 工具与图像工作台的生成进度、失败原因和 COS 入库情况。' },
+const VIEW_META: Record<AdminView, { kicker: string; title: string }> = {
+  overview: { kicker: '运营', title: '运营总览' },
+  users: { kicker: '用户', title: '用户与权限' },
+  projects: { kicker: '项目', title: '全量项目' },
+  assets: { kicker: '素材', title: '上传素材' },
+  models: { kicker: '模型', title: '模型管理' },
+  images: { kicker: 'AI 生图', title: '生图任务' },
 }
 
 const activeViewMeta = computed(() => VIEW_META[activeView.value])
@@ -341,36 +345,36 @@ const viewMetrics = computed(() => {
   if (activeView.value === 'overview') {
     const data = overview.value?.summary
     return [
-      { label: '注册用户', value: formatNumber(toNumber(data?.users.total)), hint: `期间新增 ${formatNumber(toNumber(data?.users.newCount))}` },
-      { label: '活跃用户', value: formatNumber(toNumber(data?.users.activeCount)), hint: `近 ${overviewDays.value} 天发生核心操作` },
-      { label: '运行项目', value: formatNumber(toNumber(data?.projects.activeCount)), hint: `全部 ${formatNumber(toNumber(data?.projects.total))} 个项目` },
-      { label: '期间 Token', value: formatNumber(toNumber(data?.ai.periodTotalTokens)), hint: `累计 ${formatNumber(toNumber(data?.ai.cumulativeTotalTokens))}` },
+      { label: '注册用户', value: formatNumber(toNumber(data?.users.total)) },
+      { label: '活跃用户', value: formatNumber(toNumber(data?.users.activeCount)) },
+      { label: '运行项目', value: formatNumber(toNumber(data?.projects.activeCount)) },
+      { label: '期间 Token', value: formatNumber(toNumber(data?.ai.periodTotalTokens)) },
     ]
   }
 
   if (activeView.value === 'users') {
     return [
-      { label: '注册用户', value: formatNumber(userTotal.value), hint: '数据库总数' },
-      { label: '本页管理账号', value: formatNumber(users.value.filter((user) => ['super', 'admin'].includes(user.role)).length), hint: '超级管理员 / 管理员' },
-      { label: '本页已绑定', value: formatNumber(users.value.filter((user) => user.qqOpenid || user.wxOpenid).length), hint: 'QQ 或微信' },
-      { label: '本页项目', value: formatNumber(users.value.reduce((total, user) => total + toNumber(user.projectCount), 0)), hint: '包含已归档' },
+      { label: '注册用户', value: formatNumber(userTotal.value) },
+      { label: '本页管理账号', value: formatNumber(users.value.filter((user) => ['super', 'admin'].includes(user.role)).length) },
+      { label: '本页已绑定', value: formatNumber(users.value.filter((user) => user.qqOpenid || user.wxOpenid).length) },
+      { label: '本页项目', value: formatNumber(users.value.reduce((total, user) => total + toNumber(user.projectCount), 0)) },
     ]
   }
 
   if (activeView.value === 'assets') {
     return [
-      { label: '本页素材', value: formatNumber(assets.value.length), hint: `第 ${assetPage.value} 页` },
-      { label: '图片文件', value: formatNumber(assetStorageStats.value.imageCount), hint: '可直接预览' },
-      { label: '本页占用', value: formatBytes(assetStorageStats.value.totalBytes), hint: '当前分页容量' },
-      { label: '未匹配用户', value: formatNumber(assets.value.filter((asset) => !asset.userId).length), hint: '历史目录对象' },
+      { label: '本页素材', value: formatNumber(assets.value.length) },
+      { label: '图片文件', value: formatNumber(assetStorageStats.value.imageCount) },
+      { label: '本页占用', value: formatBytes(assetStorageStats.value.totalBytes) },
+      { label: '未匹配用户', value: formatNumber(assets.value.filter((asset) => !asset.userId).length) },
     ]
   }
 
   return [
-    { label: '全部项目', value: formatNumber(summary.value.projects), hint: '包含已归档' },
-    { label: '本页运行项目', value: formatNumber(summary.value.activeProjects), hint: '当前分页' },
-    { label: '本页提示词', value: formatNumber(tokenStats.value.prompt), hint: 'Prompt Token' },
-    { label: '本页 Token', value: formatNumber(summary.value.tokens), hint: '当前分页' },
+    { label: '全部项目', value: formatNumber(summary.value.projects) },
+    { label: '本页运行项目', value: formatNumber(summary.value.activeProjects) },
+    { label: '本页提示词', value: formatNumber(tokenStats.value.prompt) },
+    { label: '本页 Token', value: formatNumber(summary.value.tokens) },
   ]
 })
 
@@ -580,6 +584,7 @@ async function refreshCurrentView() {
   if (activeView.value === 'users') await loadUsers()
   if (activeView.value === 'projects') await loadProjects()
   if (activeView.value === 'assets') await loadAssets()
+  if (activeView.value === 'models') await modelsRef.value?.refresh()
   if (activeView.value === 'images') await imageGenerationsRef.value?.refresh()
 }
 
@@ -788,6 +793,9 @@ onBeforeUnmount(() => {
         <button :class="{ active: activeView === 'images' }" type="button" @click="selectView('images')">
           <el-icon><Picture /></el-icon><span>AI 生图</span><b>AI</b>
         </button>
+        <button :class="{ active: activeView === 'models' }" type="button" aria-label="模型管理" @click="selectView('models')">
+          <el-icon><Connection /></el-icon><span>模型管理</span><b>AI</b>
+        </button>
       </nav>
 
       <div class="admin-sidebar-foot">
@@ -818,7 +826,6 @@ onBeforeUnmount(() => {
         <div>
           <p class="admin-kicker"><DataAnalysis /> 管理控制台 / {{ activeViewMeta.kicker }}</p>
           <h1>{{ activeViewMeta.title }}</h1>
-          <p>{{ activeViewMeta.description }}</p>
         </div>
         <div class="admin-heading-actions">
           <div v-if="activeView === 'overview'" class="range-switch" aria-label="统计时间范围">
@@ -831,16 +838,15 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section v-if="activeView !== 'images'" class="admin-metrics" aria-label="平台统计">
+      <section v-if="activeView !== 'images' && activeView !== 'models'" class="admin-metrics" aria-label="平台统计">
         <article v-for="(metric, index) in viewMetrics" :key="metric.label" :class="{ 'admin-metric-accent': index === viewMetrics.length - 1 }">
           <span>{{ metric.label }}</span
-          ><strong>{{ metric.value }}</strong
-          ><small>{{ metric.hint }}</small>
+          ><strong>{{ metric.value }}</strong>
         </article>
       </section>
 
       <section
-        v-if="activeView !== 'images'"
+        v-if="activeView !== 'images' && activeView !== 'models'"
         class="admin-insights"
         :aria-label="activeView === 'overview' ? '全站运营分析' : activeView === 'users' ? '当前用户分页分析' : activeView === 'projects' ? '当前项目分页分析' : '当前素材分页分析'"
       >
@@ -866,7 +872,7 @@ onBeforeUnmount(() => {
 
         <div v-if="activeView === 'overview'" v-loading="overviewLoading" class="insights-grid overview-insights-grid">
           <article class="overview-line-chart">
-            <div class="insight-title"><span>增长轨迹</span><small>新增用户 / 项目</small></div>
+            <div class="insight-title"><span>增长轨迹</span></div>
             <AdminChart class="admin-chart admin-chart--overview" :option="overviewGrowthChartOption" label="用户和项目新增趋势，可悬浮查看每日数据并点击图例筛选" />
           </article>
 
@@ -915,52 +921,52 @@ onBeforeUnmount(() => {
 
         <div v-else-if="activeView === 'users'" class="insights-grid">
           <article class="type-chart role-distribution-chart">
-            <div class="insight-title"><span>权限分布</span><small>四种权限</small></div>
+            <div class="insight-title"><span>权限分布</span></div>
             <AdminChart class="admin-chart" :option="userRoleChartOption" label="当前分页用户权限分布，可悬浮查看数量" />
           </article>
 
           <article class="binding-chart">
-            <div class="insight-title"><span>账号绑定</span><small>当前分页覆盖率</small></div>
+            <div class="insight-title"><span>账号绑定</span></div>
             <AdminChart class="admin-chart" :option="userBindingChartOption" label="当前分页账号绑定情况，可悬浮查看数量" />
           </article>
 
           <article class="status-chart">
-            <div class="insight-title"><span>用户项目</span><small>运行 / 归档</small></div>
+            <div class="insight-title"><span>用户项目</span></div>
             <AdminChart class="admin-chart admin-chart--donut" :option="userProjectChartOption" label="用户项目状态，可悬浮查看并点击图例筛选" />
           </article>
         </div>
 
         <div v-else-if="activeView === 'projects'" class="insights-grid">
           <article class="type-chart">
-            <div class="insight-title"><span>项目构成</span><small>按类型</small></div>
+            <div class="insight-title"><span>项目构成</span></div>
             <AdminChart class="admin-chart" :option="projectTypeChartOption" label="当前分页项目类型分布，可悬浮查看数量" />
           </article>
 
           <article class="status-chart">
-            <div class="insight-title"><span>项目状态</span><small>运行 / 归档</small></div>
+            <div class="insight-title"><span>项目状态</span></div>
             <AdminChart class="admin-chart admin-chart--donut" :option="projectStatusChartOption" label="当前分页项目状态，可悬浮查看并点击图例筛选" />
           </article>
 
           <article class="token-chart">
-            <div class="insight-title"><span>Token 构成</span><small>本页用量</small></div>
+            <div class="insight-title"><span>Token 构成</span></div>
             <AdminChart class="admin-chart admin-chart--donut" :option="projectTokenChartOption" label="当前分页 Token 构成，可悬浮查看并点击图例筛选" />
           </article>
         </div>
 
         <div v-else class="insights-grid">
           <article class="type-chart asset-kind-chart">
-            <div class="insight-title"><span>文件格式</span><small>本页 TOP 4</small></div>
+            <div class="insight-title"><span>文件格式</span></div>
             <AdminChart v-if="assetKindStats.length" class="admin-chart" :option="assetKindChartOption" label="当前分页文件格式分布，可悬浮查看数量" />
             <div v-else class="insight-empty">进入素材页后加载统计</div>
           </article>
 
           <article class="asset-storage-chart">
-            <div class="insight-title"><span>容量构成</span><small>图片 / 其他</small></div>
+            <div class="insight-title"><span>容量构成</span></div>
             <AdminChart class="admin-chart admin-chart--donut" :option="assetStorageChartOption" label="当前分页素材容量构成，可悬浮查看并点击图例筛选" />
           </article>
 
           <article class="asset-trend-chart">
-            <div class="insight-title"><span>最近上传</span><small>截至本页最新日期</small></div>
+            <div class="insight-title"><span>最近上传</span></div>
             <AdminChart v-if="assetUploadTrend.days.length" class="admin-chart" :option="assetTrendChartOption" label="最近七日素材上传趋势，可悬浮查看每日数量" />
             <div v-else class="insight-empty">暂无上传时间数据</div>
           </article>
@@ -970,14 +976,12 @@ onBeforeUnmount(() => {
       <section v-if="activeView === 'overview'" class="overview-rankings" aria-label="全站排行榜">
         <header class="overview-section-heading">
           <div>
-            <p>全站排行</p>
-            <h2>资源使用 Top 10</h2>
+            <h2>资源使用 Top 10 <AdminHelp label="排行统计说明" text="Token 排名使用全部历史累计用量，包含已删除项目的历史 Token。存储排名使用当前占用量。" /></h2>
           </div>
-          <small>排名包含已删除项目的累计 Token</small>
         </header>
         <div class="ranking-grid">
           <article>
-            <div class="ranking-title"><span>用户 Token</span><small>累计用量</small></div>
+            <div class="ranking-title"><span>用户累计 Token</span></div>
             <button v-for="(item, index) in overview?.rankings.usersByTokens" :key="item.userId" type="button" class="ranking-row" @click="openUserById(item.userId)">
               <b>{{ String(index + 1).padStart(2, '0') }}</b
               ><UserAvatar :avatar="item.avatar" /><span
@@ -988,7 +992,7 @@ onBeforeUnmount(() => {
             <div v-if="!overview?.rankings.usersByTokens.length" class="ranking-empty">暂无 AI 用量</div>
           </article>
           <article>
-            <div class="ranking-title"><span>项目 Token</span><small>累计用量</small></div>
+            <div class="ranking-title"><span>项目累计 Token</span></div>
             <button v-for="(item, index) in overview?.rankings.projectsByTokens" :key="item.projectId" type="button" class="ranking-row" @click="openRankedProject(item.projectId)">
               <b>{{ String(index + 1).padStart(2, '0') }}</b
               ><span class="ranking-project-mark">P</span
@@ -1000,7 +1004,7 @@ onBeforeUnmount(() => {
             <div v-if="!overview?.rankings.projectsByTokens.length" class="ranking-empty">暂无项目用量</div>
           </article>
           <article>
-            <div class="ranking-title"><span>用户存储</span><small>当前容量</small></div>
+            <div class="ranking-title"><span>用户当前存储</span></div>
             <button v-for="(item, index) in overview?.rankings.usersByStorage" :key="item.userId" type="button" class="ranking-row" @click="openUserById(item.userId)">
               <b>{{ String(index + 1).padStart(2, '0') }}</b
               ><UserAvatar :avatar="item.avatar" /><span
@@ -1013,12 +1017,12 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
+      <AdminModels v-if="activeView === 'models'" ref="modelsRef" />
       <AdminImageGenerations v-if="activeView === 'images'" ref="imageGenerationsRef" />
 
       <section v-else-if="activeView === 'users'" class="admin-dataset" aria-labelledby="users-title">
         <div class="dataset-header">
           <div>
-            <p>账户目录</p>
             <h2 id="users-title">全部用户</h2>
           </div>
           <strong>{{ userTotal }} <small>个账户</small></strong>
@@ -1084,7 +1088,6 @@ onBeforeUnmount(() => {
       <section v-else-if="activeView === 'projects'" class="admin-dataset" aria-labelledby="projects-title">
         <div class="dataset-header">
           <div>
-            <p>项目目录</p>
             <h2 id="projects-title">{{ projectUserFilter ? `${projectUserFilter.label} 的项目` : '全部项目' }}</h2>
           </div>
           <strong>{{ projectTotal }} <small>个项目</small></strong>
@@ -1168,7 +1171,6 @@ onBeforeUnmount(() => {
       <section v-else-if="activeView === 'assets'" class="admin-dataset" aria-labelledby="assets-title">
         <div class="dataset-header">
           <div>
-            <p>COS / UPLOADS</p>
             <h2 id="assets-title">{{ assetUserFilter ? `${assetUserFilter.label} 的素材` : '全部上传素材' }}</h2>
           </div>
           <strong>{{ assets.length }} <small>项 / 本页</small></strong>
@@ -1198,11 +1200,9 @@ onBeforeUnmount(() => {
               <span v-else
                 ><Picture /><small>{{ asset.isDirectory ? 'DIR' : asset.extension || 'FILE' }}</small></span
               >
-              <span
-                v-if="isImageAsset(asset)"
-                class="asset-source-tag"
-                :class="asset.source === 'ai_generated' ? 'is-ai' : 'is-upload'"
-              >{{ asset.source === 'ai_generated' ? 'AI 生成' : '用户上传' }}</span>
+              <span v-if="isImageAsset(asset)" class="asset-source-tag" :class="asset.source === 'ai_generated' ? 'is-ai' : 'is-upload'">{{
+                asset.source === 'ai_generated' ? 'AI 生成' : '用户上传'
+              }}</span>
               <a v-if="asset.url" :href="asset.url" target="_blank" rel="noopener" aria-label="打开素材"
                 ><el-icon><Download /></el-icon
               ></a>
@@ -1288,7 +1288,7 @@ onBeforeUnmount(() => {
 
           <section class="user-detail-section user-assets-action">
             <div>
-              <span><Picture />上传素材</span><small>按固定存储目录查看该用户的 COS 文件</small>
+              <span><Picture />上传素材</span>
             </div>
             <el-button @click="viewUserAssets(selectedUser)">查看素材</el-button>
           </section>

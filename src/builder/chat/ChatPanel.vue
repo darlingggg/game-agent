@@ -7,20 +7,17 @@ import { getConversationMessages, type sessionItem } from '@/http/session'
 import { useProjectStore } from '@/stores/project'
 import { PENDING_CONVERSATION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
+import ChatModelPicker from './ChatModelPicker.vue'
 import ConversationRail from './ConversationRail.vue'
 import type { ChatMessage } from './types'
 import { chatWithAI, reconnectChatStream, type ChatSseEvent } from '@/http/chat'
+import { getAvailableModels, type AiModel } from '@/http/models'
 import { uploadImageToCos } from '@/http/cos'
 import { getUserInfo } from '@/http/user'
 import { useLogContext } from '@/builder/log/logContext'
 import { useTokenUsageStore } from '@/stores/tokenUsage'
 import { cancelChatMessage } from '@/http/tokenUsage'
-import {
-  getImageGenerationTasks,
-  reconnectImageGenerationTask,
-  type ImageGenerationSseEvent,
-  type ImageGenerationTask,
-} from '@/http/imageGeneration'
+import { getImageGenerationTasks, reconnectImageGenerationTask, type ImageGenerationSseEvent, type ImageGenerationTask } from '@/http/imageGeneration'
 
 defineOptions({
   name: 'ChatPanel',
@@ -40,6 +37,28 @@ const projectStore = useProjectStore()
 const sessionContext = useSessionContext()
 const logContext = useLogContext()
 const tokenUsage = useTokenUsageStore()
+const availableModels = ref<AiModel[]>([])
+const modelsLoading = ref(true)
+const selectedModel = ref('')
+const selectedEffort = ref<string | null>(null)
+const currentModel = computed(() => availableModels.value.find((model) => model.modelKey === selectedModel.value))
+const defaultModelKey = () => availableModels.value.find((model) => model.isDefault)?.modelKey || availableModels.value[0]?.modelKey || ''
+async function loadModels() {
+  modelsLoading.value = true
+  try {
+    availableModels.value = await getAvailableModels()
+    if (!selectedModel.value) selectedModel.value = defaultModelKey()
+  } catch {
+    /* 请求层统一提示错误。 */
+  } finally {
+    modelsLoading.value = false
+  }
+}
+
+onMounted(() => {
+  void loadModels()
+})
+
 const contextPopoverVisible = ref(false)
 const activeToolLabel = ref('')
 const activeToolCompleted = ref(false)
@@ -382,9 +401,7 @@ async function loadOlderMessages() {
       beforeId: messagesNextCursor.value,
       limit: 50,
     })
-    const olderMessages = result.list
-      .map(mapSessionItemToMessage)
-      .filter((item): item is ChatMessage => !!item)
+    const olderMessages = result.list.map(mapSessionItemToMessage).filter((item): item is ChatMessage => !!item)
     attachImageTasks(olderMessages)
     const existingIds = new Set(messages.value.map((item) => item.id))
     messages.value = [...olderMessages.filter((item) => !existingIds.has(item.id)), ...messages.value]
@@ -417,6 +434,8 @@ async function loadSessionMessages() {
     clearPendingImages()
     sessionTitle.value = ''
     backendSessionTitle.value = ''
+    selectedModel.value = defaultModelKey()
+    selectedEffort.value = null
     if (currentProjectId) {
       syncLogSession(currentProjectId, '')
     }
@@ -435,6 +454,8 @@ async function loadSessionMessages() {
     clearPendingImages()
     sessionTitle.value = ''
     backendSessionTitle.value = ''
+    selectedModel.value = defaultModelKey()
+    selectedEffort.value = null
     if (currentProjectId) {
       syncLogSession(currentProjectId, '')
     }
@@ -449,6 +470,8 @@ async function loadSessionMessages() {
   messagesLoading.value = true
   try {
     const result = await getConversationMessages(conversationId, { limit: 50 })
+    selectedModel.value = result.conversation.model || defaultModelKey()
+    selectedEffort.value = result.conversation.reasoningEffort || null
     sessionTitle.value = result.conversation.title.trim()
     backendSessionTitle.value = result.conversation.title.trim()
     const sessionMessages = result.list
@@ -479,11 +502,7 @@ async function loadSessionMessages() {
 
 /** 切换会话时加载历史消息 */
 watch(
-  () => [
-    sessionContext.activeConversationId.value,
-    sessionContext.isPendingNewSession.value,
-    sessionContext.chatResetSignal.value,
-  ] as const,
+  () => [sessionContext.activeConversationId.value, sessionContext.isPendingNewSession.value, sessionContext.chatResetSignal.value] as const,
   ([nextConversationId], oldValue) => {
     if (skipNextSessionLoad) {
       skipNextSessionLoad = false
@@ -854,8 +873,7 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
   }
 
   // 待创建，或无选中会话时直接首聊：绑定返回的会话 id，避免后续消息反复新建
-  const hasNoConversation = !sessionContext.activeConversationId.value
-    || sessionContext.activeConversationId.value === PENDING_CONVERSATION_ID
+  const hasNoConversation = !sessionContext.activeConversationId.value || sessionContext.activeConversationId.value === PENDING_CONVERSATION_ID
   if (Number.isFinite(conversationId) && (sessionContext.isPendingNewSession.value || hasNoConversation)) {
     skipNextSessionLoad = true
     sessionContext.isPendingNewSession.value = false
@@ -888,8 +906,7 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
 
   if (event.event === 'image_task' && event.data && typeof event.data === 'object') {
     const task = event.data as unknown as ImageGenerationTask
-    const assistantMessage = findMessageById(assistantId)
-      ?? messages.value.find((item) => item.sessionId === task.assistantSessionId)
+    const assistantMessage = findMessageById(assistantId) ?? messages.value.find((item) => item.sessionId === task.assistantSessionId)
     if (assistantMessage) {
       mergeImageTask(assistantMessage, task)
       reconnectAssistantImageTask(assistantMessage, task)
@@ -1063,6 +1080,11 @@ async function handleSend() {
 
   if (!content || isStreaming.value || hasUploadingImage.value) return
 
+  if (!currentModel.value) {
+    ElMessage.warning(modelsLoading.value ? '正在加载模型列表' : '请选择可用模型，或联系管理员同步模型')
+    return
+  }
+
   const isPending = sessionContext.isPendingNewSession.value
   const activeConversationId = sessionContext.activeConversationId.value
   const hasNoConversation = !activeConversationId || activeConversationId === PENDING_CONVERSATION_ID
@@ -1118,6 +1140,8 @@ async function handleSend() {
 
   try {
     await chatWithAI({
+      model: selectedModel.value,
+      reasoningEffort: selectedEffort.value,
       prompt: content,
       projectId: currentProjectId,
       conversationId: needsNewBackendSession ? undefined : activeConversationId,
@@ -1192,8 +1216,7 @@ function handleActionClick() {
   <div class="chat-panel">
     <div class="chat-panel-conversation">
       <ConversationRail :messages="messages" :active-message-id="activeRailMessageId" @select="scrollToRailMessage" />
-      <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages"
-        @scroll.passive="updateActiveRailMessage">
+      <div ref="messagesRef" v-loading="messagesLoading" class="chat-panel-messages" @scroll.passive="updateActiveRailMessage">
         <div v-if="!messagesLoading && messages.length === 0" class="chat-panel-empty">开始与 AI 对话吧</div>
         <div v-else class="chat-message-virtual-list" :style="{ height: `${virtualTotalSize}px` }">
           <div v-if="messagesHasMore" class="chat-history-more">
@@ -1201,13 +1224,21 @@ function handleActionClick() {
               {{ loadingOlderMessages ? '正在加载...' : '加载更早消息' }}
             </button>
           </div>
-          <div v-for="virtualItem in virtualItems" :key="String(virtualItem.key)" :ref="measureVirtualItem"
-            :data-index="virtualItem.index" class="chat-message-virtual-item" :style="virtualItemStyle(virtualItem)">
-            <div v-if="messages[virtualItem.index]" class="chat-message-anchor"
+          <div
+            v-for="virtualItem in virtualItems"
+            :key="String(virtualItem.key)"
+            :ref="measureVirtualItem"
+            :data-index="virtualItem.index"
+            class="chat-message-virtual-item"
+            :style="virtualItemStyle(virtualItem)"
+          >
+            <div
+              v-if="messages[virtualItem.index]"
+              class="chat-message-anchor"
               :data-chat-message-id="messages[virtualItem.index]!.id"
-              :data-chat-message-role="messages[virtualItem.index]!.role">
-              <ChatMessageItem :message="messages[virtualItem.index]!" :user-avatar="userAvatar"
-                @reply-collapse-change="setReplyCollapsed(messages[virtualItem.index]!, $event)" />
+              :data-chat-message-role="messages[virtualItem.index]!.role"
+            >
+              <ChatMessageItem :message="messages[virtualItem.index]!" :user-avatar="userAvatar" @reply-collapse-change="setReplyCollapsed(messages[virtualItem.index]!, $event)" />
             </div>
             <div v-else-if="activeToolLabel" class="chat-tool-status-anchor">
               <div class="chat-tool-status" :class="{ 'chat-tool-status--done': activeToolCompleted }">
@@ -1223,81 +1254,94 @@ function handleActionClick() {
     <div class="chat-panel-input-area">
       <div class="chat-panel-input-shell">
         <div v-if="pendingImages.length > 0" class="chat-panel-image-preview">
-          <div v-for="(image, index) in pendingImages" :key="image.id" class="chat-panel-image-preview-item"
-            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }">
-            <img :src="image.uploading ? image.blobUrl : image.cosUrl"
-              :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
+          <div
+            v-for="(image, index) in pendingImages"
+            :key="image.id"
+            class="chat-panel-image-preview-item"
+            :class="{ 'chat-panel-image-preview-item--uploading': image.uploading }"
+          >
+            <img :src="image.uploading ? image.blobUrl : image.cosUrl" :crossorigin="image.uploading ? undefined : 'anonymous'" alt="待发送图片" />
             <div v-if="image.uploading" class="chat-panel-image-loading">
               <span class="chat-panel-image-loading-spinner" aria-label="上传中" />
             </div>
-            <button type="button" class="chat-panel-image-remove" title="移除图片"
-              :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
+            <button type="button" class="chat-panel-image-remove" title="移除图片" :disabled="isStreaming || image.uploading" @click="removePendingImage(index)">×</button>
           </div>
         </div>
-        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple
-          class="chat-panel-file-input" @change="handleImageSelect" />
+        <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple class="chat-panel-file-input" @change="handleImageSelect" />
         <div class="chat-panel-input-body">
-          <textarea ref="inputRef" v-model="inputText" class="chat-panel-input"
-            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送" rows="5" :disabled="isStreaming"
-            @keydown="handleInputKeydown" @paste="handleInputPaste" />
+          <textarea
+            ref="inputRef"
+            v-model="inputText"
+            class="chat-panel-input"
+            placeholder="输入消息，可粘贴图片，Enter 换行，Ctrl+Enter 发送"
+            rows="5"
+            :disabled="isStreaming"
+            @keydown="handleInputKeydown"
+            @paste="handleInputPaste"
+          />
           <div class="chat-panel-input-footer">
-            <button type="button" class="chat-panel-upload-btn"
-              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }" title="上传图片（可多选）" :disabled="isStreaming"
-              @click="handleUploadClick">
+            <button
+              type="button"
+              class="chat-panel-upload-btn"
+              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
+              title="上传图片（可多选）"
+              :disabled="isStreaming"
+              @click="handleUploadClick"
+            >
               <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
               <SvgIcon v-else name="upload-image" />
             </button>
             <button type="button" class="chat-context-meter" title="查看当前会话上下文用量" @click="contextDialogVisible = true">
-              <span class="chat-context-meter-ring"
-                :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
+              <span class="chat-context-meter-ring" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
               <div v-if="contextPopoverVisible" class="context-usage-popover">
-                <div class="context-usage-popover-head"><b>Context Usage</b><button type="button"
-                    @click="contextPopoverVisible = false">×</button></div>
+                <div class="context-usage-popover-head"><b>Context Usage</b><button type="button" @click="contextPopoverVisible = false">×</button></div>
                 <div class="context-usage-popover-summary">
-                  <strong>{{ Math.round(tokenUsage.contextRatio * 100) }}% Full</strong><span>~{{
-                    tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }}
-                    Tokens</span>
+                  <strong>{{ Math.round(tokenUsage.contextRatio * 100) }}% Full</strong
+                  ><span>~{{ tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }} Tokens</span>
                 </div>
-                <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" />
+                <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" /></div>
+                <div class="context-usage-popover-row">
+                  <span><i class="usage-dot usage-dot--blue" />Conversation</span><b>{{ tokenUsage.contextTokens.toLocaleString() }}</b>
                 </div>
                 <div class="context-usage-popover-row">
-                  <span><i class="usage-dot usage-dot--blue" />Conversation</span><b>{{
-                    tokenUsage.contextTokens.toLocaleString() }}</b>
-                </div>
-                <div class="context-usage-popover-row">
-                  <span><i class="usage-dot usage-dot--violet" />Session total</span><b>{{
-                    (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
+                  <span><i class="usage-dot usage-dot--violet" />Session total</span><b>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
                 </div>
               </div>
             </button>
             <div class="chat-panel-submit-actions">
-              <button type="button" class="chat-context-trigger" title="Context usage"
-                @click="contextPopoverVisible = !contextPopoverVisible">
-                <span class="chat-context-meter-ring"
-                  :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
+              <button type="button" class="chat-context-trigger" title="Context usage" @click="contextPopoverVisible = !contextPopoverVisible">
+                <span class="chat-context-meter-ring" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }" />
                 <div v-if="contextPopoverVisible" class="context-usage-popover">
-                  <div class="context-usage-popover-head"><b>上下文用量</b><button type="button"
-                      @click.stop="contextPopoverVisible = false">x</button></div>
+                  <div class="context-usage-popover-head"><b>上下文用量</b><button type="button" @click.stop="contextPopoverVisible = false">x</button></div>
                   <div class="context-usage-popover-summary">
-                    <strong>已使用 {{ Math.round(tokenUsage.contextRatio * 100) }}%</strong><span>约 {{
-                      tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }}
-                      Token</span>
+                    <strong>已使用 {{ Math.round(tokenUsage.contextRatio * 100) }}%</strong
+                    ><span>约 {{ tokenUsage.contextTokens.toLocaleString() }} / {{ tokenUsage.contextLimit.toLocaleString() }} Token</span>
                   </div>
-                  <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" />
+                  <div class="context-usage-popover-bar"><i :style="{ width: `${tokenUsage.contextRatio * 100}%` }" /></div>
+                  <div class="context-usage-popover-row">
+                    <span><i class="usage-dot usage-dot--blue" />当前上下文</span><b>{{ tokenUsage.contextTokens.toLocaleString() }}</b>
                   </div>
                   <div class="context-usage-popover-row">
-                    <span><i class="usage-dot usage-dot--blue" />当前上下文</span><b>{{
-                      tokenUsage.contextTokens.toLocaleString() }}</b>
-                  </div>
-                  <div class="context-usage-popover-row">
-                    <span><i class="usage-dot usage-dot--violet" />会话累计</span><b>{{
-                      (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
+                    <span><i class="usage-dot usage-dot--violet" />会话累计</span><b>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</b>
                   </div>
                 </div>
               </button>
-              <button type="button" class="chat-panel-action-btn"
-                :class="{ 'chat-panel-action-btn--stop': isStreaming }" :title="isStreaming ? '终止' : '发送'"
-                :disabled="hasUploadingImage" @click="handleActionClick">
+              <ChatModelPicker
+                v-model:model="selectedModel"
+                v-model:effort="selectedEffort"
+                :models="availableModels"
+                :disabled="isStreaming"
+                :loading="modelsLoading"
+                @reload="loadModels"
+              />
+              <button
+                type="button"
+                class="chat-panel-action-btn"
+                :class="{ 'chat-panel-action-btn--stop': isStreaming }"
+                :title="isStreaming ? '终止' : '发送'"
+                :disabled="hasUploadingImage"
+                @click="handleActionClick"
+              >
                 <SvgIcon :name="isStreaming ? 'stop' : 'send'" />
               </button>
             </div>
@@ -1308,18 +1352,18 @@ function handleActionClick() {
     <el-dialog v-model="contextDialogVisible" title="会话 Token 用量" width="min(420px, calc(100vw - 32px))" append-to-body>
       <div class="context-usage-dialog">
         <div class="context-usage-hero">
-          <span class="chat-context-meter-ring chat-context-meter-ring--large"
-            :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }"><strong>{{
-              Math.round(tokenUsage.contextRatio * 100) }}%</strong></span>
+          <span class="chat-context-meter-ring chat-context-meter-ring--large" :style="{ '--context-progress': `${tokenUsage.contextRatio * 360}deg` }"
+            ><strong>{{ Math.round(tokenUsage.contextRatio * 100) }}%</strong></span
+          >
           <div>
-            <b>{{ tokenUsage.isCompressing ? '正在压缩上下文' : '当前上下文占用' }}</b><small>{{ tokenUsage.usageEstimated ?
-              '本轮含估算Token' : '基于后端统计' }}</small>
+            <b>{{ tokenUsage.isCompressing ? '正在压缩上下文' : '当前上下文占用' }}</b
+            ><small>{{ tokenUsage.usageEstimated ? '本轮含估算Token' : '基于后端统计' }}</small>
           </div>
         </div>
         <div class="context-usage-grid">
-          <span>当前上下文</span><strong>{{ tokenUsage.contextTokens.toLocaleString() }}</strong><span>上下文上限</span><strong>{{
-            tokenUsage.contextLimit.toLocaleString() }}</strong><span>会话累计消耗</span><strong>{{
-              (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</strong>
+          <span>当前上下文</span><strong>{{ tokenUsage.contextTokens.toLocaleString() }}</strong
+          ><span>上下文上限</span><strong>{{ tokenUsage.contextLimit.toLocaleString() }}</strong
+          ><span>会话累计消耗</span><strong>{{ (tokenUsage.conversation?.totalTokens ?? 0).toLocaleString() }}</strong>
         </div>
       </div>
     </el-dialog>
@@ -1740,6 +1784,7 @@ function handleActionClick() {
 }
 
 .chat-panel-submit-actions {
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;

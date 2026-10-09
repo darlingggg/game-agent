@@ -107,26 +107,22 @@ onMounted(() => void load(1))
   <div class="image-admin">
     <section class="image-admin__metrics" aria-label="AI 生图统计">
       <article>
-        <span>任务总数</span><strong>{{ summary.total }}</strong
-        ><small>当前筛选范围</small>
+        <span>任务总数</span><strong>{{ summary.total }}</strong>
       </article>
       <article>
-        <span>处理中</span><strong>{{ summary.processing }}</strong
-        ><small>生成与 COS 入库</small>
+        <span>处理中</span><strong>{{ summary.processing }}</strong>
       </article>
       <article>
         <span>成功率</span><strong>{{ successRate }}%</strong><small>{{ summary.succeeded }} 成功 / {{ summary.failed }} 失败</small>
       </article>
       <article class="is-accent">
-        <span>入库体积</span><strong>{{ formatBytes(summary.storedBytes) }}</strong
-        ><small>WebP 持久化总量</small>
+        <span>入库体积</span><strong>{{ formatBytes(summary.storedBytes) }}</strong>
       </article>
     </section>
 
     <section class="image-admin__dataset" aria-labelledby="image-generations-title">
       <header class="image-admin__header">
         <div>
-          <p>AI / IMAGE OPERATIONS</p>
           <h2 id="image-generations-title">生图任务</h2>
         </div>
         <button type="button" :disabled="loading" aria-label="刷新任务" @click="load()">
