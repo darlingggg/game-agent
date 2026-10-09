@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { storeToRefs } from 'pinia'
 import { watch } from 'vue'
 import { useThemeStore } from '@/stores/theme'
@@ -13,5 +15,7 @@ watch(mode, (value) => applyThemeMode(value), { immediate: true })
 </script>
 
 <template>
-  <router-view />
+  <ElConfigProvider :locale="zhCn"
+    ><RouterView v-slot="{ Component, route }"><component :is="Component" :key="route.path === '/builder' ? `builder:${route.query.projectId}` : route.path" /></RouterView
+  ></ElConfigProvider>
 </template>

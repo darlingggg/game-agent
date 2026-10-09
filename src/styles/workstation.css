@@ -1,4 +1,18 @@
 /* Shared workstation surfaces and Element Plus component foundations. */
+textarea {
+  resize: none !important;
+}
+
+.el-radio-button {
+  --el-radio-button-checked-text-color: var(--brand-on-blue);
+}
+
+.el-button--primary {
+  --el-button-text-color: var(--brand-on-blue);
+  --el-button-hover-text-color: var(--brand-on-blue);
+  --el-button-active-text-color: var(--brand-on-blue);
+}
+
 ::selection {
   background: color-mix(in srgb, var(--app-accent) 24%, transparent);
   color: var(--app-text-primary);
@@ -228,7 +242,6 @@
 }
 
 .el-button {
-  min-height: var(--brand-control-height);
   border-radius: var(--brand-radius-sm);
   font-family: var(--brand-font-body);
   font-size: 13px;
@@ -241,6 +254,7 @@
 }
 
 .el-button:not(.is-circle):not(.is-link) {
+  min-height: var(--brand-control-height);
   padding-inline: 15px;
 }
 

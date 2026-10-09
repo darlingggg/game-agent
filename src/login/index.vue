@@ -126,17 +126,14 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="auth-visual-copy">
-        <span class="auth-kicker">BUILD / PLAY / ITERATE</span>
         <h1>把想法推向<br />可运行的世界</h1>
         <p>从第一句描述，到可以分享的作品。</p>
       </div>
-      <span class="auth-visual-index">01 — CREATE</span>
     </section>
 
     <section class="auth-panel">
       <div class="auth-panel-inner">
         <div class="auth-panel-heading">
-          <span class="auth-panel-eyebrow">ACCOUNT ACCESS</span>
           <h2>{{ pageTitle }}</h2>
           <p>{{ pageSubtitle }}</p>
         </div>
@@ -363,19 +360,6 @@ onBeforeUnmount(() => {
   z-index: 2;
 }
 
-.auth-kicker,
-.auth-visual-index,
-.auth-panel-eyebrow {
-  font-family: var(--brand-font-body);
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-.auth-kicker {
-  color: #71a0ff;
-}
-
 .auth-visual-copy h1 {
   margin: 0.85rem 0 0;
   font-family: var(--brand-font-display);
@@ -389,10 +373,6 @@ onBeforeUnmount(() => {
   margin: 1rem 0 0;
   color: rgba(248, 248, 244, 0.72);
   font-size: 0.86rem;
-}
-
-.auth-visual-index {
-  display: none;
 }
 
 .auth-panel {
@@ -409,10 +389,6 @@ onBeforeUnmount(() => {
   width: 100%;
   max-width: 26rem;
   margin: auto;
-}
-
-.auth-panel-eyebrow {
-  color: var(--auth-blue);
 }
 
 .auth-panel-heading h2 {
@@ -662,13 +638,7 @@ onBeforeUnmount(() => {
     font-size: 30px;
   }
 
-  .auth-kicker,
-  .auth-panel-eyebrow {
-    font-size: 10px;
-  }
-
-  .auth-visual-copy p,
-  .auth-visual-index {
+  .auth-visual-copy p {
     display: none;
   }
 

@@ -12,13 +12,17 @@ import { fetchProjectTempFileContent } from '../file/projectTempFiles'
 import { PROJECT_FILES_CHANGED_EVENT } from '../snapshot/snapshotRestore'
 import { PreviewBootTimeoutError, refreshProjectTempPreview, previewIframeReloadSignal, stopProjectTempPreview, startProjectTempPreview, type PreviewPhase } from './webcontainer'
 import SvgIcon from '@/components/SvgIcon.vue'
+import { claimPreviewOwner, releasePreviewOwner } from './previewOwner'
 
 defineOptions({
   name: 'PreviewPanel',
 })
 
+withDefaults(defineProps<{ device?: 'desktop' | 'mobile' }>(), { device: 'desktop' })
+
 const projectStore = useProjectStore()
 const buildContext = useBuildContext()
+const previewOwner = claimPreviewOwner()
 
 /** 版本快照最大保存数量 */
 const MAX_SNAPSHOT_COUNT = 5
@@ -139,8 +143,11 @@ async function loadPreview() {
     if (error instanceof Error && error.message === '预览已取消') return
 
     statusText.value = ''
-    bootTimedOut.value = error instanceof PreviewBootTimeoutError
-    errorText.value = error instanceof Error ? error.message : '预览启动失败'
+    const message = error instanceof Error ? error.message : ''
+    const needsReload = /only a single webcontainer instance/i.test(message)
+    bootTimedOut.value = error instanceof PreviewBootTimeoutError || needsReload
+    errorText.value = needsReload ? '预览运行环境需要重置，请重新加载页面' : /[\u4e00-\u9fff]/.test(message) ? message : '预览启动失败，请重试'
+    if (message && !/[\u4e00-\u9fff]/.test(message)) console.error('[项目预览]', error)
   }
 }
 
@@ -174,9 +181,7 @@ async function refreshSnapshotVersionCount() {
 
   try {
     const list = await getSnapshotList({ projectId: currentProjectId })
-    const versionCount = new Set(
-      list.filter((item) => item.type === SNAPSHOT_TYPE_USER).map((item) => item.version),
-    ).size
+    const versionCount = new Set(list.filter((item) => item.type === SNAPSHOT_TYPE_USER).map((item) => item.version)).size
     if (projectStore.currentProject?.id !== currentProjectId) return
     buildContext.setSnapshotVersionCount(versionCount)
   } catch {
@@ -195,7 +200,7 @@ onUnmounted(() => {
   previewLoadToken++
   buildAbortController?.abort()
   buildAbortController = null
-  stopProjectTempPreview()
+  if (releasePreviewOwner(previewOwner)) stopProjectTempPreview()
   window.removeEventListener(PROJECT_FILES_CHANGED_EVENT, handleProjectFilesChanged)
 })
 
@@ -205,9 +210,7 @@ onUnmounted(() => {
 async function handleProjectFilesChanged(event: Event) {
   const loadToken = previewLoadToken
   void loadProjectTitle()
-  const detail = event instanceof CustomEvent
-    ? event.detail as { previewAlreadySynced?: boolean } | undefined
-    : undefined
+  const detail = event instanceof CustomEvent ? (event.detail as { previewAlreadySynced?: boolean } | undefined) : undefined
   if (!previewUrl.value || detail?.previewAlreadySynced) return
 
   try {
@@ -376,10 +379,10 @@ async function handleBuild() {
 </script>
 
 <template>
-  <div class="preview-panel">
+  <div class="preview-panel" :class="`preview-panel--${device}`">
     <div class="phone-container">
       <div class="phone-frame">
-        <div class="phone-notch" aria-hidden="true" />
+        <div v-if="device === 'mobile'" class="phone-notch" aria-hidden="true" />
         <div class="phone-screen">
           <template v-if="previewUrl">
             <header class="preview-app-header">
@@ -408,14 +411,7 @@ async function handleBuild() {
       <div class="preview-dock-glass">
         <el-tooltip :content="buildTooltip" placement="top" :show-after="200">
           <span class="preview-dock-tooltip-trigger">
-            <button
-              type="button"
-              class="preview-dock-btn preview-dock-btn--build"
-              :disabled="isBuildDisabled"
-              title="构建部署"
-              aria-label="构建部署"
-              @click="handleBuildClick"
-            >
+            <button type="button" class="preview-dock-btn preview-dock-btn--build" :disabled="isBuildDisabled" title="构建部署" aria-label="构建部署" @click="handleBuildClick">
               <span class="preview-dock-build-wrap" :class="{ 'preview-dock-build-wrap--building': isBuildAnimating }">
                 <SvgIcon name="build-wireframe" class="preview-dock-build-icon preview-dock-build-wireframe" />
                 <SvgIcon name="build-face" class="preview-dock-build-icon preview-dock-build-face" />
@@ -425,14 +421,7 @@ async function handleBuild() {
         </el-tooltip>
         <el-tooltip :content="canCopyDeployLink ? '复制部署链接' : '暂无部署链接'" placement="top" :show-after="200">
           <span class="preview-dock-tooltip-trigger">
-            <button
-              type="button"
-              class="preview-dock-btn"
-              :disabled="!canCopyDeployLink"
-              title="复制部署链接"
-              aria-label="复制部署链接"
-              @click="handleShare"
-            >
+            <button type="button" class="preview-dock-btn" :disabled="!canCopyDeployLink" title="复制部署链接" aria-label="复制部署链接" @click="handleShare">
               <SvgIcon name="link" class="preview-dock-icon" />
             </button>
           </span>

@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { AI_AVATAR_URL } from './chatAvatars'
 import SvgIcon from '@/components/SvgIcon.vue'
-import UserAvatar from '@/components/UserAvatar.vue'
 import MarkdownContent from './MarkdownContent.vue'
 import ChatImageTasks from './ChatImageTasks.vue'
 import type { ChatMessage } from './types'
@@ -42,11 +40,7 @@ const hasVisionContent = computed(() => hasVisionReasoning.value || hasVisionAns
 const hasImageTasks = computed(() => Boolean(props.message.imageTasks?.length))
 
 /** 已由任务卡片展示的生成图，避免在 Markdown 正文中再次出现 */
-const generatedImageUrls = computed(() =>
-  (props.message.imageTasks ?? [])
-    .flatMap((task) => [task.url, task.temporaryUrl])
-    .filter((url): url is string => Boolean(url)),
-)
+const generatedImageUrls = computed(() => (props.message.imageTasks ?? []).flatMap((task) => [task.url, task.temporaryUrl]).filter((url): url is string => Boolean(url)))
 
 /** 流式输出中且尚无内容时展示 loading */
 const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value && !hasImageTasks.value)
@@ -111,9 +105,23 @@ function toggleVisionReasoning() {
 
 <template>
   <div class="chat-message" :class="{ 'chat-message--user': isUser, 'chat-message--assistant': !isUser }">
-    <div v-if="!isUser" class="chat-message-avatar"><img :src="AI_AVATAR_URL" alt="" /></div>
     <div class="chat-message-body">
       <div class="chat-message-bubble">
+        <div v-if="!isUser" class="chat-message-assistant-heading">
+          <span class="chat-message-assistant-mark" role="img" aria-label="助手回复">
+            <SvgIcon name="creative-orbit" />
+          </span>
+          <button
+            v-if="canCollapse"
+            type="button"
+            class="chat-message-reply-toggle"
+            :aria-label="replyExpanded ? '收起回复' : '展开回复'"
+            :aria-expanded="replyExpanded"
+            @click="toggleReply"
+          >
+            <SvgIcon name="chevron-down" class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" />
+          </button>
+        </div>
         <span v-if="showLoading" class="chat-message-loading" aria-label="加载中" />
         <template v-else-if="isUser">
           <div class="chat-message-user-content">
@@ -121,37 +129,17 @@ function toggleVisionReasoning() {
               <MarkdownContent :content="userMessageParts.text" />
             </div>
             <div v-if="hasUserImages" class="chat-message-user-images">
-              <img
-                v-for="(url, index) in userMessageParts.imageUrls"
-                :key="`${url}-${index}`"
-                :src="url"
-                crossorigin="anonymous"
-                alt="图片"
-              />
+              <img v-for="(url, index) in userMessageParts.imageUrls" :key="`${url}-${index}`" :src="url" crossorigin="anonymous" alt="图片" />
             </div>
           </div>
         </template>
         <template v-else>
-          <button
-            v-if="canCollapse"
-            type="button"
-            class="chat-message-reply-toggle"
-            :aria-expanded="replyExpanded"
-            @click="toggleReply"
-          >
-            <span>Agent 回复</span>
-            <SvgIcon name="chevron-down" class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" />
-          </button>
           <div v-show="showReplyContent" class="chat-message-reply-panel" :class="{ 'chat-message-reply-panel--flat': !canCollapse }">
             <div v-if="hasVisionContent" class="chat-message-vision">
               <div v-if="hasVisionReasoning" class="chat-message-vision-section">
                 <button type="button" class="chat-message-vision-toggle" @click="toggleVisionReasoning">
                   <span>图像思考</span>
-                  <SvgIcon
-                    name="chevron-down"
-                    class="chat-message-reply-arrow"
-                    :class="{ 'chat-message-reply-arrow--expanded': visionReasoningExpanded }"
-                  />
+                  <SvgIcon name="chevron-down" class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': visionReasoningExpanded }" />
                 </button>
                 <div v-show="visionReasoningExpanded" class="chat-message-vision-content">
                   <MarkdownContent :content="message.vision?.reasoning ?? ''" />
@@ -174,7 +162,6 @@ function toggleVisionReasoning() {
         <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime }}</span>
       </div>
     </div>
-    <div v-if="isUser" class="chat-message-avatar"><UserAvatar :avatar="userAvatar" /></div>
   </div>
 </template>
 
@@ -194,54 +181,6 @@ function toggleVisionReasoning() {
 .chat-message--assistant {
   flex-direction: row;
   justify-content: flex-start;
-}
-
-.chat-message-avatar {
-  flex-shrink: 0;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 50%;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.chat-message--assistant .chat-message-avatar {
-  background-color: transparent;
-  color: #374151;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.chat-message--assistant .chat-message-avatar img {
-  display: block;
-  width: 68%;
-  height: 68%;
-}
-
-.chat-message--user .chat-message-avatar {
-  background-color: transparent;
-  border: 2px solid var(--app-accent);
-}
-
-.chat-message--user .chat-message-avatar img {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.chat-message--user .chat-message-avatar :deep(.user-avatar-image--fallback) {
-  width: 68%;
-  height: 68%;
-}
-
-html.dark .chat-message--assistant .chat-message-avatar {
-  color: #e8eaed;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-html.dark .chat-message--assistant .chat-message-avatar img {
-  filter: invert(1);
 }
 
 .chat-message-body {
@@ -331,6 +270,31 @@ html.dark .chat-message--user .chat-message-bubble {
   color: var(--app-accent);
   font-size: 0.875rem;
   cursor: pointer;
+}
+
+.chat-message-assistant-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--app-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.chat-message-assistant-mark {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-primary);
+}
+
+.chat-message-assistant-mark svg {
+  display: block;
+  width: 22px;
+  height: 22px;
 }
 
 .chat-message-reply-arrow {

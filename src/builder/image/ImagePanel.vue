@@ -1,17 +1,5 @@
 <script setup lang="ts">
-import {
-  ArrowRight,
-  Close,
-  CopyDocument,
-  EditPen,
-  Link,
-  MagicStick,
-  Picture,
-  Plus,
-  RefreshRight,
-  Upload,
-  WarningFilled,
-} from '@element-plus/icons-vue'
+import { ArrowRight, Close, CopyDocument, EditPen, Link, MagicStick, Picture, Plus, RefreshRight, Upload, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { uploadImageToCos } from '@/http/cos'
@@ -54,7 +42,7 @@ const IMAGE_SIZE_STEP = 64
 const ALLOWED_REFERENCE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const TERMINAL_STATUSES = new Set<ImageGenerationStatus>(['succeeded', 'failed'])
 const SIZE_OPTIONS: SizeOption[] = [
-  { key: 'auto', label: '智能', detail: 'AUTO', value: 'auto', ratio: 1 },
+  { key: 'auto', label: '智能', detail: '自动', value: 'auto', ratio: 1 },
   { key: 'square', label: '方形', detail: '1024 × 1024', value: '1024*1024', ratio: 1 },
   { key: 'landscape', label: '横向', detail: '1536 × 1024', value: '1536*1024', ratio: 1.5 },
   { key: 'portrait', label: '竖向', detail: '1024 × 1536', value: '1024*1536', ratio: 2 / 3 },
@@ -113,12 +101,7 @@ const sizePreviewStyle = computed(() => {
   if (ratio >= 1) return { width: '70px', height: `${70 / ratio}px` }
   return { width: `${50 * ratio}px`, height: '50px' }
 })
-const canGenerate = computed(
-  () => Boolean(projectId.value && prompt.value.trim())
-    && !creating.value
-    && !hasUploadingReference.value
-    && !sizeValidationError.value,
-)
+const canGenerate = computed(() => Boolean(projectId.value && prompt.value.trim()) && !creating.value && !hasUploadingReference.value && !sizeValidationError.value)
 
 const statusLabels: Record<ImageGenerationStatus, string> = {
   queued: '等待提交',
@@ -176,10 +159,7 @@ function selectSize(option: SizeOption) {
 
 function normalizeDimension(target: 'width' | 'height') {
   const current = target === 'width' ? customWidth.value : customHeight.value
-  const normalized = Math.min(
-    MAX_IMAGE_EDGE,
-    Math.max(MIN_IMAGE_EDGE, Math.round((Number(current) || MIN_IMAGE_EDGE) / IMAGE_SIZE_STEP) * IMAGE_SIZE_STEP),
-  )
+  const normalized = Math.min(MAX_IMAGE_EDGE, Math.max(MIN_IMAGE_EDGE, Math.round((Number(current) || MIN_IMAGE_EDGE) / IMAGE_SIZE_STEP) * IMAGE_SIZE_STEP))
   if (target === 'width') customWidth.value = normalized
   else customHeight.value = normalized
 }
@@ -489,12 +469,11 @@ onUnmounted(() => {
       <header class="image-lab-masthead">
         <div class="image-masthead-inner">
           <div class="image-masthead-copy">
-            <span class="image-lab-kicker"><i /> IMAGE LAB</span>
             <h1>图像工作台</h1>
             <div class="image-masthead-meta">
               <span>QWEN IMAGE 3.0</span>
               <span>{{ selectedSize === 'auto' ? '智能画幅' : selectedSize.replace('*', ' × ') }}</span>
-              <span>高质量 WEBP</span>
+              <span>高质量 WebP</span>
             </div>
           </div>
           <div class="image-frame-readout" aria-label="当前画幅预览">
@@ -502,22 +481,18 @@ onUnmounted(() => {
               <span class="image-frame-shape" :style="sizePreviewStyle" />
             </div>
             <div>
-              <small>OUTPUT FRAME</small>
-              <strong>{{ selectedSize === 'auto' ? 'AUTO' : selectedSize.replace('*', ' × ') }}</strong>
+              <small>输出画幅</small>
+              <strong>{{ selectedSize === 'auto' ? '自动' : selectedSize.replace('*', ' × ') }}</strong>
             </div>
           </div>
-          <div class="image-palette-rail" aria-hidden="true">
-            <i /><i /><i /><i />
-          </div>
+          <div class="image-palette-rail" aria-hidden="true"><i /><i /><i /><i /></div>
         </div>
       </header>
 
       <main>
         <section class="image-compose" aria-labelledby="image-compose-title">
           <div class="image-section-heading">
-            <div class="image-section-index">01</div>
             <div>
-              <span>CREATE</span>
               <h2 id="image-compose-title">创建新画面</h2>
             </div>
           </div>
@@ -529,24 +504,14 @@ onUnmounted(() => {
                   <span>画面描述</span>
                   <b>{{ prompt.length }} / 800</b>
                 </span>
-                <textarea
-                  v-model="prompt"
-                  maxlength="800"
-                  rows="8"
-                  placeholder="描述你想生成的主体、场景、构图、光线与风格……"
-                />
+                <textarea v-model="prompt" maxlength="800" rows="8" placeholder="描述你想生成的主体、场景、构图、光线与风格……" />
               </label>
               <label class="image-field image-field--negative">
                 <span class="image-field-label">
                   <span>排除内容 <em>可选</em></span>
                   <b>{{ negativePrompt.length }} / 500</b>
                 </span>
-                <textarea
-                  v-model="negativePrompt"
-                  maxlength="500"
-                  rows="3"
-                  placeholder="描述不希望出现的内容，例如：低清晰度、畸形手部、水印、乱码"
-                />
+                <textarea v-model="negativePrompt" maxlength="500" rows="3" placeholder="描述不希望出现的内容，例如：低清晰度、畸形手部、水印、乱码" />
               </label>
             </div>
 
@@ -554,7 +519,6 @@ onUnmounted(() => {
               <section class="image-setting-group image-setting-group--reference">
                 <div class="image-setting-heading">
                   <div>
-                    <span>REFERENCE</span>
                     <strong>关联图片</strong>
                   </div>
                   <b>{{ references.length }} / {{ MAX_REFERENCE_IMAGES }}</b>
@@ -568,13 +532,7 @@ onUnmounted(() => {
                       <el-icon><Close /></el-icon>
                     </button>
                   </div>
-                  <button
-                    v-if="references.length < MAX_REFERENCE_IMAGES"
-                    type="button"
-                    class="image-reference-add"
-                    title="上传关联图"
-                    @click="openReferencePicker"
-                  >
+                  <button v-if="references.length < MAX_REFERENCE_IMAGES" type="button" class="image-reference-add" title="上传关联图" @click="openReferencePicker">
                     <el-icon><Upload /></el-icon>
                     <span>上传</span>
                   </button>
@@ -589,33 +547,19 @@ onUnmounted(() => {
                     :disabled="references.length >= MAX_REFERENCE_IMAGES"
                     @keydown.enter.prevent="addReferenceUrl"
                   />
-                  <button
-                    type="button"
-                    title="添加图片地址"
-                    aria-label="添加图片地址"
-                    :disabled="!referenceUrl.trim()"
-                    @click="addReferenceUrl"
-                  >
+                  <button type="button" title="添加图片地址" aria-label="添加图片地址" :disabled="!referenceUrl.trim()" @click="addReferenceUrl">
                     <el-icon><ArrowRight /></el-icon>
                   </button>
                 </div>
-                <input
-                  ref="fileInputRef"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  hidden
-                  @change="handleReferenceFiles"
-                />
+                <input ref="fileInputRef" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden @change="handleReferenceFiles" />
               </section>
 
               <section class="image-setting-group image-setting-group--size">
                 <div class="image-setting-heading">
                   <div>
-                    <span>FRAME</span>
                     <strong>输出尺寸</strong>
                   </div>
-                  <b>512–2048 PX</b>
+                  <b>512–2048 像素</b>
                 </div>
 
                 <div class="image-size-options" role="group" aria-label="选择输出尺寸">
@@ -637,26 +581,12 @@ onUnmounted(() => {
                 <div v-if="selectedSizeKey === 'custom'" class="image-custom-size">
                   <label>
                     <span>宽度</span>
-                    <input
-                      v-model.number="customWidth"
-                      type="number"
-                      :min="MIN_IMAGE_EDGE"
-                      :max="MAX_IMAGE_EDGE"
-                      :step="IMAGE_SIZE_STEP"
-                      @blur="normalizeDimension('width')"
-                    />
+                    <input v-model.number="customWidth" type="number" :min="MIN_IMAGE_EDGE" :max="MAX_IMAGE_EDGE" :step="IMAGE_SIZE_STEP" @blur="normalizeDimension('width')" />
                   </label>
                   <b>×</b>
                   <label>
                     <span>高度</span>
-                    <input
-                      v-model.number="customHeight"
-                      type="number"
-                      :min="MIN_IMAGE_EDGE"
-                      :max="MAX_IMAGE_EDGE"
-                      :step="IMAGE_SIZE_STEP"
-                      @blur="normalizeDimension('height')"
-                    />
+                    <input v-model.number="customHeight" type="number" :min="MIN_IMAGE_EDGE" :max="MAX_IMAGE_EDGE" :step="IMAGE_SIZE_STEP" @blur="normalizeDimension('height')" />
                   </label>
                 </div>
                 <span v-if="sizeValidationError" class="image-size-error">{{ sizeValidationError }}</span>
@@ -678,19 +608,11 @@ onUnmounted(() => {
         <section class="image-history" aria-labelledby="image-history-title">
           <div class="image-history-inner">
             <div class="image-history-heading">
-              <div class="image-section-index">02</div>
               <div class="image-history-title">
-                <span>CONTACT SHEET</span>
                 <h2 id="image-history-title">生成记录</h2>
               </div>
               <span v-if="tasks.length" class="image-history-count">{{ tasks.length }} 个画面</span>
-              <button
-                type="button"
-                title="刷新生成记录"
-                aria-label="刷新生成记录"
-                :disabled="historyLoading"
-                @click="loadHistory(true)"
-              >
+              <button type="button" title="刷新生成记录" aria-label="刷新生成记录" :disabled="historyLoading" @click="loadHistory(true)">
                 <el-icon :class="{ 'is-spinning': historyLoading }"><RefreshRight /></el-icon>
               </button>
             </div>
@@ -725,13 +647,15 @@ onUnmounted(() => {
                     hide-on-click-modal
                   >
                     <template #error>
-                      <div class="image-task-fallback"><el-icon><Picture /></el-icon><span>图片加载失败</span></div>
+                      <div class="image-task-fallback">
+                        <el-icon><Picture /></el-icon><span>图片加载失败</span>
+                      </div>
                     </template>
                   </el-image>
 
                   <div v-else-if="task.status === 'failed'" class="image-task-failure">
                     <el-icon><WarningFilled /></el-icon>
-                    <span>NO OUTPUT</span>
+                    <span>暂无图像</span>
                     <strong>没有生成画面</strong>
                     <p :title="task.errorMessage || ''">{{ task.errorMessage || '生成任务失败' }}</p>
                     <button type="button" aria-label="带回创作台" @click="reuseTask(task)">
@@ -742,7 +666,7 @@ onUnmounted(() => {
 
                   <div v-else class="image-task-waiting">
                     <span class="image-task-aperture"><i /><i /><i /></span>
-                    <small>RENDERING</small>
+                    <small>生成中</small>
                     <strong>{{ statusLabels[task.status] }}</strong>
                   </div>
 
@@ -879,7 +803,6 @@ onUnmounted(() => {
   padding-block: 24px 18px;
 }
 
-.image-lab-kicker,
 .image-section-heading span,
 .image-history-heading span {
   color: var(--image-blue);
@@ -1109,7 +1032,7 @@ onUnmounted(() => {
 .image-field textarea {
   width: 100%;
   min-height: 112px;
-  resize: vertical;
+  resize: none;
   border: 1px solid var(--image-line);
   border-radius: var(--brand-radius-sm);
   outline: 0;
@@ -1386,16 +1309,24 @@ onUnmounted(() => {
 }
 
 @keyframes image-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes image-scan {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(560%); }
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(560%);
+  }
 }
 
 @keyframes image-shimmer {
-  to { background-position: -220% 0; }
+  to {
+    background-position: -220% 0;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1569,23 +1500,6 @@ html.dark .image-lab-panel {
   display: none;
 }
 
-.image-lab-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #aeb6c4;
-  font-family: var(--brand-font-mono);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.image-lab-kicker i {
-  width: 7px;
-  height: 7px;
-  background: var(--image-mint);
-  box-shadow: 0 0 0 3px rgba(102, 215, 168, 0.16);
-}
-
 .image-masthead-copy h1 {
   margin: 9px 0 12px;
   color: #fff;
@@ -1669,18 +1583,6 @@ html.dark .image-lab-panel {
   justify-content: flex-start;
   gap: 12px;
   margin-bottom: 16px;
-}
-
-.image-section-index {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  place-items: center;
-  border: 1px solid var(--image-line-strong);
-  color: var(--image-muted);
-  font-family: var(--brand-font-mono);
-  font-size: 11px;
 }
 
 .image-section-heading > div:last-child > span,
@@ -1911,7 +1813,11 @@ html.dark .image-lab-panel {
   background: var(--image-paper);
   color: var(--image-muted);
   cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
 }
 
 .image-size-option:hover {
@@ -2095,7 +2001,10 @@ html.dark .image-lab-panel {
 
 .image-task {
   box-shadow: 0 1px 0 rgba(21, 23, 28, 0.05);
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
 }
 
 .image-task:hover {
@@ -2217,8 +2126,12 @@ html.dark .image-task-media {
   transform-origin: 0 0;
 }
 
-.image-task-aperture i:nth-child(2) { transform: rotate(120deg); }
-.image-task-aperture i:nth-child(3) { transform: rotate(240deg); }
+.image-task-aperture i:nth-child(2) {
+  transform: rotate(120deg);
+}
+.image-task-aperture i:nth-child(3) {
+  transform: rotate(240deg);
+}
 
 .image-task-waiting small {
   color: var(--image-mint);
@@ -2241,7 +2154,9 @@ html.dark .image-task-media {
   background: rgba(15, 17, 21, 0.9);
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 180ms ease, transform 180ms ease;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
 }
 
 .image-task:hover .image-task-overlay,
@@ -2342,12 +2257,18 @@ html.dark .image-task-media {
   margin-left: auto;
 }
 
-.image-task-meta .is-succeeded { color: var(--brand-success); }
-.image-task-meta .is-failed { color: var(--image-coral); }
+.image-task-meta .is-succeeded {
+  color: var(--brand-success);
+}
+.image-task-meta .is-failed {
+  color: var(--image-coral);
+}
 .image-task-meta .is-queued,
 .image-task-meta .is-submitted,
 .image-task-meta .is-generating,
-.image-task-meta .is-storing { color: var(--image-blue); }
+.image-task-meta .is-storing {
+  color: var(--image-blue);
+}
 
 .image-task-skeleton {
   aspect-ratio: 0.92;
@@ -2518,7 +2439,9 @@ html.dark .image-task-media {
 }
 
 @keyframes image-neon-flow {
-  to { background-position: -200% 0; }
+  to {
+    background-position: -200% 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

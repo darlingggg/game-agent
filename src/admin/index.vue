@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Collection, Connection, DataAnalysis, Download, Folder, Link, Odometer, Picture, Refresh, Search, User, View } from '@element-plus/icons-vue'
+import { ArrowLeft, Collection, Connection, Download, Folder, Link, Odometer, Picture, Refresh, Search, User, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -97,13 +97,13 @@ const originalEdit = reactive({ role: 'normal' as UserRole, qqOpenid: '', wxOpen
 let storageSyncPollTimer: number | null = null
 let manualStorageSyncPending = false
 
-const VIEW_META: Record<AdminView, { kicker: string; title: string }> = {
-  overview: { kicker: '运营', title: '运营总览' },
-  users: { kicker: '用户', title: '用户与权限' },
-  projects: { kicker: '项目', title: '全量项目' },
-  assets: { kicker: '素材', title: '上传素材' },
-  models: { kicker: '模型', title: '模型管理' },
-  images: { kicker: 'AI 生图', title: '生图任务' },
+const VIEW_META: Record<AdminView, { title: string }> = {
+  overview: { title: '运营总览' },
+  users: { title: '用户与权限' },
+  projects: { title: '全量项目' },
+  assets: { title: '上传素材' },
+  models: { title: '模型管理' },
+  images: { title: '生图任务' },
 }
 
 const activeViewMeta = computed(() => VIEW_META[activeView.value])
@@ -196,7 +196,7 @@ const userProjectStats = computed(() => {
 const assetKindStats = computed(() => {
   const counts = new Map<string, number>()
   assets.value.forEach((asset) => {
-    const label = asset.isDirectory ? 'DIR' : asset.extension.replace('.', '').toUpperCase() || 'FILE'
+    const label = asset.isDirectory ? '目录' : asset.extension.replace('.', '').toUpperCase() || '文件'
     counts.set(label, (counts.get(label) ?? 0) + 1)
   })
   const total = Math.max(assets.value.length, 1)
@@ -773,24 +773,24 @@ onBeforeUnmount(() => {
     <aside class="admin-sidebar">
       <button class="admin-brand" type="button" aria-label="返回项目中心" @click="router.push('/')">
         <span class="admin-brand-mark"><span /></span>
-        <span class="admin-brand-copy"><strong>AI Agent</strong><small>CONTROL DESK</small></span>
+        <span class="admin-brand-copy"><strong>AI Agent</strong><small>管理控制台</small></span>
       </button>
 
       <nav class="admin-navigation" aria-label="管理控制台导航">
         <p>管理视图</p>
-        <button :class="{ active: activeView === 'overview' }" type="button" @click="selectView('overview')">
-          <el-icon><Odometer /></el-icon><span>运营总览</span><b>LIVE</b>
+        <button :class="{ active: activeView === 'overview' }" type="button" aria-label="运营总览" @click="selectView('overview')">
+          <el-icon><Odometer /></el-icon><span>运营总览</span><b>实时</b>
         </button>
-        <button :class="{ active: activeView === 'users' }" type="button" @click="selectView('users')">
+        <button :class="{ active: activeView === 'users' }" type="button" aria-label="用户管理" @click="selectView('users')">
           <el-icon><User /></el-icon><span>用户管理</span><b>{{ userTotal }}</b>
         </button>
-        <button :class="{ active: activeView === 'projects' }" type="button" @click="selectView('projects')">
+        <button :class="{ active: activeView === 'projects' }" type="button" aria-label="项目总览" @click="selectView('projects')">
           <el-icon><Folder /></el-icon><span>项目总览</span><b>{{ projectTotal }}</b>
         </button>
-        <button :class="{ active: activeView === 'assets' }" type="button" @click="selectView('assets')">
+        <button :class="{ active: activeView === 'assets' }" type="button" aria-label="素材管理" @click="selectView('assets')">
           <el-icon><Picture /></el-icon><span>素材管理</span><b>{{ assets.length || '—' }}</b>
         </button>
-        <button :class="{ active: activeView === 'images' }" type="button" @click="selectView('images')">
+        <button :class="{ active: activeView === 'images' }" type="button" aria-label="生图任务" @click="selectView('images')">
           <el-icon><Picture /></el-icon><span>AI 生图</span><b>AI</b>
         </button>
         <button :class="{ active: activeView === 'models' }" type="button" aria-label="模型管理" @click="selectView('models')">
@@ -808,9 +808,10 @@ onBeforeUnmount(() => {
 
     <main class="admin-main">
       <header class="admin-topbar">
-        <button class="back-button" type="button" @click="router.push('/')">
-          <el-icon><ArrowLeft /></el-icon><span>返回项目中心</span>
-        </button>
+        <el-tooltip content="返回项目首页" placement="bottom"
+          ><button class="back-button icon-button" type="button" aria-label="返回项目首页" @click="router.push('/')">
+            <el-icon><ArrowLeft /></el-icon></button
+        ></el-tooltip>
         <div class="admin-topbar-actions">
           <el-tooltip content="刷新当前数据" placement="bottom">
             <button class="icon-button" type="button" :disabled="loading || overviewLoading || assetsLoading" aria-label="刷新当前数据" @click="refreshCurrentView">
@@ -824,7 +825,6 @@ onBeforeUnmount(() => {
 
       <section class="admin-heading">
         <div>
-          <p class="admin-kicker"><DataAnalysis /> 管理控制台 / {{ activeViewMeta.kicker }}</p>
           <h1>{{ activeViewMeta.title }}</h1>
         </div>
         <div class="admin-heading-actions">
@@ -865,8 +865,8 @@ onBeforeUnmount(() => {
           </div>
           <small v-if="activeView === 'overview'">北京时间 · 更新于 {{ formatDateTime(overview?.generatedAt) }}</small>
           <small v-else
-            >PAGE {{ activeView === 'users' ? userPage : activeView === 'projects' ? projectPage : assetPage }} /
-            {{ activeView === 'users' ? users.length : activeView === 'projects' ? projects.length : assets.length }} RECORDS</small
+            >第 {{ activeView === 'users' ? userPage : activeView === 'projects' ? projectPage : assetPage }} 页 ·
+            {{ activeView === 'users' ? users.length : activeView === 'projects' ? projects.length : assets.length }} 条记录</small
           >
         </header>
 
@@ -976,7 +976,7 @@ onBeforeUnmount(() => {
       <section v-if="activeView === 'overview'" class="overview-rankings" aria-label="全站排行榜">
         <header class="overview-section-heading">
           <div>
-            <h2>资源使用 Top 10 <AdminHelp label="排行统计说明" text="Token 排名使用全部历史累计用量，包含已删除项目的历史 Token。存储排名使用当前占用量。" /></h2>
+            <h2>资源使用前 10 名 <AdminHelp label="排行统计说明" text="Token 排名使用全部历史累计用量，包含已删除项目的历史 Token。存储排名使用当前占用量。" /></h2>
           </div>
         </header>
         <div class="ranking-grid">
@@ -1198,7 +1198,7 @@ onBeforeUnmount(() => {
                 @error="handleAssetImageError(asset.key)"
               />
               <span v-else
-                ><Picture /><small>{{ asset.isDirectory ? 'DIR' : asset.extension || 'FILE' }}</small></span
+                ><Picture /><small>{{ asset.isDirectory ? '目录' : asset.extension || '文件' }}</small></span
               >
               <span v-if="isImageAsset(asset)" class="asset-source-tag" :class="asset.source === 'ai_generated' ? 'is-ai' : 'is-upload'">{{
                 asset.source === 'ai_generated' ? 'AI 生成' : '用户上传'
@@ -1418,7 +1418,7 @@ onBeforeUnmount(() => {
                   <div class="chart-track"><i :style="{ width: `${conversationContextPercent(conversation)}%` }" /></div>
                 </div>
                 <footer>
-                  <span>压缩至 Session {{ conversation.summarizedUntilSessionId ?? '—' }}</span
+                  <span>压缩至会话 {{ conversation.summarizedUntilSessionId ?? '—' }}</span
                   ><span>最近压缩 {{ formatDateTime(conversation.lastCompressedAt) }}</span>
                 </footer>
               </article>
@@ -1441,3 +1441,4 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped src="./admin.css"></style>
+<style scoped src="./console.css"></style>

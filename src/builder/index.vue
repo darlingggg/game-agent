@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Camera, ChatDotRound, CopyDocument, Document, Notebook, Picture, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, Camera, ChatDotRound, Check, CopyDocument, Document, Iphone, Monitor, Notebook, Picture, Search, Setting } from '@element-plus/icons-vue'
 import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch, type Component } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import UserMenu from '@/components/UserMenu.vue'
-import { getProjectList } from '@/http/project'
+import { getProjectList, type projectItem } from '@/http/project'
+import { getTempCurrentVersion, getTempLatestVersion } from '@/http/temp'
 import type { UpdateUserProfileResponse } from '@/http/user'
 import { useProjectStore } from '@/stores/project'
 import { PROJECT_TYPE_LABEL, resolveProjectType } from '@/utils/projectType'
+import { projectCardHue, takeProjectPrompt } from '@/utils/projectDraft'
+import SvgIcon from '@/components/SvgIcon.vue'
+import { compareTemplateVersions } from '@/utils/templateVersion'
 import { ChatPanel, ConfigPanel, FilePanel, ImagePanel, LogPanel, PreviewPanel, SessionPanel, SnapshotPanel, TempPanel } from './panels'
 import { createBuildContext, buildContextKey } from './build/buildContext'
 import { createLogContext, logContextKey } from './log/logContext'
 import { PENDING_CONVERSATION_ID, sessionContextKey, type CreatedConversationPayload } from './session/sessionContext'
+import { useWorkspaceSplit } from './useWorkspaceSplit'
 
 defineOptions({
   name: 'BuilderIndex',
@@ -21,7 +26,6 @@ defineOptions({
 interface TabItem {
   key: string
   label: string
-  meta: string
   /** Tab 图标 */
   icon: Component
 }
@@ -31,8 +35,40 @@ const router = useRouter()
 const projectStore = useProjectStore()
 const latestUserProfile = ref<UpdateUserProfileResponse | null>(null)
 const sessionToggleRef = ref<HTMLButtonElement | null>(null)
+const builderShellRef = ref<HTMLElement | null>(null)
+const split = useWorkspaceSplit(builderShellRef)
+const { leftWidth, resizing, percent: splitPercent, minPercent: splitMinPercent, maxPercent: splitMaxPercent } = split
+let leavingBuilder = false
+const initialPrompt = ref('')
+const projectSwitchVisible = ref(false)
+const projectSwitchLoading = ref(false)
+const projectSwitchSearch = ref('')
+const selectableProjects = computed(() => {
+  const keyword = projectSwitchSearch.value.trim().toLowerCase()
+  return projectStore.projectList.filter((project) => !keyword || project.title.toLowerCase().includes(keyword))
+})
 
-type MobilePane = 'workspace' | 'preview'
+async function openProjectSwitcher() {
+  projectSwitchSearch.value = ''
+  projectSwitchVisible.value = true
+  projectSwitchLoading.value = true
+  try {
+    projectStore.setProjectList(await getProjectList())
+  } catch {
+    // 请求层统一提示错误，已有的项目列表仍可浏览。
+  } finally {
+    projectSwitchLoading.value = false
+  }
+}
+
+async function selectProject(project: projectItem) {
+  projectSwitchVisible.value = false
+  if (project.id === projectStore.currentProject?.id) return
+  sessionPanelCollapsed.value = true
+  await router.push({ path: '/builder', query: { projectId: String(project.id) } })
+}
+
+type MobilePane = 'workspace' | 'chat'
 
 /** 当前是否进入会话抽屉布局 */
 const isNarrowLayout = ref(false)
@@ -40,8 +76,48 @@ const isNarrowLayout = ref(false)
 /** 当前是否进入手机单面板布局 */
 const isMobileLayout = ref(false)
 
-/** 手机端默认先展示验收预览 */
-const mobilePane = ref<MobilePane>('preview')
+/** 手机端用两个视图保持对话和完整工作区可访问。 */
+const mobilePane = ref<MobilePane>('chat')
+const previewDevice = ref<'desktop' | 'mobile'>('desktop')
+const logVisible = ref(false)
+const logMounted = ref(false)
+type SettingsPanel = 'config' | 'snapshot' | 'temp'
+const settingsPanel = ref<SettingsPanel>('config')
+const settingsDialogVisible = ref(false)
+const settingsMounted = ref<Set<string>>(new Set())
+const settingsTitles: Record<SettingsPanel, string> = { config: '项目设置', snapshot: '版本记录', temp: '项目模板' }
+const currentTemplateVersion = ref('')
+const latestTemplateVersion = ref('')
+let templateCheckId = 0
+const hasTemplateUpdate = computed(() =>
+  Boolean(currentTemplateVersion.value && latestTemplateVersion.value && compareTemplateVersions(latestTemplateVersion.value, currentTemplateVersion.value) > 0),
+)
+
+async function refreshTemplateStatus() {
+  const project = projectStore.currentProject
+  const requestId = ++templateCheckId
+  if (!project) return
+  try {
+    const [current, latest] = await Promise.all([getTempCurrentVersion({ projectId: project.id }), getTempLatestVersion({ type: resolveProjectType(project.type) })])
+    if (requestId !== templateCheckId || projectStore.currentProject?.id !== project.id) return
+    currentTemplateVersion.value = typeof current.version === 'string' ? current.version : ''
+    latestTemplateVersion.value = typeof latest.version === 'string' ? latest.version : ''
+  } catch {
+    // 请求层统一提示错误，状态检查不阻断编辑器。
+  }
+}
+
+function openSettings(command: unknown) {
+  if (command !== 'config' && command !== 'snapshot' && command !== 'temp') return
+  settingsPanel.value = command
+  settingsMounted.value = new Set([...settingsMounted.value, command])
+  settingsDialogVisible.value = true
+}
+
+function toggleLog() {
+  logVisible.value = !logVisible.value
+  if (logVisible.value) logMounted.value = true
+}
 
 let narrowMediaQuery: MediaQueryList | null = null
 let mobileMediaQuery: MediaQueryList | null = null
@@ -52,9 +128,6 @@ function handleUserProfileUpdated(profile: UpdateUserProfileResponse) {
 
 /** Builder 顶栏项目类型 */
 const projectTypeLabel = computed(() => PROJECT_TYPE_LABEL[resolveProjectType(projectStore.currentProject?.type)])
-
-/** Builder 顶栏项目编号 */
-const projectNumber = computed(() => String(projectStore.currentProject?.id ?? 0).padStart(3, '0'))
 
 /** 返回项目列表 */
 function handleBackHome() {
@@ -74,7 +147,7 @@ const chatResetSignal = ref(0)
 const lastCreatedConversation = ref<CreatedConversationPayload | null>(null)
 
 /** 会话栏是否收起 */
-const sessionPanelCollapsed = ref(false)
+const sessionPanelCollapsed = ref(true)
 
 /**
  * 切换会话栏收起/展开
@@ -83,7 +156,7 @@ function toggleSessionPanelCollapsed() {
   const willCollapse = !sessionPanelCollapsed.value
   sessionPanelCollapsed.value = willCollapse
 
-  if (willCollapse && isNarrowLayout.value) {
+  if (willCollapse) {
     void nextTick(() => sessionToggleRef.value?.focus())
   }
 }
@@ -91,21 +164,14 @@ function toggleSessionPanelCollapsed() {
 /** 同步桌面、抽屉与手机断点状态 */
 function syncResponsiveLayout() {
   const nextNarrow = narrowMediaQuery?.matches ?? false
-  const wasNarrow = isNarrowLayout.value
-
   isNarrowLayout.value = nextNarrow
   isMobileLayout.value = mobileMediaQuery?.matches ?? false
-
-  if (!wasNarrow && nextNarrow) {
-    sessionPanelCollapsed.value = true
-  } else if (wasNarrow && !nextNarrow) {
-    sessionPanelCollapsed.value = false
-  }
+  sessionPanelCollapsed.value = true
 }
 
 /** Escape 关闭窄屏会话抽屉 */
 function handleShellKeydown(event: KeyboardEvent) {
-  if (event.key !== 'Escape' || !isNarrowLayout.value || sessionPanelCollapsed.value) return
+  if (event.key !== 'Escape' || sessionPanelCollapsed.value) return
   toggleSessionPanelCollapsed()
 }
 
@@ -151,25 +217,30 @@ provide(logContextKey, logContext)
 const buildContext = createBuildContext()
 provide(buildContextKey, buildContext)
 
-/** 构建开始时自动切换到日志 Tab，确保悬浮框可见 */
+watch(
+  () => projectStore.currentProject?.id,
+  () => {
+    currentTemplateVersion.value = ''
+    latestTemplateVersion.value = ''
+    void refreshTemplateStatus()
+  },
+  { immediate: true },
+)
+/** 构建日志在右侧底部展开，保留当前面板和左侧对话。 */
 watch(
   () => buildContext.running.value,
   (running) => {
     if (!running) return
-    const logIndex = tabs.findIndex((item) => item.key === 'log')
-    if (logIndex < 0) return
-    switchToLogTab(logIndex)
+    logMounted.value = true
+    logVisible.value = true
+    if (isMobileLayout.value) mobilePane.value = 'workspace'
   },
 )
 
 const tabs: TabItem[] = [
-  { key: 'chat', label: '对话', meta: 'AI COLLAB', icon: ChatDotRound },
-  { key: 'image', label: '图像', meta: 'IMAGE LAB', icon: Picture },
-  { key: 'file', label: '文件', meta: 'SOURCE', icon: Document },
-  { key: 'config', label: '配置', meta: 'SETUP', icon: Setting },
-  { key: 'snapshot', label: '版本', meta: 'HISTORY', icon: Camera },
-  { key: 'temp', label: '模板', meta: 'BASELINE', icon: CopyDocument },
-  { key: 'log', label: '日志', meta: 'RUNTIME', icon: Notebook },
+  { key: 'preview', label: '预览', icon: Monitor },
+  { key: 'file', label: '文件', icon: Document },
+  { key: 'image', label: '图像', icon: Picture },
 ]
 
 /** 当前选中的 Tab 索引 */
@@ -194,7 +265,7 @@ const isPanelTransitioning = ref(false)
 let panelTransitionTimer: ReturnType<typeof setTimeout> | null = null
 
 /** 已挂载过的 Tab 面板（首次访问后保持挂载，避免切换丢失状态） */
-const mountedTabKeys = ref<Set<string>>(new Set(['chat']))
+const mountedTabKeys = ref<Set<string>>(new Set(['preview']))
 
 /** 项目初始化中 */
 const projectLoading = ref(true)
@@ -204,30 +275,6 @@ const projectError = ref('')
 
 /** 当前项目是否就绪 */
 const projectReady = computed(() => !projectLoading.value && !projectError.value && !!projectStore.currentProject)
-
-/**
- * 构建开始时强制切到日志 Tab（不受切换动画阻塞）
- * @param index 日志 Tab 索引
- */
-function switchToLogTab(index: number) {
-  if (index === activeTab.value) return
-
-  slideDirection.value = index > activeTab.value ? 'forward' : 'backward'
-  leavingTabKey.value = tabs[activeTab.value]?.key ?? null
-  mountedTabKeys.value = new Set([...mountedTabKeys.value, 'log'])
-  activeTab.value = index
-  if (isMobileLayout.value) mobilePane.value = 'workspace'
-  isPanelTransitioning.value = true
-
-  if (panelTransitionTimer) {
-    clearTimeout(panelTransitionTimer)
-  }
-  panelTransitionTimer = setTimeout(() => {
-    leavingTabKey.value = null
-    isPanelTransitioning.value = false
-    panelTransitionTimer = null
-  }, PANEL_TRANSITION_MS)
-}
 
 /**
  * 切换 Tab
@@ -258,7 +305,7 @@ function switchTab(index: number) {
 }
 
 /** 当前选中 Tab 的内容标识 */
-const activeTabKey = computed(() => tabs[activeTab.value]?.key ?? 'chat')
+const activeTabKey = computed(() => tabs[activeTab.value]?.key ?? 'preview')
 
 /**
  * 获取面板切换动效 class（v-show 保持挂载，仅用 class 控制显隐与动画）
@@ -293,6 +340,7 @@ function shouldMountTabPanel(key: string) {
  * 从地址栏 projectId 初始化当前项目
  */
 async function initCurrentProject() {
+  if (leavingBuilder) return
   const projectId = Number(route.query.projectId)
   if (!projectId || Number.isNaN(projectId)) {
     ElMessage.warning('缺少项目 ID')
@@ -318,6 +366,15 @@ async function initCurrentProject() {
       return
     }
 
+    initialPrompt.value = takeProjectPrompt(projectId)
+    activeConversationId.value = null
+    isPendingNewSession.value = false
+    chatResetSignal.value++
+    if (initialPrompt.value) {
+      startNewSession()
+      mobilePane.value = 'chat'
+    }
+    if (leavingBuilder || Number(route.query.projectId) !== projectId) return
     projectStore.setCurrentProject(project)
   } catch (error) {
     projectError.value = error instanceof Error ? error.message : '项目信息加载失败'
@@ -341,13 +398,14 @@ watch(
 watch(
   () => projectStore.currentProject,
   (project) => {
-    if (project || projectLoading.value || projectError.value) return
+    if (leavingBuilder || project || projectLoading.value || projectError.value) return
     void initCurrentProject()
   },
 )
 
 /** 离开 Builder 路由时再清空当前项目，避免 HMR 卸载组件时误清 store 导致白屏 */
 onBeforeRouteLeave(() => {
+  leavingBuilder = true
   projectStore.setCurrentProject(null)
 })
 
@@ -361,6 +419,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  leavingBuilder = true
   narrowMediaQuery?.removeEventListener('change', syncResponsiveLayout)
   mobileMediaQuery?.removeEventListener('change', syncResponsiveLayout)
   window.removeEventListener('keydown', handleShellKeydown)
@@ -373,17 +432,22 @@ onUnmounted(() => {
 <template>
   <div v-if="projectLoading" class="builder-status">
     <span class="builder-status-mark" aria-hidden="true" />
-    <span class="builder-status-kicker">WORKSPACE / INITIALIZING</span>
     <strong>正在加载项目</strong>
   </div>
   <div v-else-if="projectError" class="builder-status builder-status--error">
     <span class="builder-status-mark" aria-hidden="true" />
-    <span class="builder-status-kicker">WORKSPACE / UNAVAILABLE</span>
     <strong>项目暂时无法打开</strong>
     <p>{{ projectError }}</p>
     <button type="button" class="builder-status-action" @click="handleBackHome">返回项目列表</button>
   </div>
-  <div v-else-if="projectReady" class="container builder-shell" :class="[{ 'container--session-collapsed': sessionPanelCollapsed }, `builder-shell--mobile-${mobilePane}`]">
+  <div
+    v-else-if="projectReady"
+    :key="projectStore.currentProject?.id"
+    ref="builderShellRef"
+    class="container builder-shell"
+    :class="[{ 'container--session-collapsed': sessionPanelCollapsed, 'builder-shell--resizing': resizing }, `builder-shell--mobile-${mobilePane}`]"
+    :style="leftWidth ? { '--workspace-chat-width': `${leftWidth}px` } : undefined"
+  >
     <header class="builder-topbar">
       <div class="builder-brand">
         <button type="button" class="builder-brand-back" title="返回项目列表" aria-label="返回项目列表" @click="handleBackHome">
@@ -392,132 +456,225 @@ onUnmounted(() => {
         <button type="button" class="builder-brand-mark" title="返回项目列表" aria-label="返回项目列表" @click="handleBackHome">
           <span aria-hidden="true" />
         </button>
-        <span class="builder-brand-copy">
-          <strong>AI Agent</strong>
-          <small>Build workspace</small>
-        </span>
       </div>
 
       <div class="builder-project-context">
-        <span class="builder-project-kicker">PROJECT / {{ projectNumber }}</span>
-        <strong class="builder-project-title" :title="projectStore.currentProject?.title">
-          {{ projectStore.currentProject?.title }}
-        </strong>
-        <span class="builder-project-type">{{ projectTypeLabel }}</span>
+        <button
+          type="button"
+          class="builder-project-title"
+          :aria-label="`切换项目：${projectStore.currentProject?.title}`"
+          aria-haspopup="dialog"
+          :aria-expanded="projectSwitchVisible"
+          @click="openProjectSwitcher"
+        >
+          <span>{{ projectStore.currentProject?.title }}</span
+          ><SvgIcon name="chevron-down" />
+        </button>
+        <span class="builder-project-type" :class="`builder-project-type--${resolveProjectType(projectStore.currentProject?.type)}`">{{ projectTypeLabel }}</span>
       </div>
 
       <div class="builder-mobile-switch" role="group" aria-label="移动端工作区视图">
-        <button type="button" :class="{ 'is-active': mobilePane === 'preview' }" :aria-pressed="mobilePane === 'preview'" @click="mobilePane = 'preview'">预览</button>
+        <button type="button" :class="{ 'is-active': mobilePane === 'chat' }" :aria-pressed="mobilePane === 'chat'" @click="mobilePane = 'chat'">对话</button>
         <button type="button" :class="{ 'is-active': mobilePane === 'workspace' }" :aria-pressed="mobilePane === 'workspace'" @click="mobilePane = 'workspace'">工作区</button>
       </div>
 
       <div class="builder-topbar-actions">
-        <span class="builder-online-state"><i /> Workspace online</span>
+        <span class="builder-online-state"><i /> 工作区已连接</span>
         <button
-          v-if="sessionPanelCollapsed"
           ref="sessionToggleRef"
           type="button"
           class="builder-session-toggle-btn builder-topbar-session-toggle"
-          title="展开会话栏"
-          aria-label="展开会话栏"
+          :title="sessionPanelCollapsed ? '展开会话列表' : '收起会话列表'"
+          :aria-label="sessionPanelCollapsed ? '展开会话列表' : '收起会话列表'"
+          :aria-expanded="!sessionPanelCollapsed"
+          aria-controls="builder-sessions"
           @click="toggleSessionPanelCollapsed"
         >
           <el-icon><ChatDotRound /></el-icon>
-          <span>会话</span>
         </button>
         <ThemeToggle />
         <UserMenu show-name @profile-updated="handleUserProfileUpdated" />
       </div>
     </header>
 
-    <button v-if="isNarrowLayout && !sessionPanelCollapsed" type="button" class="builder-drawer-scrim" aria-label="关闭会话栏" @click="toggleSessionPanelCollapsed" />
+    <button v-if="!sessionPanelCollapsed" type="button" class="builder-drawer-scrim" aria-label="关闭会话列表" @click="toggleSessionPanelCollapsed" />
 
-    <section class="left" aria-label="会话列表">
+    <section id="builder-sessions" class="left" :inert="sessionPanelCollapsed" aria-label="会话列表">
       <SessionPanel />
     </section>
-    <main class="main">
-      <div class="main-tab">
-        <div class="main-tab-list" role="tablist" aria-label="Builder 工作模式">
+    <main class="main chat-workspace" aria-label="项目对话">
+      <ChatPanel
+        :user-account-override="latestUserProfile?.account"
+        :user-avatar-override="latestUserProfile?.avatar"
+        :initial-prompt="initialPrompt"
+        @initial-prompt-used="initialPrompt = ''"
+      />
+    </main>
+    <div
+      class="workspace-splitter"
+      role="separator"
+      tabindex="0"
+      aria-label="调整对话与工作区宽度"
+      aria-orientation="vertical"
+      :aria-valuenow="splitPercent"
+      :aria-valuemin="splitMinPercent"
+      :aria-valuemax="splitMaxPercent"
+      @pointerdown="split.start"
+      @pointermove="split.move"
+      @pointerup="split.finish"
+      @pointercancel="split.finish"
+      @lostpointercapture="split.finish"
+      @keydown="split.keydown"
+      @dblclick="split.reset"
+    />
+    <section class="right workspace-area" aria-label="项目工作区">
+      <header class="workspace-toolbar">
+        <div class="workspace-modes" role="tablist" aria-label="工作区视图">
           <button
             v-for="(tab, index) in tabs"
             :key="tab.key"
             type="button"
-            class="main-tab-item"
-            :class="{ 'main-tab-item--active': activeTab === index }"
             role="tab"
             :aria-selected="activeTab === index"
             :aria-label="tab.label"
-            :title="tab.label"
+            :class="{ 'is-active': activeTab === index }"
             @click="switchTab(index)"
           >
-            <el-icon class="main-tab-item-icon">
-              <component :is="tab.icon" />
-            </el-icon>
-            <span class="main-tab-item-copy">
-              <strong class="main-tab-item-label">{{ tab.label }}</strong>
-              <small>{{ tab.meta }}</small>
-            </span>
+            <el-icon><component :is="tab.icon" /></el-icon><span class="workspace-mode-label">{{ tab.label }}</span>
           </button>
         </div>
-      </div>
-      <div class="main-content">
+        <el-dropdown trigger="click" popper-class="workspace-settings-menu" @command="openSettings">
+          <button
+            type="button"
+            class="workspace-icon-button workspace-settings-button"
+            :aria-label="hasTemplateUpdate ? '项目设置菜单，有模板更新' : '项目设置菜单'"
+            @click="refreshTemplateStatus"
+          >
+            <el-icon><Setting /></el-icon>
+            <span v-if="hasTemplateUpdate" class="template-update-dot" aria-hidden="true" />
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="config"
+                ><el-icon><Setting /></el-icon>项目设置</el-dropdown-item
+              >
+              <el-dropdown-item command="snapshot"
+                ><el-icon><Camera /></el-icon>版本记录</el-dropdown-item
+              >
+              <el-dropdown-item command="temp"
+                ><el-icon><CopyDocument /></el-icon
+                ><span class="workspace-template-menu-label">项目模板<span v-if="hasTemplateUpdate" class="template-update-dot" aria-hidden="true" /></span
+              ></el-dropdown-item>
+            </el-dropdown-menu>
+            <div class="workspace-settings-summary" role="group" aria-label="当前项目" :style="{ '--project-hue': projectCardHue(projectStore.currentProject?.id ?? 0) }">
+              <span class="workspace-project-glyph" role="img" :aria-label="projectTypeLabel"
+                ><SvgIcon :name="`project-${resolveProjectType(projectStore.currentProject?.type)}`"
+              /></span>
+              <div class="workspace-project-summary-copy">
+                <strong>{{ projectStore.currentProject?.title }}</strong>
+                <div v-if="currentTemplateVersion" class="workspace-project-meta">
+                  <span :aria-label="`当前模板版本 ${currentTemplateVersion}`"
+                    ><el-icon><CopyDocument /></el-icon>{{ currentTemplateVersion }}</span
+                  >
+                  <span v-if="hasTemplateUpdate" class="workspace-project-update">可更新至 {{ latestTemplateVersion }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-dropdown>
+        <div v-if="activeTabKey === 'preview'" class="workspace-device-switch" role="group" aria-label="预览设备">
+          <el-tooltip content="桌面预览" placement="bottom"
+            ><button type="button" class="workspace-icon-button" aria-label="桌面预览" :aria-pressed="previewDevice === 'desktop'" @click="previewDevice = 'desktop'">
+              <el-icon><Monitor /></el-icon></button
+          ></el-tooltip>
+          <el-tooltip content="手机预览" placement="bottom"
+            ><button type="button" class="workspace-icon-button" aria-label="手机预览" :aria-pressed="previewDevice === 'mobile'" @click="previewDevice = 'mobile'">
+              <el-icon><Iphone /></el-icon></button
+          ></el-tooltip>
+        </div>
+      </header>
+      <div class="main-content workspace-content">
         <div class="main-content-viewport">
-          <!-- 首次访问才挂载对应面板 chunk，访问后保持挂载避免丢失状态 -->
-          <ChatPanel
-            v-if="shouldMountTabPanel('chat')"
+          <PreviewPanel
+            v-if="shouldMountTabPanel('preview')"
+            :device="previewDevice"
             class="main-content-panel"
-            :class="getPanelTransitionClass('chat')"
-            :aria-hidden="activeTabKey !== 'chat' && leavingTabKey !== 'chat'"
-            :user-account-override="latestUserProfile?.account"
-            :user-avatar-override="latestUserProfile?.avatar"
+            :class="getPanelTransitionClass('preview')"
+            :inert="activeTabKey !== 'preview'"
+            :aria-hidden="activeTabKey !== 'preview'"
           />
           <FilePanel
             v-if="shouldMountTabPanel('file')"
             class="main-content-panel"
             :class="getPanelTransitionClass('file')"
-            :aria-hidden="activeTabKey !== 'file' && leavingTabKey !== 'file'"
+            :inert="activeTabKey !== 'file'"
+            :aria-hidden="activeTabKey !== 'file'"
           />
           <ImagePanel
             v-if="shouldMountTabPanel('image')"
             class="main-content-panel"
             :class="getPanelTransitionClass('image')"
-            :aria-hidden="activeTabKey !== 'image' && leavingTabKey !== 'image'"
-          />
-          <ConfigPanel
-            v-if="shouldMountTabPanel('config')"
-            class="main-content-panel"
-            :class="getPanelTransitionClass('config')"
-            :aria-hidden="activeTabKey !== 'config' && leavingTabKey !== 'config'"
-          />
-          <SnapshotPanel
-            v-if="shouldMountTabPanel('snapshot')"
-            class="main-content-panel"
-            :class="getPanelTransitionClass('snapshot')"
-            :aria-hidden="activeTabKey !== 'snapshot' && leavingTabKey !== 'snapshot'"
-          />
-          <TempPanel
-            v-if="shouldMountTabPanel('temp')"
-            class="main-content-panel"
-            :class="getPanelTransitionClass('temp')"
-            :panel-active="activeTabKey === 'temp'"
-            :aria-hidden="activeTabKey !== 'temp' && leavingTabKey !== 'temp'"
-          />
-          <LogPanel
-            v-if="shouldMountTabPanel('log')"
-            class="main-content-panel"
-            :class="getPanelTransitionClass('log')"
-            :aria-hidden="activeTabKey !== 'log' && leavingTabKey !== 'log'"
+            :inert="activeTabKey !== 'image'"
+            :aria-hidden="activeTabKey !== 'image'"
           />
         </div>
       </div>
-    </main>
-    <section class="right" aria-label="实时预览">
-      <PreviewPanel />
+      <section v-if="logMounted" v-show="logVisible" id="workspace-log" class="workspace-terminal" aria-label="运行日志"><LogPanel /></section>
+      <footer class="workspace-footer">
+        <button type="button" :aria-expanded="logVisible" aria-controls="workspace-log" @click="toggleLog">
+          <el-icon><Notebook /></el-icon><span>运行日志</span>
+        </button>
+        <span>{{ settingsDialogVisible ? settingsTitles[settingsPanel] : tabs[activeTab]?.label }}</span>
+      </footer>
     </section>
+    <el-dialog v-model="projectSwitchVisible" class="project-switcher-dialog" title="切换项目" width="min(680px, calc(100vw - 32px))" :fullscreen="isMobileLayout" append-to-body>
+      <el-input v-model="projectSwitchSearch" :prefix-icon="Search" clearable placeholder="搜索项目名称" aria-label="搜索项目名称" />
+      <div v-loading="projectSwitchLoading" class="project-switch-list">
+        <div v-if="selectableProjects.length" class="project-switch-grid">
+          <button
+            v-for="project in selectableProjects"
+            :key="project.id"
+            type="button"
+            class="project-switch-option"
+            :class="{ 'is-current': project.id === projectStore.currentProject?.id }"
+            :style="{ '--project-hue': projectCardHue(project.id) }"
+            :aria-label="`切换到${project.title}`"
+            :aria-pressed="project.id === projectStore.currentProject?.id"
+            @click="selectProject(project)"
+          >
+            <span class="workspace-project-glyph" aria-hidden="true"><SvgIcon :name="`project-${resolveProjectType(project.type)}`" /></span>
+            <span class="project-switch-copy"
+              ><strong>{{ project.title }}</strong
+              ><small>{{ project.desc?.trim() || PROJECT_TYPE_LABEL[resolveProjectType(project.type)] }}</small></span
+            >
+            <el-icon v-if="project.id === projectStore.currentProject?.id" class="project-switch-current" aria-hidden="true"><Check /></el-icon>
+          </button>
+        </div>
+        <div v-else-if="!projectSwitchLoading" class="project-switch-empty">{{ projectSwitchSearch.trim() ? '没有匹配的项目' : '暂无可切换的项目' }}</div>
+      </div>
+    </el-dialog>
+    <el-dialog
+      v-model="settingsDialogVisible"
+      class="builder-settings-dialog"
+      :title="settingsTitles[settingsPanel]"
+      width="min(960px, calc(100vw - 32px))"
+      :fullscreen="isMobileLayout"
+      append-to-body
+    >
+      <div class="builder-shell builder-dialog-context">
+        <ConfigPanel v-if="settingsMounted.has('config')" v-show="settingsPanel === 'config'" />
+        <SnapshotPanel v-if="settingsMounted.has('snapshot')" v-show="settingsPanel === 'snapshot'" />
+        <TempPanel
+          v-if="settingsMounted.has('temp')"
+          v-show="settingsPanel === 'temp'"
+          :panel-active="settingsDialogVisible && settingsPanel === 'temp'"
+          @version-updated="refreshTemplateStatus"
+        />
+      </div>
+    </el-dialog>
   </div>
   <div v-else class="builder-status">
     <span class="builder-status-mark" aria-hidden="true" />
-    <span class="builder-status-kicker">WORKSPACE / RESTORING</span>
     <strong>正在恢复项目</strong>
   </div>
 </template>
@@ -559,13 +716,6 @@ onUnmounted(() => {
   background: var(--brand-blue);
   content: '';
   mask: url('/svgs/ai-agent.svg') center / contain no-repeat;
-}
-
-.builder-status-kicker {
-  color: var(--brand-blue);
-  font-family: var(--brand-font-mono);
-  font-size: 10px;
-  font-weight: 700;
 }
 
 .builder-status strong {
@@ -865,3 +1015,4 @@ onUnmounted(() => {
 </style>
 
 <style src="./builder.css"></style>
+<style src="./studio.css"></style>

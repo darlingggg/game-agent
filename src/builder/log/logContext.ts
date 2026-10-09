@@ -45,7 +45,7 @@ export interface LogContext {
 }
 
 /** 日志上下文注入 key */
-export const logContextKey: InjectionKey<LogContext> = Symbol('logContext')
+export const logContextKey: InjectionKey<LogContext> = Symbol.for('gameagent.builder.logContext')
 
 /** 日志 id 自增种子 */
 let logIdSeed = 0
