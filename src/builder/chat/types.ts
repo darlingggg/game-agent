@@ -57,6 +57,8 @@ export interface ChatMessage {
   toolsLoaded?: boolean
   toolsLoading?: boolean
   toolsError?: string
+  /** 历史回复失败原因；工具结果可能已独立完成 */
+  errorMsg?: string
   /** 图像识别内容，与 Agent 正文区分展示 */
   vision?: ChatVisionResult
   /** 是否正在流式输出 */

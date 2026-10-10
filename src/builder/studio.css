@@ -699,9 +699,10 @@
   position: static;
 }
 .container.builder-shell .context-usage-popover {
+  position: absolute;
   right: 12px;
   bottom: calc(100% + 12px);
-  width: min(320px, calc(100vw - 54px));
+  width: min(320px, calc(100% - 24px));
 }
 .container.builder-shell .preview-panel {
   background: var(--builder-panel);

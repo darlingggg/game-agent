@@ -22,10 +22,6 @@ function statusLabel(status: ImageGenerationStatus) {
   return STATUS_LABELS[status]
 }
 
-function isWorking(status: ImageGenerationStatus) {
-  return !['succeeded', 'failed'].includes(status)
-}
-
 function formatBytes(value: number | null) {
   if (!value) return ''
   if (value < 1024 * 1024) return Math.round(value / 1024) + ' KB'
@@ -35,7 +31,7 @@ function formatBytes(value: number | null) {
 
 <template>
   <div class="chat-image-tasks" :class="{ 'chat-image-tasks--compact': compact }" aria-label="AI 生图任务">
-    <article v-for="task in tasks" :key="task.taskId" class="chat-image-task" :class="'is-' + task.status">
+    <article v-for="task in tasks" :key="task.taskId" class="chat-image-task">
       <div class="chat-image-task__preview">
         <el-image
           v-if="task.status === 'succeeded' && task.url"
@@ -61,9 +57,6 @@ function formatBytes(value: number | null) {
           <strong>{{ statusLabel(task.status) }}</strong>
           <span>完成后可点击查看</span>
         </div>
-        <span class="chat-image-task__status" :class="{ 'is-working': isWorking(task.status) && !task.observationError, 'is-interrupted': task.observationError }">
-          <i />{{ task.observationError ? '状态中断' : statusLabel(task.status) }}
-        </span>
       </div>
       <div class="chat-image-task__meta">
         <p>{{ task.prompt }}</p>
@@ -191,42 +184,6 @@ function formatBytes(value: number | null) {
   animation: image-task-scan 2.4s ease-in-out infinite;
 }
 
-.chat-image-task__status {
-  position: absolute;
-  top: 0.625rem;
-  left: 0.625rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  min-height: 1.625rem;
-  padding: 0 0.5rem;
-  border: 1px solid var(--app-border);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--app-surface) 88%, transparent);
-  color: var(--app-text-primary);
-  font-size: 0.6875rem;
-  font-weight: 700;
-  backdrop-filter: blur(8px);
-}
-
-.chat-image-task__status i {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: #22c55e;
-}
-.chat-image-task__status.is-interrupted i {
-  background: var(--app-text-secondary);
-}
-
-.chat-image-task__status.is-working i {
-  animation: image-task-pulse 1.2s ease-in-out infinite;
-}
-
-.is-failed .chat-image-task__status i {
-  background: #dc2626;
-}
-
 .chat-image-task__meta {
   display: flex;
   flex-wrap: wrap;
@@ -266,16 +223,8 @@ function formatBytes(value: number | null) {
   }
 }
 
-@keyframes image-task-pulse {
-  50% {
-    opacity: 0.25;
-    transform: scale(0.75);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .chat-image-task__scanner,
-  .chat-image-task__status.is-working i {
+  .chat-image-task__scanner {
     animation: none;
   }
 }

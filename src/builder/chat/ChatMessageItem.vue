@@ -177,6 +177,7 @@ function toggleVisionReasoning() {
                 /></template>
               </div>
             </div>
+            <p v-if="message.history && message.errorMsg" class="chat-message-error">{{ message.errorMsg }}</p>
             <MarkdownContent v-if="message.history && message.content" :content="message.content" :assistant-session-id="message.sessionId" />
             <template v-else-if="!message.history" v-for="part in parts" :key="part.id">
               <ChatToolInvocation v-if="part.tool" :tool="part.tool" @expanded-change="setToolExpanded(part.tool, $event)" />
@@ -223,6 +224,11 @@ function toggleVisionReasoning() {
 }
 .chat-tool-history-content button {
   color: var(--app-accent);
+}
+.chat-message-error {
+  color: var(--app-danger);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .chat-message {
   display: flex;

@@ -247,6 +247,7 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
     streaming: item.status === 'streaming',
     history: true,
     toolSummary: item.toolSummary,
+    errorMsg: item.errorMsg ?? undefined,
     createdAt: item.createdAt,
   }
 }
