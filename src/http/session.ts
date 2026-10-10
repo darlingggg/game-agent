@@ -1,4 +1,5 @@
 import axios from '@/ajax'
+import type { ToolSummary } from '@/builder/chat/types'
 
 export interface sessionItem {
   id: number
@@ -11,10 +12,11 @@ export interface sessionItem {
   account: string
   role: 'user' | 'assistant' | 'tool' | 'vision'
   content?: string
-  status?: 'completed' | 'streaming' | 'failed'
+  status?: 'completed' | 'streaming' | 'failed' | 'cancelled'
   errorMsg?: string | null
   createdAt: string
   updatedAt?: string
+  toolSummary?: ToolSummary
 }
 
 export interface ConversationSummary {
@@ -78,6 +80,8 @@ interface RawSessionItem {
   created_at?: string
   updatedAt?: string
   updated_at?: string
+  toolSummary?: ToolSummary
+  tool_summary?: ToolSummary
 }
 
 interface RawConversationSummary {
@@ -141,6 +145,7 @@ function normalizeSessionItem(item: RawSessionItem): sessionItem {
     errorMsg: item.errorMsg ?? item.error_msg ?? null,
     createdAt: item.createdAt ?? item.created_at ?? '',
     updatedAt: item.updatedAt ?? item.updated_at ?? undefined,
+    toolSummary: item.toolSummary ?? item.tool_summary,
   }
 }
 

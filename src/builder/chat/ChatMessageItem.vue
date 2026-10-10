@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import MarkdownContent from './MarkdownContent.vue'
-import ChatImageTasks from './ChatImageTasks.vue'
-import type { ChatMessage } from './types'
+import ChatToolInvocation from './ChatToolInvocation.vue'
+import { liveToolParts, toolSummaryLabel } from './toolInvocations'
+import type { ChatMessage, ToolInvocation } from './types'
 
 defineOptions({
   name: 'ChatMessageItem',
@@ -18,6 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   replyCollapseChange: [collapsed: boolean]
+  loadTools: []
 }>()
 
 /** 是否为当前用户消息 */
@@ -38,15 +40,23 @@ const hasVisionAnswer = computed(() => !!props.message.vision?.answer.trim())
 const hasVisionContent = computed(() => hasVisionReasoning.value || hasVisionAnswer.value || !!props.message.vision?.streaming)
 
 const hasImageTasks = computed(() => Boolean(props.message.imageTasks?.length))
+const hasTools = computed(() => Boolean(props.message.tools?.length || props.message.toolSummary?.total))
+const parts = computed(() => liveToolParts(props.message.content, props.message.tools ?? []))
+const historyExpanded = ref(false)
+function toggleHistory() {
+  historyExpanded.value = !historyExpanded.value
+  if (historyExpanded.value && !props.message.toolsLoaded && !props.message.toolsLoading) emit('loadTools')
+}
 
-/** 已由任务卡片展示的生成图，避免在 Markdown 正文中再次出现 */
-const generatedImageUrls = computed(() => (props.message.imageTasks ?? []).flatMap((task) => [task.url, task.temporaryUrl]).filter((url): url is string => Boolean(url)))
+function setToolExpanded(tool: ToolInvocation, expanded: boolean) {
+  tool.expanded = expanded
+}
 
 /** 流式输出中且尚无内容时展示 loading */
-const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value && !hasImageTasks.value)
+const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value && !hasImageTasks.value && !hasTools.value)
 
 /** AI 回复是否可折叠（流式结束后且有正文） */
-const canCollapse = computed(() => !isUser.value && !props.message.streaming && (!!props.message.content.trim() || hasVisionContent.value || hasImageTasks.value))
+const canCollapse = computed(() => !isUser.value && !props.message.streaming && (!!props.message.content.trim() || hasVisionContent.value || hasImageTasks.value || hasTools.value))
 
 /** AI 回复默认展开，用户手动收起后状态由消息模型保存 */
 const replyExpanded = computed(() => !props.message.replyCollapsed)
@@ -154,8 +164,24 @@ function toggleVisionReasoning() {
                 <span>图像识别中</span>
               </div>
             </div>
-            <ChatImageTasks v-if="message.imageTasks?.length" :tasks="message.imageTasks" />
-            <MarkdownContent v-if="message.content" :content="message.content" :hidden-image-urls="generatedImageUrls" />
+            <div v-if="message.history && hasTools" class="chat-tool-history">
+              <button type="button" class="chat-tool-history-toggle" :aria-expanded="historyExpanded" @click="toggleHistory">
+                <SvgIcon name="tool-list" /><span>{{ toolSummaryLabel(message.toolSummary) }}</span
+                ><SvgIcon name="chevron-down" :class="{ 'is-expanded': historyExpanded }" />
+              </button>
+              <div v-if="historyExpanded" class="chat-tool-history-content">
+                <span v-if="message.toolsLoading">加载工具过程…</span>
+                <div v-else-if="message.toolsError">{{ message.toolsError }} <button type="button" @click="emit('loadTools')">重试</button></div>
+                <template v-else
+                  ><ChatToolInvocation v-for="tool in message.tools" :key="tool.toolCallId" :tool="tool" @expanded-change="setToolExpanded(tool, $event)"
+                /></template>
+              </div>
+            </div>
+            <MarkdownContent v-if="message.history && message.content" :content="message.content" :assistant-session-id="message.sessionId" />
+            <template v-else-if="!message.history" v-for="part in parts" :key="part.id">
+              <ChatToolInvocation v-if="part.tool" :tool="part.tool" @expanded-change="setToolExpanded(part.tool, $event)" />
+              <MarkdownContent v-else-if="part.text" :content="part.text" :assistant-session-id="message.sessionId" />
+            </template>
             <span v-if="message.streaming && message.content" class="chat-message-cursor" />
           </div>
         </template>
@@ -166,6 +192,38 @@ function toggleVisionReasoning() {
 </template>
 
 <style scoped>
+.chat-tool-history {
+  margin: 8px 0 16px;
+}
+.chat-tool-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: var(--app-text-secondary);
+  padding: 6px 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chat-tool-history-toggle svg {
+  width: 15px;
+  height: 15px;
+  transition: transform 160ms ease;
+}
+.chat-tool-history-toggle .is-expanded {
+  transform: rotate(180deg);
+}
+.chat-tool-history-content {
+  padding: 6px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-bg-subtle);
+  font-size: 12px;
+}
+.chat-tool-history-content button {
+  color: var(--app-accent);
+}
 .chat-message {
   display: flex;
   align-items: flex-start;

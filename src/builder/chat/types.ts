@@ -3,6 +3,30 @@ import type { ImageGenerationTask } from '@/http/imageGeneration'
 /** 消息角色 */
 export type ChatRole = 'user' | 'assistant'
 
+export type ToolStatus = 'running' | 'succeeded' | 'failed' | 'cancelled'
+export interface ToolSummary {
+  total: number
+  running: number
+  succeeded: number
+  failed: number
+  cancelled: number
+}
+export interface ToolInvocation {
+  toolCallId: string
+  name: string
+  args: Record<string, unknown>
+  result?: unknown
+  error?: string
+  status: ToolStatus
+  sequence: number
+  textOffset: number
+  startedAt: string
+  finishedAt?: string
+  durationMs?: number
+  imageTasks?: ImageGenerationTask[]
+  expanded?: boolean
+}
+
 /** 图像识别流式内容 */
 export interface ChatVisionResult {
   /** 图像思考过程 */
@@ -27,6 +51,12 @@ export interface ChatMessage {
   sessionId?: number
   /** 主 AI 在本次回复中创建的图片任务 */
   imageTasks?: ImageGenerationTask[]
+  tools?: ToolInvocation[]
+  toolSummary?: ToolSummary
+  history?: boolean
+  toolsLoaded?: boolean
+  toolsLoading?: boolean
+  toolsError?: string
   /** 图像识别内容，与 Agent 正文区分展示 */
   vision?: ChatVisionResult
   /** 是否正在流式输出 */

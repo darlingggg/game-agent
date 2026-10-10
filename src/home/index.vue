@@ -5,7 +5,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createProject, getProjectList, deleteProject, type projectItem, type ProjectType } from '@/http/project'
 import { getUserInfo, type UpdateUserProfileResponse } from '@/http/user'
-import { ArrowUp, ChatDotRound, Delete, Edit, FolderOpened, Grid, Plus, Search, TopRight } from '@element-plus/icons-vue'
+import { ArrowRight, ArrowUp, Delete, Edit, FolderOpened, Grid, Plus, Search, TopRight } from '@element-plus/icons-vue'
 import { useProjectStore } from '@/stores/project'
 import { saveProjectConfig } from '@/utils/projectConfig'
 import { projectCardHue, saveProjectPrompt, suggestProjectTitle } from '@/utils/projectDraft'
@@ -30,14 +30,29 @@ const creatorType = ref<ProjectType>('tool')
 const creatorInputRef = ref<HTMLTextAreaElement | null>(null)
 const creationPrompt = ref('')
 const projectTypeOptions: ProjectType[] = ['tool', '2d', '3d']
-
-function focusCreator() {
-  creatorInputRef.value?.focus()
-  creatorInputRef.value?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' })
+type HomeView = 'create' | 'projects'
+const activeHomeView = ref<HomeView>('create')
+const homeScreenRef = ref<HTMLElement | null>(null)
+const viewScroll: Record<HomeView, number> = { create: 0, projects: 0 }
+const creatorPlaceholders: Record<ProjectType, string> = {
+  tool: '做一个记录灵感的小工具，支持分类和搜索……',
+  '2d': '做一个有霓虹灯效果的贪吃蛇游戏……',
+  '3d': '做一个可以自由探索的三维世界……',
 }
 
-function scrollToProjects() {
-  document.getElementById('project-index-title')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+function showHomeView(view: HomeView) {
+  if (view === activeHomeView.value) return
+  if (homeScreenRef.value) viewScroll[activeHomeView.value] = homeScreenRef.value.scrollTop
+  activeHomeView.value = view
+}
+
+function restoreHomeView(element: Element) {
+  const screen = element as HTMLElement
+  screen.scrollTop = viewScroll[activeHomeView.value]
+}
+
+function focusCreator() {
+  creatorInputRef.value?.focus({ preventScroll: true })
 }
 
 function startFromPrompt() {
@@ -411,147 +426,174 @@ onUnmounted(() => {
     <div class="home-layout">
       <aside class="home-sidebar" aria-label="工作区导航">
         <nav>
-          <button type="button" class="home-nav-item home-nav-item--active" aria-current="page" @click="scrollToProjects">
+          <button
+            type="button"
+            class="home-nav-item"
+            :class="{ 'home-nav-item--active': activeHomeView === 'create' }"
+            :aria-current="activeHomeView === 'create' ? 'page' : undefined"
+            @click="showHomeView('create')"
+          >
+            <SvgIcon name="creative-orbit" /><span>新建项目</span>
+          </button>
+          <button
+            type="button"
+            class="home-nav-item"
+            :class="{ 'home-nav-item--active': activeHomeView === 'projects' }"
+            :aria-current="activeHomeView === 'projects' ? 'page' : undefined"
+            @click="showHomeView('projects')"
+          >
             <el-icon><FolderOpened /></el-icon><span>我的项目</span>
           </button>
-          <button type="button" class="home-nav-item" @click="focusCreator">
-            <el-icon><ChatDotRound /></el-icon><span>开始创作</span>
-          </button>
-          <button v-if="canManage" type="button" class="home-nav-item home-nav-item--admin" @click="router.push('/admin')">
+          <button v-if="canManage" type="button" class="home-nav-item home-nav-item--admin" aria-label="管理后台" @click="router.push('/admin')">
             <el-icon><Grid /></el-icon><span>管理后台</span>
           </button>
         </nav>
         <div class="home-sidebar-foot">{{ nickName ? `${nickName} 的工作区` : '我的工作区' }}</div>
       </aside>
       <main class="home-main">
-        <section class="creator-hero" aria-labelledby="creator-title">
-          <div class="creator-copy">
-            <h1 id="creator-title">今天，想做点什么？</h1>
-            <p>描述你的想法，把它变成可以运行的作品。</p>
-          </div>
-          <div class="creator-composer">
-            <textarea
-              ref="creatorInputRef"
-              v-model="creatorPrompt"
-              maxlength="4000"
-              rows="3"
-              aria-label="描述你想创建的项目"
-              placeholder="做一个有霓虹灯效果的贪吃蛇游戏……"
-              @keydown="handleCreatorKeydown"
-            />
-            <div class="creator-composer-footer">
-              <div class="creator-types" role="group" aria-label="选择新项目类型">
-                <el-tooltip v-for="type in projectTypeOptions" :key="type" :content="PROJECT_TYPE_LABEL[type]" placement="bottom">
-                  <button
-                    type="button"
-                    :class="{ 'is-active': creatorType === type }"
-                    :aria-label="PROJECT_TYPE_LABEL[type]"
-                    :aria-pressed="creatorType === type"
-                    @click="creatorType = type"
-                  >
-                    <SvgIcon :name="`project-${type}`" /><span v-if="creatorType === type">{{ PROJECT_TYPE_LABEL[type] }}</span>
+        <Transition name="home-view" mode="out-in" @enter="restoreHomeView">
+          <div :key="activeHomeView" ref="homeScreenRef" class="home-screen" :class="`home-screen--${activeHomeView}`">
+            <section v-if="activeHomeView === 'create'" class="creator-hero" aria-labelledby="creator-title">
+              <div class="creator-copy">
+                <h1 id="creator-title">今天，想做点什么？</h1>
+                <p>用对话，创建你的应用和游戏。</p>
+              </div>
+              <div class="creator-composer">
+                <textarea
+                  ref="creatorInputRef"
+                  v-model="creatorPrompt"
+                  maxlength="4000"
+                  rows="3"
+                  aria-label="描述你想创建的项目"
+                  :placeholder="creatorPlaceholders[creatorType]"
+                  @keydown="handleCreatorKeydown"
+                />
+                <div class="creator-composer-footer">
+                  <span class="creator-shortcut"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> 创建</span>
+                  <button type="button" class="creator-submit" :disabled="!creatorPrompt.trim() || creating" @click="startFromPrompt">
+                    <span>创建项目</span><el-icon><ArrowUp /></el-icon>
                   </button>
-                </el-tooltip>
+                </div>
               </div>
-              <button type="button" class="creator-submit" :disabled="!creatorPrompt.trim() || creating" @click="startFromPrompt">
-                <span>开始创作</span><el-icon><ArrowUp /></el-icon>
-              </button>
-            </div>
-          </div>
-          <p class="creator-hint">确认项目名称后，开始第一轮对话</p>
-        </section>
-
-        <section class="project-index" aria-labelledby="project-index-title">
-          <header class="project-index-header">
-            <div>
-              <h2 id="project-index-title">我的项目</h2>
-            </div>
-            <div class="project-heading-actions">
-              <div class="project-result-count" aria-live="polite">
-                <span>{{ projectCount }} {{ hasActiveFilters ? '项结果' : '个项目' }}</span>
+              <div class="creator-types" role="group" aria-label="选择新项目类型">
+                <button
+                  v-for="type in projectTypeOptions"
+                  :key="type"
+                  type="button"
+                  :class="[{ 'is-active': creatorType === type }, `creator-type--${type}`]"
+                  :aria-pressed="creatorType === type"
+                  @click="creatorType = type"
+                >
+                  <span class="creator-type-icon"><SvgIcon :name="`project-${type}`" /></span>
+                  <span>{{ PROJECT_TYPE_LABEL[type] }}</span>
+                </button>
               </div>
-              <el-tooltip content="新建空白项目" placement="top"
-                ><button type="button" class="create-project-button" aria-label="新建空白项目" @click="openCreateDialog">
-                  <el-icon><Plus /></el-icon></button
-              ></el-tooltip>
-            </div>
-          </header>
-
-          <div class="project-toolbar">
-            <el-input v-model="searchInput" class="project-search" placeholder="搜索项目名称" :prefix-icon="Search" clearable @input="handleSearchInput" />
-
-            <div class="project-filter" role="group" aria-label="按项目类型筛选">
-              <button
-                v-for="filter in projectFilters"
-                :key="filter.value"
-                type="button"
-                class="project-filter-option"
-                :class="{ 'project-filter-option--active': activeType === filter.value }"
-                :aria-pressed="activeType === filter.value"
-                @click="activeType = filter.value"
-              >
-                <span>{{ filter.label }}</span>
-                <small>{{ getFilterCount(filter.value) }}</small>
+              <button type="button" class="creator-projects-link" @click="showHomeView('projects')">
+                <el-icon><FolderOpened /></el-icon><span>继续已有项目</span><el-icon class="creator-projects-arrow"><ArrowRight /></el-icon>
               </button>
-            </div>
-          </div>
+            </section>
 
-          <div v-loading="listLoading" class="project-results">
-            <div v-if="displayedProjects.length" class="project-grid">
-              <article
-                v-for="project in displayedProjects"
-                :key="project.id"
-                class="project-card"
-                :class="PROJECT_TYPE_CLASS[resolveProjectType(project.type)]"
-                :style="{ '--project-hue': projectCardHue(project.id) }"
-                @pointermove="handleCardPointerMove"
-              >
-                <button type="button" class="project-card-hitarea" :aria-label="`进入项目 ${project.title}`" @click="handleEnterProject(project)" />
-
-                <div class="project-card-visual" aria-hidden="true">
-                  <div class="project-card-icon-stack">
-                    <div class="project-card-icon">
-                      <SvgIcon :name="`project-${resolveProjectType(project.type)}`" />
-                    </div>
+            <section v-else class="project-index" aria-labelledby="project-index-title">
+              <header class="project-index-header">
+                <div>
+                  <h1 id="project-index-title">我的项目</h1>
+                </div>
+                <div class="project-heading-actions">
+                  <div class="project-result-count" aria-live="polite">
+                    <span>{{ projectCount }} {{ hasActiveFilters ? '项结果' : '个项目' }}</span>
                   </div>
-                  <span class="project-type-badge">{{ PROJECT_TYPE_LABEL[resolveProjectType(project.type)] }}</span>
+                  <el-tooltip content="新建空白项目" placement="top"
+                    ><button type="button" class="create-project-button" aria-label="新建空白项目" @click="openCreateDialog">
+                      <el-icon><Plus /></el-icon></button
+                  ></el-tooltip>
+                </div>
+              </header>
+
+              <div class="project-toolbar">
+                <el-input
+                  v-model="searchInput"
+                  class="project-search"
+                  aria-label="搜索项目名称"
+                  placeholder="搜索项目名称"
+                  :prefix-icon="Search"
+                  clearable
+                  @input="handleSearchInput"
+                />
+
+                <div class="project-filter" role="group" aria-label="按项目类型筛选">
+                  <button
+                    v-for="filter in projectFilters"
+                    :key="filter.value"
+                    type="button"
+                    class="project-filter-option"
+                    :class="{ 'project-filter-option--active': activeType === filter.value }"
+                    :aria-pressed="activeType === filter.value"
+                    @click="activeType = filter.value"
+                  >
+                    <span>{{ filter.label }}</span>
+                    <small>{{ getFilterCount(filter.value) }}</small>
+                  </button>
+                </div>
+              </div>
+
+              <div v-loading="listLoading" class="project-results">
+                <div v-if="displayedProjects.length" class="project-grid">
+                  <article
+                    v-for="project in displayedProjects"
+                    :key="project.id"
+                    class="project-card"
+                    :class="PROJECT_TYPE_CLASS[resolveProjectType(project.type)]"
+                    :style="{ '--project-hue': projectCardHue(project.id) }"
+                    @pointermove="handleCardPointerMove"
+                  >
+                    <button type="button" class="project-card-hitarea" :aria-label="`进入项目 ${project.title}`" @click="handleEnterProject(project)" />
+
+                    <div class="project-card-visual" aria-hidden="true">
+                      <div class="project-card-icon-stack">
+                        <div class="project-card-icon">
+                          <SvgIcon :name="`project-${resolveProjectType(project.type)}`" />
+                        </div>
+                      </div>
+                      <span class="project-type-badge">{{ PROJECT_TYPE_LABEL[resolveProjectType(project.type)] }}</span>
+                    </div>
+
+                    <div class="project-card-actions">
+                      <el-button class="card-action-button" :icon="Edit" circle title="编辑项目" aria-label="编辑项目" @click.stop="handleEditPro(project.id)" />
+                      <el-button
+                        class="card-action-button card-action-button--danger"
+                        :icon="Delete"
+                        circle
+                        title="删除项目"
+                        aria-label="删除项目"
+                        @click.stop="handleDeletePro(project.id)"
+                      />
+                    </div>
+
+                    <div class="project-card-content">
+                      <h3>{{ project.title }}</h3>
+                      <p>{{ getProjectDesc(project.desc) }}</p>
+                      <footer>
+                        <time :datetime="project.createdAt" :title="new Date(project.createdAt).toLocaleString('zh-CN', { hour12: false })">
+                          <SvgIcon name="calendar" />
+                          {{ formatProjectTime(project.createdAt) }}
+                        </time>
+                        <el-icon class="project-card-enter" aria-hidden="true"><TopRight /></el-icon>
+                      </footer>
+                    </div>
+                  </article>
                 </div>
 
-                <div class="project-card-actions">
-                  <el-button class="card-action-button" :icon="Edit" circle title="编辑项目" aria-label="编辑项目" @click.stop="handleEditPro(project.id)" />
-                  <el-button
-                    class="card-action-button card-action-button--danger"
-                    :icon="Delete"
-                    circle
-                    title="删除项目"
-                    aria-label="删除项目"
-                    @click.stop="handleDeletePro(project.id)"
-                  />
+                <div v-else-if="!listLoading" class="project-empty">
+                  <span class="project-empty-icon"><Search /></span>
+                  <h3>{{ hasActiveFilters ? '没有匹配的项目' : '还没有项目' }}</h3>
+                  <p>{{ hasActiveFilters ? '换个名称或项目类型试试。' : '从第一个项目开始。' }}</p>
+                  <button v-if="hasActiveFilters" type="button" class="empty-action-button" @click="handleResetSearch">查看全部项目</button>
+                  <button v-else type="button" class="empty-action-button" @click="showHomeView('create')">新建项目</button>
                 </div>
-
-                <div class="project-card-content">
-                  <h3>{{ project.title }}</h3>
-                  <p>{{ getProjectDesc(project.desc) }}</p>
-                  <footer>
-                    <time :datetime="project.createdAt" :title="new Date(project.createdAt).toLocaleString('zh-CN', { hour12: false })">
-                      <SvgIcon name="calendar" />
-                      {{ formatProjectTime(project.createdAt) }}
-                    </time>
-                    <el-icon class="project-card-enter" aria-hidden="true"><TopRight /></el-icon>
-                  </footer>
-                </div>
-              </article>
-            </div>
-
-            <div v-else-if="!listLoading" class="project-empty">
-              <span class="project-empty-icon"><Search /></span>
-              <h3>{{ hasActiveFilters ? '没有匹配的项目' : '还没有项目' }}</h3>
-              <p>{{ hasActiveFilters ? '换个名称或项目类型试试。' : '从第一个项目开始。' }}</p>
-              <button v-if="hasActiveFilters" type="button" class="empty-action-button" @click="handleResetSearch">查看全部项目</button>
-              <button v-else type="button" class="empty-action-button" @click="openCreateDialog">新建项目</button>
-            </div>
+              </div>
+            </section>
           </div>
-        </section>
+        </Transition>
       </main>
     </div>
 

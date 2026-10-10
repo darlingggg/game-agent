@@ -140,7 +140,7 @@ pnpm dev
 
 生产构建完成后部署 `dist/`，并为 Vue Router 的 history 模式配置页面回退：非静态文件的页面路径需要返回 `index.html`。使用默认生产 API 地址时，将 `/api/` 反向代理到后端实际端口，并移除 `/api` 前缀。
 
-WebContainer 与编辑器的运行检查要求页面处于跨源隔离环境。Vite 的开发和 preview 服务已经注入以下响应头，生产静态服务器也需要提供：
+WebContainer 与编辑器的运行检查要求页面处于跨源隔离环境。Vite 的开发和 preview 服务已经注入以下响应头；生产静态服务器也需设置 COOP/COEP，其中 COEP 可以选择 `credentialless` 或 `require-corp`：
 
 ```text
 Cross-Origin-Embedder-Policy: credentialless
@@ -148,6 +148,8 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Resource-Policy: cross-origin
 ```
 
+`WebContainer.boot` 的 `coep` 参数必须与页面响应头保持一致。启动代码会读取当前页面实际返回的 COEP 值（`credentialless` 或 `require-corp`）后传入 SDK。部署在 Vercel 时由 `vercel.json` 设置响应头；其他平台需在实际返回的 HTML 响应中配置，并确认 CDN 或反向代理没有移除这些响应头。
+
 生产页面应使用 HTTPS；本地可通过 localhost 开发。聊天、生图、OAuth 和构建进度使用 SSE，API 代理需要关闭响应缓冲并配置足够的连接超时。浏览器预览还需要访问 WebContainer 运行环境和项目依赖仓库，外部图片及 COS 素材需要满足对应的跨源访问配置。
 
-若界面可以打开但预览无法初始化，可依次核对跨源隔离响应头、网络访问、模板的 `dev` 脚本及依赖安装日志；模型、数据库和服务器构建问题则在 `agentNode` 中排查。
+若提示“预览环境初始化超时”，先在浏览器开发者工具的 Network 中检查 `stackblitz.com/headless`。`net::ERR_TIMED_OUT` 表示浏览器未能加载 StackBlitz 启动页，需要让浏览器网络或代理稳定访问 `stackblitz.com`、`c.staticblitz.com`、`w-corp-staticblitz.com` / `w-credentialless-staticblitz.com` 及动态生成的 `*.webcontainer-api.io` 域名，并检查第三方 Cookie / 存储限制。此时还未进入模板依赖安装；若已显示“正在安装依赖”，再检查 `pnpm install` 控制台输出和模板的 `dev` 脚本。模型、数据库和服务器构建问题则在 `agentNode` 中排查。

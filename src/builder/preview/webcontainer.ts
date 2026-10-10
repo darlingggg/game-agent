@@ -72,7 +72,15 @@ async function getWebContainerInstance(): Promise<WebContainer> {
 
   if (!bootPromise) {
     assertCrossOriginIsolated()
-    bootPromise = WebContainer.boot()
+    bootPromise = fetch(window.location.href, { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`无法读取预览页面响应头（HTTP ${response.status}）`)
+        const coep = response.headers.get('Cross-Origin-Embedder-Policy')
+        if (coep !== 'credentialless' && coep !== 'require-corp') {
+          throw new Error('预览页面缺少有效的 Cross-Origin-Embedder-Policy 响应头')
+        }
+        return WebContainer.boot({ coep })
+      })
       .then((instance) => {
         webcontainerInstance = instance
         return instance

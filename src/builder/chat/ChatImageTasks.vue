@@ -5,13 +5,13 @@ import type { ImageGenerationTask, ImageGenerationStatus } from '@/http/imageGen
 
 defineOptions({ name: 'ChatImageTasks' })
 
-const props = defineProps<{ tasks: ImageGenerationTask[] }>()
+const props = defineProps<{ tasks: ImageGenerationTask[]; compact?: boolean }>()
 
 const STATUS_LABELS: Record<ImageGenerationStatus, string> = {
   queued: '等待生成',
   submitted: '任务已提交',
   generating: '正在生成',
-  storing: '正在保存到 COS',
+  storing: '正在保存图片',
   succeeded: '已生成',
   failed: '生成失败',
 }
@@ -34,17 +34,24 @@ function formatBytes(value: number | null) {
 </script>
 
 <template>
-  <div class="chat-image-tasks" aria-label="AI 生图任务">
+  <div class="chat-image-tasks" :class="{ 'chat-image-tasks--compact': compact }" aria-label="AI 生图任务">
     <article v-for="task in tasks" :key="task.taskId" class="chat-image-task" :class="'is-' + task.status">
       <div class="chat-image-task__preview">
-        <el-image v-if="task.status === 'succeeded' && task.url" :src="task.url" :preview-src-list="previewUrls"
-          fit="contain" crossorigin="anonymous" preview-teleported hide-on-click-modal />
-        <div v-else-if="task.status === 'failed'" class="chat-image-task__state is-error">
+        <el-image
+          v-if="task.status === 'succeeded' && task.url"
+          :src="task.url"
+          :preview-src-list="previewUrls"
+          fit="contain"
+          crossorigin="anonymous"
+          preview-teleported
+          hide-on-click-modal
+        />
+        <div v-else-if="task.status === 'failed' || task.observationError" class="chat-image-task__state is-error">
           <el-icon>
             <Warning />
           </el-icon>
-          <strong>图片生成失败</strong>
-          <span>{{ task.errorMessage || '服务暂时不可用，请稍后重试' }}</span>
+          <strong>{{ task.observationError ? '暂无法获取任务进度' : '图片生成失败' }}</strong>
+          <span>{{ task.observationError || task.errorMessage || '服务暂时不可用，请稍后重试' }}</span>
         </div>
         <div v-else class="chat-image-task__state">
           <span class="chat-image-task__scanner" />
@@ -52,10 +59,10 @@ function formatBytes(value: number | null) {
             <Picture />
           </el-icon>
           <strong>{{ statusLabel(task.status) }}</strong>
-          <span>完成 COS 保存后显示</span>
+          <span>完成后可点击查看</span>
         </div>
-        <span class="chat-image-task__status" :class="{ 'is-working': isWorking(task.status) }">
-          <i />{{ statusLabel(task.status) }}
+        <span class="chat-image-task__status" :class="{ 'is-working': isWorking(task.status) && !task.observationError, 'is-interrupted': task.observationError }">
+          <i />{{ task.observationError ? '状态中断' : statusLabel(task.status) }}
         </span>
       </div>
       <div class="chat-image-task__meta">
@@ -70,6 +77,37 @@ function formatBytes(value: number | null) {
 </template>
 
 <style scoped>
+.chat-image-tasks--compact .chat-image-task {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  width: 100%;
+  max-width: 100%;
+}
+.chat-image-tasks--compact .chat-image-task__preview {
+  height: 120px;
+  min-height: 0;
+  max-height: 120px;
+  aspect-ratio: auto;
+}
+.chat-image-tasks--compact .chat-image-task__scanner {
+  display: none;
+}
+.chat-image-tasks--compact .chat-image-task__state {
+  padding: 6px;
+  gap: 4px;
+}
+.chat-image-tasks--compact .chat-image-task__state strong,
+.chat-image-tasks--compact .chat-image-task__state span {
+  font-size: 11px;
+}
+@media (max-width: 480px) {
+  .chat-image-tasks--compact .chat-image-task {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+  .chat-image-tasks--compact .chat-image-task__preview {
+    height: 100px;
+  }
+}
 .chat-image-tasks {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 20rem));
@@ -177,6 +215,9 @@ function formatBytes(value: number | null) {
   border-radius: 50%;
   background: #22c55e;
 }
+.chat-image-task__status.is-interrupted i {
+  background: var(--app-text-secondary);
+}
 
 .chat-image-task__status.is-working i {
   animation: image-task-pulse 1.2s ease-in-out infinite;
@@ -213,7 +254,6 @@ function formatBytes(value: number | null) {
 }
 
 @keyframes image-task-scan {
-
   0%,
   100% {
     top: 0;
@@ -234,7 +274,6 @@ function formatBytes(value: number | null) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   .chat-image-task__scanner,
   .chat-image-task__status.is-working i {
     animation: none;

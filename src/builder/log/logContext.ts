@@ -33,9 +33,9 @@ export interface LogContext {
   /** 追加 AI 文本片段 */
   appendAiText: (text: string, projectId: number) => void
   /** 工具开始执行 */
-  handleToolStart: (data: string, projectId: number) => void
+  handleToolStart: (data: string, projectId: number, toolCallId?: string) => void
   /** 工具执行完毕 */
-  handleToolEnd: (data: string, projectId: number) => Promise<void>
+  handleToolEnd: (data: string, projectId: number, toolCallId?: string, params?: string) => Promise<void>
   /** AI 流式回复正常结束 */
   finalizeAiStream: (projectId: number) => Promise<void>
   /** AI 回复被中断 */
@@ -71,6 +71,8 @@ export function createLogContext(): LogContext {
   let currentAiEntryId: string | null = null
   /** 当前执行中的工具日志 id */
   let pendingToolEntryId: string | null = null
+  const toolEntries = new Map<string, ToolLogEntry>()
+  const completedToolCalls = new Set<string>()
 
   /**
    * 持久化日志到后端
@@ -181,8 +183,9 @@ export function createLogContext(): LogContext {
    * @param data SSE 数据
    * @param projectId 项目 id
    */
-  function handleToolStart(data: string, projectId: number) {
+  function handleToolStart(data: string, projectId: number, toolCallId?: string) {
     if (!projectId) return
+    if (toolCallId && toolEntries.has(toolCallId)) return
 
     void finalizeCurrentAiEntry(projectId)
 
@@ -194,6 +197,7 @@ export function createLogContext(): LogContext {
     pendingToolEntryId = id
 
     const entry: ToolLogEntry = {
+      toolCallId,
       id,
       prefix: 'tool',
       content: `正在执行工具: ${toolName}`,
@@ -204,6 +208,7 @@ export function createLogContext(): LogContext {
       createdAt: new Date().toISOString(),
     }
     liveEntries.value.push(entry)
+    if (toolCallId) toolEntries.set(toolCallId, entry)
   }
 
   /**
@@ -211,46 +216,48 @@ export function createLogContext(): LogContext {
    * @param data SSE 数据
    * @param projectId 项目 id
    */
-  async function handleToolEnd(data: string, projectId: number) {
+  async function handleToolEnd(data: string, projectId: number, toolCallId?: string, params?: string) {
     if (!projectId) return
+    if (toolCallId && completedToolCalls.has(toolCallId)) return
 
     const parsed = parseToolEnd(data)
     if (!parsed) return
 
-    let targetEntry: ToolLogEntry | undefined
+    let targetEntry: ToolLogEntry | undefined = toolCallId ? toolEntries.get(toolCallId) : undefined
 
-    if (pendingToolEntryId) {
+    if (!toolCallId && pendingToolEntryId) {
       const entry = liveEntries.value.find((item) => item.id === pendingToolEntryId)
-      if (entry?.prefix === 'tool') {
+      if (entry?.prefix === 'tool' && entry.toolName === parsed.toolName) {
         targetEntry = entry
       }
     }
 
-    if (!targetEntry) {
-      targetEntry = [...liveEntries.value]
-        .reverse()
-        .find((item): item is ToolLogEntry => item.prefix === 'tool' && item.status === 'loading' && item.toolName === parsed.toolName)
+    if (!targetEntry && !toolCallId) {
+      targetEntry = [...liveEntries.value].reverse().find((item): item is ToolLogEntry => item.prefix === 'tool' && item.status === 'loading' && item.toolName === parsed.toolName)
     }
 
     if (!targetEntry) {
       const id = createLogId()
       targetEntry = {
+        toolCallId,
         id,
         prefix: 'tool',
         content: `正在执行工具: ${parsed.toolName}`,
         toolName: parsed.toolName,
-        params: '',
+        params: params ?? '',
         status: 'loading',
         expanded: false,
         createdAt: new Date().toISOString(),
       }
       liveEntries.value.push(targetEntry)
+      if (toolCallId) toolEntries.set(toolCallId, targetEntry)
     }
 
     targetEntry.result = parsed.result
     targetEntry.status = parsed.success ? 'success' : 'error'
     targetEntry.content = `正在执行工具: ${parsed.toolName}`
     pendingToolEntryId = null
+    if (toolCallId) completedToolCalls.add(toolCallId)
 
     const logContent = buildToolLogContent(parsed.toolName, targetEntry.params, parsed.result, parsed.success)
     await persistLog(logContent, projectId)
@@ -276,9 +283,7 @@ export function createLogContext(): LogContext {
   async function finalizeAiStream(projectId: number) {
     await finalizeCurrentAiEntry(projectId)
 
-    const loadingTools = liveEntries.value.filter(
-      (item): item is ToolLogEntry => item.prefix === 'tool' && item.status === 'loading',
-    )
+    const loadingTools = liveEntries.value.filter((item): item is ToolLogEntry => item.prefix === 'tool' && item.status === 'loading')
     for (const tool of loadingTools) {
       tool.status = 'aborted'
     }
@@ -292,9 +297,7 @@ export function createLogContext(): LogContext {
   async function handleAiAbort(projectId: number) {
     await finalizeCurrentAiEntry(projectId)
 
-    const loadingTools = liveEntries.value.filter(
-      (item): item is ToolLogEntry => item.prefix === 'tool' && item.status === 'loading',
-    )
+    const loadingTools = liveEntries.value.filter((item): item is ToolLogEntry => item.prefix === 'tool' && item.status === 'loading')
 
     for (const tool of loadingTools) {
       tool.status = 'aborted'
@@ -322,6 +325,8 @@ export function createLogContext(): LogContext {
     liveEntries.value = []
     currentAiEntryId = null
     pendingToolEntryId = null
+    toolEntries.clear()
+    completedToolCalls.clear()
   }
 
   return {
