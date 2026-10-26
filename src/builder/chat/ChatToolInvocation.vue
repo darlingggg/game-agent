@@ -5,7 +5,7 @@ import ChatImageTasks from './ChatImageTasks.vue'
 import { TOOL_PRESENTATION } from './toolInvocations'
 import type { ToolInvocation } from './types'
 
-const props = defineProps<{ tool: ToolInvocation }>()
+const props = defineProps<{ tool: ToolInvocation; compact?: boolean }>()
 const emit = defineEmits<{ expandedChange: [expanded: boolean] }>()
 const fullContent = ref(false)
 const presentation = computed(() => TOOL_PRESENTATION[props.tool.name] ?? { label: props.tool.name, finished: props.tool.name, icon: 'project-tool' })
@@ -19,8 +19,8 @@ const label = computed(() => {
     const data = (props.tool.result as { data?: unknown } | undefined)?.data
     if (Array.isArray(data)) return `${title} · ${data.length} 项`
   }
-  const path = props.tool.args.path
-  return typeof path === 'string' ? `${title} · ${path}` : title
+  const target = props.tool.args.path ?? props.tool.args.query ?? props.tool.args.url
+  return typeof target === 'string' ? `${title} · ${target}` : title
 })
 const statusLabel = computed(() => ({ running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已停止' })[props.tool.status])
 const result = computed(() => (typeof props.tool.result === 'string' ? props.tool.result : JSON.stringify(props.tool.result, null, 2)))
@@ -34,7 +34,7 @@ function toggle() {
 </script>
 
 <template>
-  <div class="chat-tool-invocation" :class="`is-${tool.status}`">
+  <div class="chat-tool-invocation" :class="[`is-${tool.status}`, { 'is-compact': compact }]">
     <button type="button" class="chat-tool-invocation-row" :aria-expanded="!!tool.expanded" @click="toggle">
       <SvgIcon :name="presentation.icon" class="chat-tool-icon" />
       <span class="chat-tool-label" :title="label">{{ label }}</span>
@@ -56,7 +56,8 @@ function toggle() {
         {{ fullContent ? '收起完整内容' : '查看完整内容' }}
       </button>
       <div class="chat-tool-detail-meta">
-        <span>{{ statusLabel }}</span
+        <span
+          >{{ statusLabel }}<template v-if="compact && tool.durationMs != null"> · {{ (tool.durationMs / 1000).toFixed(1) }} 秒</template></span
         ><span>{{ tool.toolCallId }}</span>
       </div>
     </div>
@@ -80,7 +81,7 @@ function toggle() {
   color: var(--app-text-secondary);
   cursor: pointer;
   text-align: left;
-  font-size: 12px;
+  font-size: 13px;
 }
 .chat-tool-icon,
 .chat-tool-arrow {
@@ -91,6 +92,7 @@ function toggle() {
 .chat-tool-label {
   min-width: 0;
   flex: 1;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -117,6 +119,31 @@ function toggle() {
 .chat-tool-invocation-row:hover {
   color: var(--app-text-primary);
 }
+.chat-tool-invocation-row:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.is-compact {
+  margin: 0;
+}
+.is-compact .chat-tool-invocation-row {
+  min-height: 26px;
+  padding: 3px 0;
+  gap: 7px;
+  color: var(--app-text-secondary);
+}
+.is-compact .chat-tool-invocation-row:hover,
+.is-compact .chat-tool-invocation-row:focus-visible {
+  color: var(--app-text-primary);
+}
+.is-compact .chat-tool-duration {
+  display: none;
+}
+.is-compact .chat-tool-icon {
+  width: 14px;
+  height: 14px;
+}
 .is-failed .chat-tool-status,
 .chat-tool-error {
   color: var(--app-danger);
@@ -131,7 +158,7 @@ function toggle() {
   animation: tool-spin 0.8s linear infinite;
 }
 .chat-tool-details {
-  margin: 5px 0 14px 23px;
+  margin: 5px 0 14px 0px;
   padding: 12px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -188,7 +215,8 @@ function toggle() {
   .chat-tool-arrow {
     opacity: 1;
   }
-  .chat-tool-invocation-row {
+  .chat-tool-invocation-row,
+  .is-compact .chat-tool-invocation-row {
     min-height: 44px;
   }
 }

@@ -579,13 +579,13 @@
   padding: 0 16px;
 }
 .container.builder-shell .chat-message-text {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.8;
 }
 .container.builder-shell .chat-message-content,
 .container.builder-shell .chat-message-reply-panel,
 .container.builder-shell .markdown-content {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.8;
 }
 .container.builder-shell .chat-message-reply-toggle {

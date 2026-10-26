@@ -19,7 +19,7 @@ import { useTokenUsageStore } from '@/stores/tokenUsage'
 import { cancelChatMessage } from '@/http/tokenUsage'
 import { reconnectImageGenerationTask, type ImageGenerationSseEvent, type ImageGenerationTask } from '@/http/imageGeneration'
 import { getMessageTools } from '@/http/toolCalls'
-import { settleTools, upsertTool } from './toolInvocations'
+import { appendMessageText, restoreMessageTools, settleTools, upsertTool } from './toolInvocations'
 import type { ToolInvocation } from './types'
 import { parseToolStart, parseToolEnd } from '@/builder/log/logParser'
 defineOptions({
@@ -242,6 +242,7 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
     id: String(item.id),
     role: 'assistant',
     content,
+    parts: content ? [{ id: 'text-0', start: 0, text: content }] : [],
     messageId: item.messageId,
     sessionId: item.id,
     streaming: item.status === 'streaming',
@@ -310,23 +311,38 @@ function reconnectAssistantImageTask(message: ChatMessage, task: ImageGeneration
       if (imageTaskControllers.get(task.taskId) === controller) imageTaskControllers.delete(task.taskId)
     })
 }
-async function loadMessageTools(message: ChatMessage) {
-  if (!message.messageId || message.toolsLoading) return
-  const conversationId = sessionContext.activeConversationId.value
+const toolLoadQueue: Array<{ message: ChatMessage; epoch: number }> = []
+let activeToolLoads = 0
+function loadMessageTools(message: ChatMessage) {
+  if (!message.messageId || message.toolsLoading || message.toolsLoaded || message.streaming) return
   message.toolsLoading = true
   message.toolsError = ''
+  toolLoadQueue.push({ message, epoch: sessionViewEpoch })
+  drainToolLoads()
+}
+function drainToolLoads() {
+  while (activeToolLoads < 4 && toolLoadQueue.length) {
+    const task = toolLoadQueue.shift()!
+    activeToolLoads += 1
+    void readMessageTools(task.message, task.epoch).finally(() => {
+      activeToolLoads -= 1
+      drainToolLoads()
+    })
+  }
+}
+async function readMessageTools(message: ChatMessage, epoch: number) {
   try {
-    const result = await getMessageTools(message.messageId)
-    if (disposed || conversationId !== sessionContext.activeConversationId.value || !messages.value.includes(message)) return
-    for (const tool of result.tools) {
-      upsertTool(message, tool)
+    if (disposed || epoch !== sessionViewEpoch || !messages.value.includes(message)) return
+    const result = await getMessageTools(message.messageId!)
+    if (disposed || epoch !== sessionViewEpoch || !messages.value.includes(message)) return
+    restoreMessageTools(message, result.tools)
+    for (const tool of message.tools ?? []) {
       for (const task of tool.imageTasks ?? []) {
         mergeImageTask(message, task)
         reconnectAssistantImageTask(message, task)
       }
     }
     message.toolSummary = result.summary
-    message.toolsLoaded = true
   } catch {
     if (messages.value.includes(message)) message.toolsError = '工具过程加载失败'
   } finally {
@@ -418,7 +434,7 @@ async function loadSessionMessages() {
     messagesHasMore.value = result.pagination.hasMore
     messagesNextCursor.value = result.pagination.nextCursor
     await scrollToBottom()
-    const lastItem = sessionMessages[sessionMessages.length - 1]
+    const lastItem = messages.value[messages.value.length - 1]
     if (lastItem?.messageId && lastItem.streaming) {
       void reconnectStreamingAssistant(lastItem)
     }
@@ -737,7 +753,7 @@ function stopStreaming(shouldCancel = false) {
 function appendTextToMessage(assistantId: string, text: string) {
   const assistantMessage = findMessageById(assistantId)
   if (!assistantMessage) return
-  assistantMessage.content += text
+  appendMessageText(assistantMessage, text)
 }
 function ensureVisionMessage(assistantId: string) {
   const assistantMessage = findMessageById(assistantId)
@@ -876,7 +892,7 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
   if (event.event === 'tool_snapshot' && event.data && typeof event.data === 'object') {
     const message = findMessageById(assistantId)
     const tools = event.data.tools
-    if (message && Array.isArray(tools)) for (const tool of tools) upsertTool(message, tool as ToolInvocation)
+    if (message && Array.isArray(tools)) restoreMessageTools(message, tools as ToolInvocation[])
     return
   }
   if (['tool_start', 'tool_end', 'tool_error'].includes(event.event)) {
@@ -962,7 +978,7 @@ async function reconnectStreamingAssistant(message: ChatMessage) {
     tokenUsage.generationStatus = 'failed'
     settleTools(message, 'failed')
     if (!message.content) {
-      message.content = '回复失败，请重试'
+      appendMessageText(message, '回复失败，请重试')
     }
   } finally {
     await finalizeLocalStream(message.id, currentProjectId, streamEpoch)
@@ -998,6 +1014,7 @@ async function handleSend() {
     id: assistantId,
     role: 'assistant',
     content: '',
+    parts: [],
     streaming: true,
     createdAt: new Date().toISOString(),
   })
@@ -1051,7 +1068,7 @@ async function handleSend() {
     const assistantMessage = findMessageById(assistantId)
     if (assistantMessage) settleTools(assistantMessage, 'failed')
     if (assistantMessage && !assistantMessage.content) {
-      assistantMessage.content = '回复失败，请重试'
+      appendMessageText(assistantMessage, '回复失败，请重试')
     }
   } finally {
     await finalizeLocalStream(assistantId, currentProjectId, streamEpoch)
@@ -1750,9 +1767,7 @@ html.dark .chat-panel {
   --chat-input-shell-border: var(--app-border-strong);
 }
 html.dark .chat-panel-messages {
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(91, 140, 255, 0.1) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(138, 180, 248, 0.05) 0%, transparent 50%), linear-gradient(180deg, #12151c 0%, #0f1115 100%);
+  background: var(--app-bg);
 }
 @media (max-width: 600px) {
   .chat-panel-input-footer {

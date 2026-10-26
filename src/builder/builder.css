@@ -41,9 +41,9 @@
 }
 
 html.dark .builder-shell {
-  --app-bg-subtle: #15171c;
-  --app-surface-hover: #23262d;
-  --app-text-muted: #939dac;
+  --app-bg-subtle: var(--brand-panel-muted);
+  --app-surface-hover: #282828;
+  --app-text-muted: #969696;
 }
 
 .builder-shell *,
@@ -834,7 +834,7 @@ html.dark .builder-shell .main-content-panel {
 
 html.dark .container.builder-shell .chat-message--user .chat-message-bubble {
   border: 0;
-  background: color-mix(in srgb, var(--builder-ink) 6%, var(--builder-surface));
+  background: var(--builder-surface);
 }
 
 .container.builder-shell .chat-message-reply-toggle {

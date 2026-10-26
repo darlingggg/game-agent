@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import MarkdownContent from './MarkdownContent.vue'
-import ChatToolInvocation from './ChatToolInvocation.vue'
-import { liveToolParts, toolSummaryLabel } from './toolInvocations'
+import ChatToolGroup from './ChatToolGroup.vue'
 import type { ChatMessage, ToolInvocation } from './types'
 
 defineOptions({
@@ -41,12 +40,15 @@ const hasVisionContent = computed(() => hasVisionReasoning.value || hasVisionAns
 
 const hasImageTasks = computed(() => Boolean(props.message.imageTasks?.length))
 const hasTools = computed(() => Boolean(props.message.tools?.length || props.message.toolSummary?.total))
-const parts = computed(() => liveToolParts(props.message.content, props.message.tools ?? []))
-const historyExpanded = ref(false)
-function toggleHistory() {
-  historyExpanded.value = !historyExpanded.value
-  if (historyExpanded.value && !props.message.toolsLoaded && !props.message.toolsLoading) emit('loadTools')
-}
+const parts = computed(() => props.message.parts ?? [])
+const historyToolsPending = computed(() => props.message.history && !props.message.streaming && hasTools.value && !props.message.toolsLoaded)
+watch(
+  () => [props.message.id, historyToolsPending.value] as const,
+  () => {
+    if (historyToolsPending.value && !props.message.toolsLoading && !props.message.toolsError) emit('loadTools')
+  },
+  { immediate: true },
+)
 
 function setToolExpanded(tool: ToolInvocation, expanded: boolean) {
   tool.expanded = expanded
@@ -164,24 +166,17 @@ function toggleVisionReasoning() {
                 <span>图像识别中</span>
               </div>
             </div>
-            <div v-if="message.history && hasTools" class="chat-tool-history">
-              <button type="button" class="chat-tool-history-toggle" :aria-expanded="historyExpanded" @click="toggleHistory">
-                <SvgIcon name="tool-list" /><span>{{ toolSummaryLabel(message.toolSummary) }}</span
-                ><SvgIcon name="chevron-down" :class="{ 'is-expanded': historyExpanded }" />
-              </button>
-              <div v-if="historyExpanded" class="chat-tool-history-content">
-                <span v-if="message.toolsLoading">加载工具过程…</span>
-                <div v-else-if="message.toolsError">{{ message.toolsError }} <button type="button" @click="emit('loadTools')">重试</button></div>
-                <template v-else
-                  ><ChatToolInvocation v-for="tool in message.tools" :key="tool.toolCallId" :tool="tool" @expanded-change="setToolExpanded(tool, $event)"
-                /></template>
-              </div>
+            <div v-if="historyToolsPending" class="chat-tool-history-state" role="status">
+              <span v-if="message.toolsError">{{ message.toolsError }} <button type="button" @click="emit('loadTools')">重试</button></span>
+              <span v-else>正在恢复工具过程…</span>
             </div>
             <p v-if="message.history && message.errorMsg" class="chat-message-error">{{ message.errorMsg }}</p>
-            <MarkdownContent v-if="message.history && message.content" :content="message.content" :assistant-session-id="message.sessionId" />
-            <template v-else-if="!message.history" v-for="part in parts" :key="part.id">
-              <ChatToolInvocation v-if="part.tool" :tool="part.tool" @expanded-change="setToolExpanded(part.tool, $event)" />
-              <MarkdownContent v-else-if="part.text" :content="part.text" :assistant-session-id="message.sessionId" />
+            <MarkdownContent v-if="historyToolsPending && message.toolsError && message.content" :content="message.content" :assistant-session-id="message.sessionId" />
+            <template v-if="!historyToolsPending">
+              <template v-for="part in parts" :key="part.id">
+                <ChatToolGroup v-if="part.tools" :tools="part.tools" @expanded-change="setToolExpanded" />
+                <MarkdownContent v-else-if="part.text" :content="part.text" :assistant-session-id="message.sessionId" />
+              </template>
             </template>
             <span v-if="message.streaming && message.content" class="chat-message-cursor" />
           </div>
@@ -193,37 +188,18 @@ function toggleVisionReasoning() {
 </template>
 
 <style scoped>
-.chat-tool-history {
+.chat-tool-history-state {
   margin: 8px 0 16px;
-}
-.chat-tool-history-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  background: none;
   color: var(--app-text-secondary);
   padding: 6px 0;
   font-size: 12px;
-  cursor: pointer;
 }
-.chat-tool-history-toggle svg {
-  width: 15px;
-  height: 15px;
-  transition: transform 160ms ease;
-}
-.chat-tool-history-toggle .is-expanded {
-  transform: rotate(180deg);
-}
-.chat-tool-history-content {
-  padding: 6px 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  background: var(--app-bg-subtle);
-  font-size: 12px;
-}
-.chat-tool-history-content button {
+.chat-tool-history-state button {
   color: var(--app-accent);
+  background: transparent;
+  border: 0;
+  padding: 0 4px;
+  cursor: pointer;
 }
 .chat-message-error {
   color: var(--app-danger);
