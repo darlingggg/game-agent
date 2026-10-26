@@ -465,7 +465,8 @@ watch(
 }
 .chat-effort-slider :deep(.el-slider__button-wrapper.dragging),
 .chat-effort-slider :deep(.el-slider__runway:has(.el-slider__button-wrapper.dragging) .el-slider__bar) {
-  transition: none;
+  transition-duration: 70ms;
+  transition-timing-function: linear;
 }
 .chat-effort-slider :deep(.el-slider__stop) {
   width: 4px;
@@ -527,7 +528,9 @@ watch(
   :global(.chat-picker-popover-leave-active .chat-model-menu),
   :global(.chat-picker-popover-leave-active .chat-effort-menu),
   .chat-effort-slider :deep(.el-slider__bar),
-  .chat-effort-slider :deep(.el-slider__button-wrapper) {
+  .chat-effort-slider :deep(.el-slider__button-wrapper),
+  .chat-effort-slider :deep(.el-slider__button-wrapper.dragging),
+  .chat-effort-slider :deep(.el-slider__runway:has(.el-slider__button-wrapper.dragging) .el-slider__bar) {
     transition: none;
   }
 }

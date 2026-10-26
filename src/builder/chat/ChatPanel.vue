@@ -8,6 +8,8 @@ import { useProjectStore } from '@/stores/project'
 import { PENDING_CONVERSATION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
 import ChatModelPicker from './ChatModelPicker.vue'
+import ChatWebSearchToggle from './ChatWebSearchToggle.vue'
+import { createWebSearchPreferences, webSearchPreferenceKey } from './webSearchPreference'
 import ConversationRail from './ConversationRail.vue'
 import type { ChatMessage } from './types'
 import { chatWithAI, reconnectChatStream, type ChatSseEvent } from '@/http/chat'
@@ -168,6 +170,21 @@ let messageIdSeed = 0
 const CHAT_API_ENABLED = true
 /** 当前项目 ID */
 const projectId = () => projectStore.currentProject?.id ?? 0
+const webSearchPreferences = createWebSearchPreferences(() => window.localStorage)
+const webSearchEnabled = ref(false)
+const webSearchKey = computed(() => webSearchPreferenceKey(userAccount.value, projectId(), sessionContext.activeConversationId.value))
+watch(
+  webSearchKey,
+  (key) => {
+    webSearchEnabled.value = webSearchPreferences.get(key)
+  },
+  { immediate: true, flush: 'sync' },
+)
+function setWebSearchEnabled(enabled: boolean) {
+  if (isStreaming.value || !webSearchKey.value) return
+  webSearchEnabled.value = enabled
+  webSearchPreferences.set(webSearchKey.value, enabled)
+}
 /** 当前会话标题（同一会话下的消息共用，与后端 title 字段对应） */
 const sessionTitle = ref('')
 /** 当前会话后端 title 字段，用于 chat/stream 等接口 */
@@ -456,6 +473,10 @@ watch(
       return
     }
     const prevConversationId = oldValue?.[0]
+    if (oldValue && sessionContext.isPendingNewSession.value) {
+      webSearchEnabled.value = false
+      webSearchPreferences.set(webSearchKey.value, false)
+    }
     sessionViewEpoch += 1
     if (prevConversationId && nextConversationId !== prevConversationId) {
       stopStreaming()
@@ -788,6 +809,8 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
   // 待创建，或无选中会话时直接首聊：绑定返回的会话 id，避免后续消息反复新建
   const hasNoConversation = !sessionContext.activeConversationId.value || sessionContext.activeConversationId.value === PENDING_CONVERSATION_ID
   if (Number.isFinite(conversationId) && (sessionContext.isPendingNewSession.value || hasNoConversation)) {
+    const nextKey = webSearchPreferenceKey(userAccount.value, projectId(), conversationId)
+    webSearchPreferences.move(webSearchKey.value, nextKey, webSearchEnabled.value)
     skipNextSessionLoad = true
     sessionContext.isPendingNewSession.value = false
     sessionContext.activeConversationId.value = conversationId
@@ -997,6 +1020,7 @@ async function handleSend() {
     ElMessage.warning(modelsLoading.value ? '正在加载模型列表' : '请选择可用模型，或联系管理员同步模型')
     return
   }
+  const requestWebSearchEnabled = webSearchEnabled.value
   const isPending = sessionContext.isPendingNewSession.value
   const activeConversationId = sessionContext.activeConversationId.value
   const hasNoConversation = !activeConversationId || activeConversationId === PENDING_CONVERSATION_ID
@@ -1049,6 +1073,7 @@ async function handleSend() {
     await chatWithAI({
       model: selectedModel.value,
       reasoningEffort: selectedEffort.value,
+      webSearchEnabled: requestWebSearchEnabled,
       prompt: content,
       projectId: currentProjectId,
       conversationId: needsNewBackendSession ? undefined : activeConversationId,
@@ -1187,18 +1212,21 @@ function handleActionClick() {
             @paste="handleInputPaste"
           />
           <div class="chat-panel-input-footer">
-            <button
-              type="button"
-              class="chat-panel-upload-btn"
-              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
-              title="上传图片（可多选）"
-              aria-label="上传图片（可多选）"
-              :disabled="isStreaming"
-              @click="handleUploadClick"
-            >
-              <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
-              <SvgIcon v-else name="upload-image" />
-            </button>
+            <div class="chat-panel-input-tools">
+              <button
+                type="button"
+                class="chat-panel-upload-btn"
+                :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
+                title="上传图片（可多选）"
+                aria-label="上传图片（可多选）"
+                :disabled="isStreaming"
+                @click="handleUploadClick"
+              >
+                <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
+                <SvgIcon v-else name="upload-image" />
+              </button>
+              <ChatWebSearchToggle :model-value="webSearchEnabled" :disabled="isStreaming || !webSearchKey" @update:model-value="setWebSearchEnabled" />
+            </div>
             <div class="chat-panel-submit-actions">
               <div class="chat-context-wrap">
                 <button
@@ -1268,6 +1296,18 @@ function handleActionClick() {
   border-radius: 4px;
   overflow: hidden;
   background-color: var(--app-surface);
+}
+.chat-panel-input-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.chat-panel-input-footer {
+  flex-wrap: wrap;
+}
+.chat-panel-submit-actions {
+  margin-left: auto;
 }
 .chat-panel-messages {
   flex: 1;
