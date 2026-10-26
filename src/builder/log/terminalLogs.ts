@@ -15,12 +15,7 @@ export interface TerminalHeaderContext {
 }
 
 /** 链路就绪时的提示语（按项目 id 取模，让不同项目略有差异） */
-const READY_HINTS = [
-  '链路就绪，在左侧输入需求开始协作 ↓',
-  'Agent 待命中，描述你想做的功能吧 ↓',
-  '开发环境已热身，随时可以开工 ↓',
-  '代码助手在线，等你下达第一条指令 ↓',
-]
+const READY_HINTS = ['链路就绪，在左侧输入需求开始协作 ↓', '助手待命中，描述你想做的功能吧', '开发环境已热身，随时可以开工 ↓', '代码助手在线，等你下达第一条指令 ↓']
 
 /** 终端默认工作目录提示符 */
 export const TERMINAL_PROMPT = 'game-agent>'
@@ -67,30 +62,25 @@ function getReadyHint(projectId?: number): string {
  */
 export function buildTerminalHeaderLines(context: TerminalHeaderContext = {}): string[] {
   const bootTime = formatBootTime(context.bootAt ?? new Date())
-  const lines: string[] = [
-    '    ╭──────────────────────────────────────────╮',
-    '    │  ⚡ GameAgent · 你的 AI 会话助手终端     │',
-    '    ╰──────────────────────────────────────────╯',
-    '',
-  ]
+  const lines: string[] = []
 
   if (context.account) {
-    lines.push(`[session] operator @ ${context.account}`)
+    lines.push(`[账号] ${context.account}`)
   }
 
   if (context.projectTitle) {
     const idLabel = context.projectId ? `#${context.projectId}` : '—'
     const versionLabel = context.version ? ` · v${context.version}` : ''
-    lines.push(`[project] ${idLabel} ${context.projectTitle}${versionLabel}`)
+    lines.push(`[项目] ${idLabel} ${context.projectTitle}${versionLabel}`)
   } else {
-    lines.push('[project] — 未加载项目')
+    lines.push('[项目] 未加载项目')
   }
 
   if (context.dirPath) {
-    lines.push(`[workspace] ${shortenDirPath(context.dirPath)}`)
+    lines.push(`[目录] ${shortenDirPath(context.dirPath)}`)
   }
 
-  lines.push(`[boot] ${bootTime}  ·  ${getReadyHint(context.projectId)}`, '')
+  lines.push(`[启动] ${bootTime}  ·  ${getReadyHint(context.projectId)}`, '')
 
   return lines
 }

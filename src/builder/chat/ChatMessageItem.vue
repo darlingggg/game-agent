@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { AI_AVATAR_URL } from './chatAvatars'
 import SvgIcon from '@/components/SvgIcon.vue'
-import UserAvatar from '@/components/UserAvatar.vue'
 import MarkdownContent from './MarkdownContent.vue'
-import ChatImageTasks from './ChatImageTasks.vue'
-import type { ChatMessage } from './types'
+import ChatToolInvocation from './ChatToolInvocation.vue'
+import { liveToolParts, toolSummaryLabel } from './toolInvocations'
+import type { ChatMessage, ToolInvocation } from './types'
 
 defineOptions({
   name: 'ChatMessageItem',
@@ -20,6 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   replyCollapseChange: [collapsed: boolean]
+  loadTools: []
 }>()
 
 /** 是否为当前用户消息 */
@@ -40,19 +40,23 @@ const hasVisionAnswer = computed(() => !!props.message.vision?.answer.trim())
 const hasVisionContent = computed(() => hasVisionReasoning.value || hasVisionAnswer.value || !!props.message.vision?.streaming)
 
 const hasImageTasks = computed(() => Boolean(props.message.imageTasks?.length))
+const hasTools = computed(() => Boolean(props.message.tools?.length || props.message.toolSummary?.total))
+const parts = computed(() => liveToolParts(props.message.content, props.message.tools ?? []))
+const historyExpanded = ref(false)
+function toggleHistory() {
+  historyExpanded.value = !historyExpanded.value
+  if (historyExpanded.value && !props.message.toolsLoaded && !props.message.toolsLoading) emit('loadTools')
+}
 
-/** 已由任务卡片展示的生成图，避免在 Markdown 正文中再次出现 */
-const generatedImageUrls = computed(() =>
-  (props.message.imageTasks ?? [])
-    .flatMap((task) => [task.url, task.temporaryUrl])
-    .filter((url): url is string => Boolean(url)),
-)
+function setToolExpanded(tool: ToolInvocation, expanded: boolean) {
+  tool.expanded = expanded
+}
 
 /** 流式输出中且尚无内容时展示 loading */
-const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value && !hasImageTasks.value)
+const showLoading = computed(() => props.message.streaming && !props.message.content && !hasVisionContent.value && !hasImageTasks.value && !hasTools.value)
 
 /** AI 回复是否可折叠（流式结束后且有正文） */
-const canCollapse = computed(() => !isUser.value && !props.message.streaming && (!!props.message.content.trim() || hasVisionContent.value || hasImageTasks.value))
+const canCollapse = computed(() => !isUser.value && !props.message.streaming && (!!props.message.content.trim() || hasVisionContent.value || hasImageTasks.value || hasTools.value))
 
 /** AI 回复默认展开，用户手动收起后状态由消息模型保存 */
 const replyExpanded = computed(() => !props.message.replyCollapsed)
@@ -111,9 +115,23 @@ function toggleVisionReasoning() {
 
 <template>
   <div class="chat-message" :class="{ 'chat-message--user': isUser, 'chat-message--assistant': !isUser }">
-    <div v-if="!isUser" class="chat-message-avatar"><img :src="AI_AVATAR_URL" alt="" /></div>
     <div class="chat-message-body">
       <div class="chat-message-bubble">
+        <div v-if="!isUser" class="chat-message-assistant-heading">
+          <span class="chat-message-assistant-mark" role="img" aria-label="助手回复">
+            <SvgIcon name="creative-orbit" />
+          </span>
+          <button
+            v-if="canCollapse"
+            type="button"
+            class="chat-message-reply-toggle"
+            :aria-label="replyExpanded ? '收起回复' : '展开回复'"
+            :aria-expanded="replyExpanded"
+            @click="toggleReply"
+          >
+            <SvgIcon name="chevron-down" class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" />
+          </button>
+        </div>
         <span v-if="showLoading" class="chat-message-loading" aria-label="加载中" />
         <template v-else-if="isUser">
           <div class="chat-message-user-content">
@@ -121,37 +139,17 @@ function toggleVisionReasoning() {
               <MarkdownContent :content="userMessageParts.text" />
             </div>
             <div v-if="hasUserImages" class="chat-message-user-images">
-              <img
-                v-for="(url, index) in userMessageParts.imageUrls"
-                :key="`${url}-${index}`"
-                :src="url"
-                crossorigin="anonymous"
-                alt="图片"
-              />
+              <img v-for="(url, index) in userMessageParts.imageUrls" :key="`${url}-${index}`" :src="url" crossorigin="anonymous" alt="图片" />
             </div>
           </div>
         </template>
         <template v-else>
-          <button
-            v-if="canCollapse"
-            type="button"
-            class="chat-message-reply-toggle"
-            :aria-expanded="replyExpanded"
-            @click="toggleReply"
-          >
-            <span>Agent 回复</span>
-            <SvgIcon name="chevron-down" class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': replyExpanded }" />
-          </button>
           <div v-show="showReplyContent" class="chat-message-reply-panel" :class="{ 'chat-message-reply-panel--flat': !canCollapse }">
             <div v-if="hasVisionContent" class="chat-message-vision">
               <div v-if="hasVisionReasoning" class="chat-message-vision-section">
                 <button type="button" class="chat-message-vision-toggle" @click="toggleVisionReasoning">
                   <span>图像思考</span>
-                  <SvgIcon
-                    name="chevron-down"
-                    class="chat-message-reply-arrow"
-                    :class="{ 'chat-message-reply-arrow--expanded': visionReasoningExpanded }"
-                  />
+                  <SvgIcon name="chevron-down" class="chat-message-reply-arrow" :class="{ 'chat-message-reply-arrow--expanded': visionReasoningExpanded }" />
                 </button>
                 <div v-show="visionReasoningExpanded" class="chat-message-vision-content">
                   <MarkdownContent :content="message.vision?.reasoning ?? ''" />
@@ -166,19 +164,72 @@ function toggleVisionReasoning() {
                 <span>图像识别中</span>
               </div>
             </div>
-            <ChatImageTasks v-if="message.imageTasks?.length" :tasks="message.imageTasks" />
-            <MarkdownContent v-if="message.content" :content="message.content" :hidden-image-urls="generatedImageUrls" />
+            <div v-if="message.history && hasTools" class="chat-tool-history">
+              <button type="button" class="chat-tool-history-toggle" :aria-expanded="historyExpanded" @click="toggleHistory">
+                <SvgIcon name="tool-list" /><span>{{ toolSummaryLabel(message.toolSummary) }}</span
+                ><SvgIcon name="chevron-down" :class="{ 'is-expanded': historyExpanded }" />
+              </button>
+              <div v-if="historyExpanded" class="chat-tool-history-content">
+                <span v-if="message.toolsLoading">加载工具过程…</span>
+                <div v-else-if="message.toolsError">{{ message.toolsError }} <button type="button" @click="emit('loadTools')">重试</button></div>
+                <template v-else
+                  ><ChatToolInvocation v-for="tool in message.tools" :key="tool.toolCallId" :tool="tool" @expanded-change="setToolExpanded(tool, $event)"
+                /></template>
+              </div>
+            </div>
+            <p v-if="message.history && message.errorMsg" class="chat-message-error">{{ message.errorMsg }}</p>
+            <MarkdownContent v-if="message.history && message.content" :content="message.content" :assistant-session-id="message.sessionId" />
+            <template v-else-if="!message.history" v-for="part in parts" :key="part.id">
+              <ChatToolInvocation v-if="part.tool" :tool="part.tool" @expanded-change="setToolExpanded(part.tool, $event)" />
+              <MarkdownContent v-else-if="part.text" :content="part.text" :assistant-session-id="message.sessionId" />
+            </template>
             <span v-if="message.streaming && message.content" class="chat-message-cursor" />
           </div>
         </template>
         <span v-if="displayTime" class="chat-message-time" :style="{ left: isUser ? 'unset' : '0' }">{{ displayTime }}</span>
       </div>
     </div>
-    <div v-if="isUser" class="chat-message-avatar"><UserAvatar :avatar="userAvatar" /></div>
   </div>
 </template>
 
 <style scoped>
+.chat-tool-history {
+  margin: 8px 0 16px;
+}
+.chat-tool-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: var(--app-text-secondary);
+  padding: 6px 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chat-tool-history-toggle svg {
+  width: 15px;
+  height: 15px;
+  transition: transform 160ms ease;
+}
+.chat-tool-history-toggle .is-expanded {
+  transform: rotate(180deg);
+}
+.chat-tool-history-content {
+  padding: 6px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-bg-subtle);
+  font-size: 12px;
+}
+.chat-tool-history-content button {
+  color: var(--app-accent);
+}
+.chat-message-error {
+  color: var(--app-danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .chat-message {
   display: flex;
   align-items: flex-start;
@@ -194,54 +245,6 @@ function toggleVisionReasoning() {
 .chat-message--assistant {
   flex-direction: row;
   justify-content: flex-start;
-}
-
-.chat-message-avatar {
-  flex-shrink: 0;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 50%;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.chat-message--assistant .chat-message-avatar {
-  background-color: transparent;
-  color: #374151;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.chat-message--assistant .chat-message-avatar img {
-  display: block;
-  width: 68%;
-  height: 68%;
-}
-
-.chat-message--user .chat-message-avatar {
-  background-color: transparent;
-  border: 2px solid var(--app-accent);
-}
-
-.chat-message--user .chat-message-avatar img {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.chat-message--user .chat-message-avatar :deep(.user-avatar-image--fallback) {
-  width: 68%;
-  height: 68%;
-}
-
-html.dark .chat-message--assistant .chat-message-avatar {
-  color: #e8eaed;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-html.dark .chat-message--assistant .chat-message-avatar img {
-  filter: invert(1);
 }
 
 .chat-message-body {
@@ -331,6 +334,31 @@ html.dark .chat-message--user .chat-message-bubble {
   color: var(--app-accent);
   font-size: 0.875rem;
   cursor: pointer;
+}
+
+.chat-message-assistant-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--app-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.chat-message-assistant-mark {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-primary);
+}
+
+.chat-message-assistant-mark svg {
+  display: block;
+  width: 22px;
+  height: 22px;
 }
 
 .chat-message-reply-arrow {

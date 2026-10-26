@@ -44,7 +44,7 @@ export interface BuildContext {
 }
 
 /** 构建上下文注入 key */
-export const buildContextKey: InjectionKey<BuildContext> = Symbol('buildContext')
+export const buildContextKey: InjectionKey<BuildContext> = Symbol.for('gameagent.builder.buildContext')
 
 /**
  * 创建构建日志上下文（在 Builder 根组件中初始化）

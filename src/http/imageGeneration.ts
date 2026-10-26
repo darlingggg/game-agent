@@ -1,13 +1,7 @@
 import axios, { fetchWithAuth, showRequestError } from '@/ajax'
 import { consumeSseResponse, type SseEvent } from '@/http/sse'
 
-export type ImageGenerationStatus =
-  | 'queued'
-  | 'submitted'
-  | 'generating'
-  | 'storing'
-  | 'succeeded'
-  | 'failed'
+export type ImageGenerationStatus = 'queued' | 'submitted' | 'generating' | 'storing' | 'succeeded' | 'failed'
 
 export interface ImageGenerationTask {
   taskId: number
@@ -29,6 +23,7 @@ export interface ImageGenerationTask {
   width: number | null
   height: number | null
   errorMessage: string | null
+  observationError?: string
   createdAt: string
   updatedAt: string
   completedAt: string | null
@@ -56,7 +51,7 @@ export interface ImageGenerationPage {
 }
 
 export interface ImageGenerationSseEvent extends SseEvent {
-  event: 'status' | 'generated' | 'stored' | 'done' | 'error'
+  event: 'status' | 'generated' | 'stored' | 'done' | 'error' | 'observation_error'
   data: Partial<ImageGenerationTask> & {
     taskId?: number
     temporaryUrl?: string
@@ -65,9 +60,7 @@ export interface ImageGenerationSseEvent extends SseEvent {
 }
 
 /** 创建生图任务；接口会立即返回任务记录，不等待图片完成。 */
-export const createImageGeneration = (
-  data: CreateImageGenerationBody,
-): Promise<ImageGenerationTask> => axios.post('/agent/image-gen', data)
+export const createImageGeneration = (data: CreateImageGenerationBody): Promise<ImageGenerationTask> => axios.post('/agent/image-gen', data)
 
 /** 分页获取当前项目的历史生图任务。 */
 export const getImageGenerationTasks = (params: {
@@ -79,20 +72,17 @@ export const getImageGenerationTasks = (params: {
 }): Promise<ImageGenerationPage> => axios.get('/agent/image-gen/tasks', { params })
 
 /** 查询单个任务快照。 */
-export const getImageGenerationTask = (taskId: number): Promise<ImageGenerationTask> =>
-  axios.get(`/agent/image-gen/tasks/${taskId}`)
+export const getImageGenerationTask = (taskId: number): Promise<ImageGenerationTask> => axios.get(`/agent/image-gen/tasks/${taskId}`)
 
 /** 订阅或重连生图任务，使用 fetch 以便携带 Bearer Token。 */
 export async function reconnectImageGenerationTask(options: {
   taskId: number
   onEvent?: (event: ImageGenerationSseEvent) => void
   signal?: AbortSignal
+  observeOnly?: boolean
 }): Promise<void> {
-  const { taskId, onEvent, signal } = options
-  const response = await fetchWithAuth(
-    `${import.meta.env.VITE_API_URL}/agent/image-gen/tasks/${taskId}/stream`,
-    { method: 'GET', signal },
-  )
+  const { taskId, onEvent, signal, observeOnly } = options
+  const response = await fetchWithAuth(`${import.meta.env.VITE_API_URL}/agent/image-gen/tasks/${taskId}/stream${observeOnly ? '?observeOnly=1' : ''}`, { method: 'GET', signal })
 
   if (!response.ok) {
     const message = `生图任务连接失败（${response.status}）`

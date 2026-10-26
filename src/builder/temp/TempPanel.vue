@@ -6,21 +6,16 @@ import { computed, ref, watch } from 'vue'
 import { useBuildContext } from '@/builder/build/buildContext'
 import { syncTemplateUpgradeToPreview } from '@/builder/preview/previewSync'
 import { PROJECT_FILES_CHANGED_EVENT } from '@/builder/snapshot/snapshotRestore'
-import {
-  getTempCurrentVersion,
-  getTempLatestVersion,
-  getTempVersionList,
-  updateTemp,
-  type fileItem,
-  type versionItem,
-} from '@/http/temp'
+import { getTempCurrentVersion, getTempLatestVersion, getTempVersionList, updateTemp, type fileItem, type versionItem } from '@/http/temp'
 import { getSnapshotList } from '@/http/snapshot'
 import { useProjectStore } from '@/stores/project'
 import { resolveProjectType } from '@/utils/projectType'
+import { compareTemplateVersions as compareVersions } from '@/utils/templateVersion'
 
 defineOptions({
   name: 'TempPanel',
 })
+const emit = defineEmits<{ 'version-updated': [] }>()
 
 /** 模板存档最大保存数量 */
 const MAX_TEMPLATE_ARCHIVE_COUNT = 5
@@ -76,14 +71,10 @@ const isLatestVersion = computed(() => {
 })
 
 /** 模板存档是否已达数量上限 */
-const isTemplateArchiveLimitReached = computed(
-  () => templateArchiveCount.value >= MAX_TEMPLATE_ARCHIVE_COUNT,
-)
+const isTemplateArchiveLimitReached = computed(() => templateArchiveCount.value >= MAX_TEMPLATE_ARCHIVE_COUNT)
 
 /** 「更新到最新」按钮是否禁用 */
-const isUpdateToLatestDisabled = computed(
-  () => isLatestVersion.value || isUpdating.value || listLoading.value || isTemplateArchiveLimitReached.value,
-)
+const isUpdateToLatestDisabled = computed(() => isLatestVersion.value || isUpdating.value || listLoading.value || isTemplateArchiveLimitReached.value)
 
 /** 「更新到最新」按钮悬浮提示 */
 const updateToLatestTooltip = computed(() => {
@@ -116,9 +107,7 @@ interface TempVersionCard {
 
 /** 展示用的版本卡片数据 */
 const versionCards = computed(() => {
-  return versionList.value
-    .map((item) => normalizeVersionItem(item))
-    .sort((a, b) => compareVersionCreatedAt(b.createdAt, a.createdAt))
+  return versionList.value.map((item) => normalizeVersionItem(item)).sort((a, b) => compareVersionCreatedAt(b.createdAt, a.createdAt))
 })
 
 /**
@@ -195,35 +184,6 @@ function isCurrentProjectVersion(version: string) {
 }
 
 /**
- * 解析版本号为数字数组（如 1.0.1 → [1, 0, 1]）
- * @param version 版本号
- */
-function parseVersionParts(version: string) {
-  return version.trim().split('.').map((part) => {
-    const num = Number.parseInt(part, 10)
-    return Number.isNaN(num) ? 0 : num
-  })
-}
-
-/**
- * 比较两个版本号
- * @param a 版本 A
- * @param b 版本 B
- * @returns 大于 0 表示 A 高于 B，小于 0 表示 A 低于 B，等于 0 表示相同
- */
-function compareVersions(a: string, b: string) {
-  const partsA = parseVersionParts(a)
-  const partsB = parseVersionParts(b)
-  const maxLen = Math.max(partsA.length, partsB.length)
-
-  for (let i = 0; i < maxLen; i += 1) {
-    const diff = (partsA[i] ?? 0) - (partsB[i] ?? 0)
-    if (diff !== 0) return diff
-  }
-  return 0
-}
-
-/**
  * 判断目标版本是否高于当前项目版本
  * @param version 目标版本号
  */
@@ -259,9 +219,7 @@ async function loadTemplateArchiveCount() {
 
   try {
     const list = await getSnapshotList({ projectId: currentProjectId })
-    const versions = new Set(
-      list.filter((item) => item.type === SNAPSHOT_TYPE_TEMPLATE).map((item) => item.version),
-    )
+    const versions = new Set(list.filter((item) => item.type === SNAPSHOT_TYPE_TEMPLATE).map((item) => item.version))
     templateArchiveCount.value = versions.size
   } catch {
     // 错误提示由 axios 拦截器统一处理
@@ -333,6 +291,7 @@ async function executeUpdateTemp(upToVersion?: string) {
       projectId: currentProjectId,
       ...(targetVersion ? { upToVersion: targetVersion } : {}),
     })
+    emit('version-updated')
     ElMessage.success(targetVersion ? `模板已更新到版本 ${targetVersion}` : '模板已更新到最新版本')
     // 模板升级会自动创建快照，通知版本面板刷新列表
     buildContext.buildCompletedSignal.value += 1
@@ -362,15 +321,11 @@ async function handleUpdateToLatest() {
   }
 
   try {
-    await ElMessageBox.confirm(
-      `确定将模板从 ${currentVersion.value || '-'} 更新到最新版本 ${latestVersion.value || '-'} 吗？`,
-      '更新模板',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
-    )
+    await ElMessageBox.confirm(`确定将模板从 ${currentVersion.value || '-'} 更新到最新版本 ${latestVersion.value || '-'} 吗？`, '更新模板', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
   } catch {
     return
   }
@@ -391,15 +346,11 @@ async function handleUpdateToVersion(targetVersion: string) {
   }
 
   try {
-    await ElMessageBox.confirm(
-      `确定将模板从 ${currentVersion.value || '-'} 更新到版本 ${targetVersion} 吗？`,
-      '更新模板',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      },
-    )
+    await ElMessageBox.confirm(`确定将模板从 ${currentVersion.value || '-'} 更新到版本 ${targetVersion} 吗？`, '更新模板', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
   } catch {
     return
   }
@@ -474,94 +425,79 @@ watch(
     <div v-if="!listLoading && versionCards.length === 0" class="temp-panel-empty">暂无模板版本</div>
 
     <template v-else-if="!listLoading">
-      <div v-if="isLatestVersion && currentVersion" class="temp-panel-tip">
-        当前已是最新模板版本，无需更新
-      </div>
+      <div v-if="isLatestVersion && currentVersion" class="temp-panel-tip">当前已是最新模板版本，无需更新</div>
 
       <ul class="temp-panel-list">
-      <li
-        v-for="card in versionCards"
-        :key="card.version"
-        class="temp-panel-card"
-        :class="{
-          'temp-panel-card--current': isCurrentProjectVersion(card.version),
-          'temp-panel-card--latest': card.version === latestVersion,
-        }"
-      >
-        <div class="temp-panel-card-header">
-          <div class="temp-panel-card-title-row">
-            <span class="temp-panel-card-version">{{ card.version }}</span>
-            <el-tooltip
-              v-if="card.description"
-              :content="card.description"
-              placement="top"
-              :show-after="200"
-            >
-              <span class="temp-panel-desc-trigger" tabindex="0" role="button" aria-label="版本说明">
-                <el-icon><QuestionFilled /></el-icon>
-              </span>
-            </el-tooltip>
-            <span v-if="isCurrentProjectVersion(card.version)" class="temp-panel-status-tag temp-panel-status-tag--current">当前</span>
-            <span v-if="card.version === latestVersion" class="temp-panel-status-tag temp-panel-status-tag--latest">
-              <span class="temp-panel-status-dot" aria-hidden="true"></span>
-              最新
-            </span>
-          </div>
-          <div class="temp-panel-card-actions">
-            <span class="temp-panel-card-time">{{ formatCreatedAt(card.createdAt) }}</span>
-            <el-tooltip :content="updateToVersionTooltip" placement="top" :show-after="200">
-              <span class="temp-panel-tooltip-trigger">
-                <button
-                  v-if="isVersionHigherThanCurrent(card.version)"
-                  type="button"
-                  class="temp-panel-card-update-btn"
-                  :class="{
-                    'temp-panel-card-update-btn--loading': updatingTarget === card.version,
-                    'temp-panel-card-update-btn--disabled': isTemplateArchiveLimitReached,
-                  }"
-                  :disabled="isUpdating || listLoading || isTemplateArchiveLimitReached"
-                  @click="handleUpdateToVersion(card.version)"
-                >
-                  <el-icon v-if="updatingTarget === card.version" class="temp-panel-card-update-icon">
-                    <Loading />
-                  </el-icon>
-                  {{ updatingTarget === card.version ? '更新中...' : '更新到此版本' }}
-                </button>
-              </span>
-            </el-tooltip>
-          </div>
-        </div>
-
-        <div
-          v-if="card.files.length"
-          class="temp-panel-files-section"
-          :class="{ 'temp-panel-files-section--expanded': isFilesExpanded(card.version) }"
+        <li
+          v-for="card in versionCards"
+          :key="card.version"
+          class="temp-panel-card"
+          :class="{
+            'temp-panel-card--current': isCurrentProjectVersion(card.version),
+            'temp-panel-card--latest': card.version === latestVersion,
+          }"
         >
-          <button type="button" class="temp-panel-files-toggle" @click="toggleFilesExpand(card.version)">
-            <span class="temp-panel-files-toggle-left">
-              <span class="temp-panel-files-toggle-label">文件变更</span>
-              <span class="temp-panel-files-count">{{ card.files.length }}</span>
-            </span>
-            <SvgIcon
-              name="chevron-down"
-              class="temp-panel-files-arrow"
-              :class="{ 'temp-panel-files-arrow--expanded': isFilesExpanded(card.version) }"
-            />
-          </button>
-          <div v-show="isFilesExpanded(card.version)" class="temp-panel-file-list">
-            <div v-for="file in card.files" :key="`${card.version}-${file.path}`" class="temp-panel-file-item">
-              <div class="temp-panel-file-main">
-                <span class="temp-panel-file-path">{{ file.path }}</span>
-                <span class="temp-panel-file-action" :class="`temp-panel-file-action--${file.action}`">
-                  {{ FILE_ACTION_LABEL[file.action] }}
+          <div class="temp-panel-card-header">
+            <div class="temp-panel-card-title-row">
+              <span class="temp-panel-card-version">{{ card.version }}</span>
+              <el-tooltip v-if="card.description" :content="card.description" placement="top" :show-after="200">
+                <span class="temp-panel-desc-trigger" tabindex="0" role="button" aria-label="版本说明">
+                  <el-icon><QuestionFilled /></el-icon>
                 </span>
-              </div>
-              <p v-if="file.description" class="temp-panel-file-desc">{{ file.description }}</p>
+              </el-tooltip>
+              <span v-if="isCurrentProjectVersion(card.version)" class="temp-panel-status-tag temp-panel-status-tag--current">当前</span>
+              <span v-if="card.version === latestVersion" class="temp-panel-status-tag temp-panel-status-tag--latest">
+                <span class="temp-panel-status-dot" aria-hidden="true"></span>
+                最新
+              </span>
+            </div>
+            <div class="temp-panel-card-actions">
+              <span class="temp-panel-card-time">{{ formatCreatedAt(card.createdAt) }}</span>
+              <el-tooltip :content="updateToVersionTooltip" placement="top" :show-after="200">
+                <span class="temp-panel-tooltip-trigger">
+                  <button
+                    v-if="isVersionHigherThanCurrent(card.version)"
+                    type="button"
+                    class="temp-panel-card-update-btn"
+                    :class="{
+                      'temp-panel-card-update-btn--loading': updatingTarget === card.version,
+                      'temp-panel-card-update-btn--disabled': isTemplateArchiveLimitReached,
+                    }"
+                    :disabled="isUpdating || listLoading || isTemplateArchiveLimitReached"
+                    @click="handleUpdateToVersion(card.version)"
+                  >
+                    <el-icon v-if="updatingTarget === card.version" class="temp-panel-card-update-icon">
+                      <Loading />
+                    </el-icon>
+                    {{ updatingTarget === card.version ? '更新中...' : '更新到此版本' }}
+                  </button>
+                </span>
+              </el-tooltip>
             </div>
           </div>
-        </div>
-        <div v-else class="temp-panel-file-empty">该版本无文件变更</div>
-      </li>
+
+          <div v-if="card.files.length" class="temp-panel-files-section" :class="{ 'temp-panel-files-section--expanded': isFilesExpanded(card.version) }">
+            <button type="button" class="temp-panel-files-toggle" @click="toggleFilesExpand(card.version)">
+              <span class="temp-panel-files-toggle-left">
+                <span class="temp-panel-files-toggle-label">文件变更</span>
+                <span class="temp-panel-files-count">{{ card.files.length }}</span>
+              </span>
+              <SvgIcon name="chevron-down" class="temp-panel-files-arrow" :class="{ 'temp-panel-files-arrow--expanded': isFilesExpanded(card.version) }" />
+            </button>
+            <div v-show="isFilesExpanded(card.version)" class="temp-panel-file-list">
+              <div v-for="file in card.files" :key="`${card.version}-${file.path}`" class="temp-panel-file-item">
+                <div class="temp-panel-file-main">
+                  <span class="temp-panel-file-path">{{ file.path }}</span>
+                  <span class="temp-panel-file-action" :class="`temp-panel-file-action--${file.action}`">
+                    {{ FILE_ACTION_LABEL[file.action] }}
+                  </span>
+                </div>
+                <p v-if="file.description" class="temp-panel-file-desc">{{ file.description }}</p>
+              </div>
+            </div>
+          </div>
+          <div v-else class="temp-panel-file-empty">该版本无文件变更</div>
+        </li>
       </ul>
     </template>
   </div>

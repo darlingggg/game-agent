@@ -1,4 +1,5 @@
 import axios from '@/ajax'
+import type { ToolSummary } from '@/builder/chat/types'
 
 export interface sessionItem {
   id: number
@@ -6,19 +7,24 @@ export interface sessionItem {
   conversationId?: number
   messageId?: number
   title: string
+  model?: string | null
+  reasoningEffort?: string | null
   account: string
   role: 'user' | 'assistant' | 'tool' | 'vision'
   content?: string
-  status?: 'completed' | 'streaming' | 'failed'
+  status?: 'completed' | 'streaming' | 'failed' | 'cancelled'
   errorMsg?: string | null
   createdAt: string
   updatedAt?: string
+  toolSummary?: ToolSummary
 }
 
 export interface ConversationSummary {
   id: number
   projectId: number
   title: string
+  model?: string | null
+  reasoningEffort?: string | null
   preview: string
   messageCount: number
   createdAt: string
@@ -39,6 +45,8 @@ export interface ConversationMessagesPage {
     id: number
     projectId: number
     title: string
+    model?: string | null
+    reasoningEffort?: string | null
     createdAt: string
     updatedAt: string
   }
@@ -59,6 +67,9 @@ interface RawSessionItem {
   messageId?: number | null
   message_id?: number | null
   title?: string
+  model?: string | null
+  reasoningEffort?: string | null
+  reasoning_effort?: string | null
   account?: string
   role: sessionItem['role']
   content?: string
@@ -69,6 +80,8 @@ interface RawSessionItem {
   created_at?: string
   updatedAt?: string
   updated_at?: string
+  toolSummary?: ToolSummary
+  tool_summary?: ToolSummary
 }
 
 interface RawConversationSummary {
@@ -76,6 +89,9 @@ interface RawConversationSummary {
   projectId?: number
   project_id?: number
   title?: string
+  model?: string | null
+  reasoningEffort?: string | null
+  reasoning_effort?: string | null
   preview?: string
   messageCount?: number
   message_count?: number
@@ -90,6 +106,9 @@ const USER_PROMPT_SEPARATOR_RE = /\r?\n\s*---\s*(?:\r?\n|$)/
 export interface createSessionParams {
   projectId: number
   title?: string
+  model?: string | null
+  reasoningEffort?: string | null
+  reasoning_effort?: string | null
   role: 'user' | 'assistant' | 'tool' | 'vision'
   content: string
 }
@@ -97,6 +116,9 @@ export interface createSessionParams {
 export interface updateSessionParams {
   oldTitle: string
   title?: string
+  model?: string | null
+  reasoningEffort?: string | null
+  reasoning_effort?: string | null
   projectId?: string
 }
 
@@ -114,6 +136,8 @@ function normalizeSessionItem(item: RawSessionItem): sessionItem {
     conversationId: item.conversationId ?? item.conversation_id ?? undefined,
     messageId: messageId === null ? undefined : messageId,
     title: item.title ?? '',
+    model: item.model,
+    reasoningEffort: item.reasoningEffort ?? item.reasoning_effort ?? null,
     account: item.account ?? '',
     role: item.role,
     content: item.role === 'user' ? getUserDisplayContent(item.content) : item.content,
@@ -121,6 +145,7 @@ function normalizeSessionItem(item: RawSessionItem): sessionItem {
     errorMsg: item.errorMsg ?? item.error_msg ?? null,
     createdAt: item.createdAt ?? item.created_at ?? '',
     updatedAt: item.updatedAt ?? item.updated_at ?? undefined,
+    toolSummary: item.toolSummary ?? item.tool_summary,
   }
 }
 
@@ -129,6 +154,8 @@ function normalizeConversationSummary(item: RawConversationSummary): Conversatio
     id: Number(item.id),
     projectId: Number(item.projectId ?? item.project_id ?? 0),
     title: item.title ?? '',
+    model: item.model,
+    reasoningEffort: item.reasoningEffort ?? item.reasoning_effort ?? null,
     preview: item.preview ?? '',
     messageCount: Number(item.messageCount ?? item.message_count ?? 0),
     createdAt: item.createdAt ?? item.created_at ?? '',
@@ -136,37 +163,31 @@ function normalizeConversationSummary(item: RawConversationSummary): Conversatio
   }
 }
 
-export const getConversationList = async (params: {
-  projectId: number
-  keyword?: string
-  page: number
-  pageSize: number
-}): Promise<ConversationListPage> => {
-  const result = await axios.get<unknown, { list: RawConversationSummary[]; pagination: ConversationListPage['pagination'] }>(
-    '/conversation/list',
-    { params },
-  )
+export const getConversationList = async (params: { projectId: number; keyword?: string; page: number; pageSize: number }): Promise<ConversationListPage> => {
+  const result = await axios.get<unknown, { list: RawConversationSummary[]; pagination: ConversationListPage['pagination'] }>('/conversation/list', { params })
   return {
     list: result.list.map(normalizeConversationSummary),
     pagination: result.pagination,
   }
 }
 
-export const getConversationMessages = async (
-  conversationId: number,
-  params: { beforeId?: number; limit?: number } = {},
-): Promise<ConversationMessagesPage> => {
-  const result = await axios.get<unknown, {
-    conversation: RawConversationSummary
-    list: RawSessionItem[]
-    pagination: ConversationMessagesPage['pagination']
-  }>(`/conversation/${conversationId}/messages`, { params })
+export const getConversationMessages = async (conversationId: number, params: { beforeId?: number; limit?: number } = {}): Promise<ConversationMessagesPage> => {
+  const result = await axios.get<
+    unknown,
+    {
+      conversation: RawConversationSummary
+      list: RawSessionItem[]
+      pagination: ConversationMessagesPage['pagination']
+    }
+  >(`/conversation/${conversationId}/messages`, { params })
   const conversation = normalizeConversationSummary(result.conversation)
   return {
     conversation: {
       id: conversation.id,
       projectId: conversation.projectId,
       title: conversation.title,
+      model: conversation.model,
+      reasoningEffort: conversation.reasoningEffort,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
     },
@@ -175,14 +196,9 @@ export const getConversationMessages = async (
   }
 }
 
-export const updateConversation = (
-  conversationId: number,
-  title: string,
-): Promise<{ id: number; title: string }> => axios.patch(`/conversation/${conversationId}`, { title })
+export const updateConversation = (conversationId: number, title: string): Promise<{ id: number; title: string }> => axios.patch(`/conversation/${conversationId}`, { title })
 
-export const deleteConversation = (
-  conversationId: number,
-): Promise<{ id: number; affectedRows: number }> => axios.delete(`/conversation/${conversationId}`)
+export const deleteConversation = (conversationId: number): Promise<{ id: number; affectedRows: number }> => axios.delete(`/conversation/${conversationId}`)
 
 // 获取会话列表
 export const getSessionList = async (params: { projectId: number; title?: string }): Promise<sessionItem[]> => {

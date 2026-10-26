@@ -39,7 +39,7 @@ export interface SessionContext {
 }
 
 /** 会话上下文注入 key */
-export const sessionContextKey: InjectionKey<SessionContext> = Symbol('sessionContext')
+export const sessionContextKey: InjectionKey<SessionContext> = Symbol.for('gameagent.builder.sessionContext')
 
 /**
  * 获取会话上下文

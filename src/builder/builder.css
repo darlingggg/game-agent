@@ -27,8 +27,8 @@
   --app-card-border: var(--builder-line);
 
   display: grid;
-  grid-template-columns: clamp(232px, 17vw, 264px) minmax(0, 1fr) clamp(332px, 25vw, 400px);
-  grid-template-rows: 52px minmax(0, 1fr);
+  grid-template-columns: 0 minmax(380px, 0.9fr) minmax(0, 1.4fr);
+  grid-template-rows: 64px minmax(0, 1fr);
   width: 100%;
   height: 100dvh;
   min-height: 0;
@@ -41,9 +41,9 @@
 }
 
 html.dark .builder-shell {
-  --app-bg-subtle: #151a22;
-  --app-surface-hover: #202733;
-  --app-text-muted: #778292;
+  --app-bg-subtle: #15171c;
+  --app-surface-hover: #23262d;
+  --app-text-muted: #939dac;
 }
 
 .builder-shell *,
@@ -98,7 +98,7 @@ html.dark .builder-shell {
 }
 
 .builder-shell.container--session-collapsed {
-  grid-template-columns: 0 minmax(0, 1fr) clamp(332px, 25vw, 400px);
+  grid-template-columns: 0 minmax(380px, 0.9fr) minmax(0, 1.4fr);
 }
 
 .builder-shell.container--session-collapsed .main {
@@ -194,7 +194,6 @@ html.dark .builder-shell {
 }
 
 .builder-shell .builder-brand-copy small,
-.builder-shell .builder-project-kicker,
 .builder-shell .builder-online-state {
   color: var(--builder-muted);
   font-family: var(--brand-font-mono);
@@ -383,14 +382,7 @@ html.dark .builder-shell {
 }
 
 .builder-shell .session-panel-title::after {
-  content: 'PROJECT BUILDER';
-  display: block;
-  margin-top: 2px;
-  color: var(--builder-muted);
-  font-family: var(--brand-font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
+  content: none;
 }
 
 .builder-shell .builder-session-toggle-btn,
@@ -763,17 +755,6 @@ html.dark .builder-shell .session-item--active {
   line-height: 1;
 }
 
-.builder-shell .main-tab-item-copy small {
-  overflow: hidden;
-  color: var(--builder-muted);
-  font-family: var(--brand-font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .builder-shell .main-tab-indicator {
   display: none;
 }
@@ -819,54 +800,61 @@ html.dark .builder-shell .main-content-panel {
   padding-left: 20px;
 }
 
-.builder-shell .chat-message {
-  gap: 8px;
-  padding: 8px 0 16px;
+.container.builder-shell .chat-message {
+  gap: 0;
+  padding: 10px 0 24px;
 }
 
-.builder-shell .chat-message-avatar {
-  width: 30px;
-  height: 30px;
+.container.builder-shell .chat-message-body {
+  max-width: 85%;
 }
 
-.builder-shell .chat-message--assistant .chat-message-avatar,
-.builder-shell .chat-message--user .chat-message-avatar {
-  border-width: 1px;
-  border-color: var(--builder-line-strong);
-  background: var(--builder-surface);
+.container.builder-shell .chat-message--assistant .chat-message-body {
+  width: 100%;
+  max-width: 100%;
 }
 
-.builder-shell .chat-message-body {
-  max-width: min(78%, 680px);
+.container.builder-shell .chat-message-bubble {
+  border-radius: 12px;
 }
 
-.builder-shell .chat-message-bubble {
+.container.builder-shell .chat-message--assistant .chat-message-bubble {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.container.builder-shell .chat-message--user .chat-message-bubble {
+  padding: 10px 14px;
+  border: 0;
+  background: color-mix(in srgb, var(--builder-ink) 6%, var(--builder-surface));
+  box-shadow: none;
+}
+
+html.dark .container.builder-shell .chat-message--user .chat-message-bubble {
+  border: 0;
+  background: color-mix(in srgb, var(--builder-ink) 6%, var(--builder-surface));
+}
+
+.container.builder-shell .chat-message-reply-toggle {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  justify-content: center;
   border-radius: 6px;
+  color: var(--builder-muted);
 }
 
-.builder-shell .chat-message--assistant .chat-message-bubble {
-  border-color: var(--builder-line);
-  border-left: 3px solid var(--builder-blue);
-  background: color-mix(in srgb, var(--builder-surface) 94%, var(--builder-blue-soft));
-  box-shadow: none;
-}
-
-.builder-shell .chat-message--user .chat-message-bubble {
-  border: 1px solid var(--builder-line);
+.container.builder-shell .chat-message-reply-toggle:hover {
   background: var(--builder-blue-soft);
-  box-shadow: none;
+  color: var(--builder-ink);
 }
 
-.builder-shell .chat-message-reply-toggle {
-  min-height: 28px;
-  justify-content: space-between;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.builder-shell .chat-message-reply-toggle > span {
-  display: inline-flex;
-  align-items: center;
+.container.builder-shell .chat-message-reply-panel {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .builder-shell .temp-panel-status-dot {
@@ -1008,12 +996,7 @@ html.dark .builder-shell .main-content .temp-panel {
 .builder-shell .config-panel-title::before,
 .builder-shell .snapshot-panel-title::before,
 .builder-shell .temp-panel-title::before {
-  content: 'WORKSPACE / ';
-  color: var(--builder-blue);
-  font-family: var(--brand-font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  vertical-align: middle;
+  content: none;
 }
 
 .builder-shell .config-panel-type-tabs,
@@ -1303,8 +1286,7 @@ html.dark .builder-shell .temp-panel .temp-panel-file-item:has(.temp-panel-file-
 /* Preview studio */
 .container.builder-shell .preview-panel {
   background: var(--brand-stage);
-  background-image: linear-gradient(rgba(237, 240, 245, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(237, 240, 245, 0.12) 1px, transparent 1px);
-  background-size: 24px 24px;
+  background-image: radial-gradient(ellipse at 50% 20%, color-mix(in srgb, var(--builder-blue) 8%, transparent), transparent 65%);
   color: #edf0f5;
 }
 
@@ -1392,14 +1374,7 @@ html.dark .container.builder-shell .phone-frame {
 }
 
 .builder-shell .log-panel::before {
-  content: 'agent://runtime/log';
-  display: block;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #242b36;
-  color: #6f95ff;
-  font-size: 10px;
-  font-weight: 700;
+  content: none;
 }
 
 .builder-shell .log-panel-build-float {
@@ -1538,10 +1513,6 @@ html.dark .container.builder-shell .phone-frame {
     opacity: 1;
     transform: translateX(0);
   }
-
-  .builder-shell .main-tab-item-copy small {
-    display: none;
-  }
 }
 
 @media (max-width: 767px) {
@@ -1573,7 +1544,6 @@ html.dark .container.builder-shell .phone-frame {
     padding-left: 10px;
   }
 
-  .builder-shell .builder-project-kicker,
   .builder-shell .builder-project-type {
     display: none;
   }
@@ -2052,7 +2022,6 @@ html.dark .container.builder-shell .phone-frame {
   .container.builder-shell .builder-panel-loading {
     font-size: 14px;
   }
-
 }
 
 @media (max-width: 460px) {

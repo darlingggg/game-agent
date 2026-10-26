@@ -274,9 +274,13 @@ watch(
   },
 )
 
-watch(projectId, (id) => {
-  if (id) void fetchConversationList()
-}, { immediate: true })
+watch(
+  projectId,
+  (id) => {
+    if (id) void fetchConversationList()
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => {
   if (searchDebounceTimer) {
@@ -289,7 +293,6 @@ onUnmounted(() => {
   <aside class="session-panel">
     <header class="session-panel-header">
       <div class="session-panel-heading">
-        <span>WORKSPACE / SESSIONS</span>
         <div class="session-panel-title">会话</div>
       </div>
       <button type="button" class="builder-session-toggle-btn" title="收起会话栏" aria-label="收起会话栏" @click.stop="sessionContext.toggleSessionPanelCollapsed()">

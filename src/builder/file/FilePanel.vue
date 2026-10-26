@@ -1,21 +1,23 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { DArrowLeft, DArrowRight } from '@element-plus/icons-vue'
-import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useProjectStore } from '@/stores/project'
 import { syncPreviewFile } from '../preview/webcontainer'
 import FileEditor from './FileEditor.vue'
 import FileTreeBranch from './FileTreeBranch.vue'
-import { fetchProjectTempFileContent, isAgentBaseReadOnlyPath, isBinaryRelativePath, loadProjectTempFileTree, saveProjectTempFileContent, type FileTreeNode } from './projectTempFiles'
+import {
+  fetchProjectTempFileContent,
+  isAgentBaseReadOnlyPath,
+  isBinaryRelativePath,
+  loadProjectTempFileTree,
+  saveProjectTempFileContent,
+  type FileTreeNode,
+} from './projectTempFiles'
 import { PROJECT_FILES_CHANGED_EVENT } from '../snapshot/snapshotRestore'
 
 defineOptions({
   name: 'FilePanel',
 })
-
-const projectStore = useProjectStore()
-const { currentProject } = storeToRefs(projectStore)
 
 /** 目录展开状态，key 为目录相对路径 */
 const expandedDirs = ref<Record<string, boolean>>({
@@ -224,14 +226,8 @@ onUnmounted(() => {
   <div class="file-panel">
     <aside v-show="!treeCollapsed" class="file-panel-tree">
       <div class="file-panel-tree-header">
-        <div class="file-panel-tree-title">{{ currentProject?.title ?? '项目文件' }}</div>
-        <button
-          type="button"
-          class="file-panel-tree-toggle-btn"
-          title="收起目录"
-          aria-label="收起目录"
-          @click="treeCollapsed = true"
-        >
+        <div class="file-panel-tree-title">文件</div>
+        <button type="button" class="file-panel-tree-toggle-btn" title="收起目录" aria-label="收起目录" @click="treeCollapsed = true">
           <el-icon><DArrowLeft /></el-icon>
         </button>
       </div>
@@ -249,14 +245,7 @@ onUnmounted(() => {
     <section class="file-panel-content">
       <div v-if="treeCollapsed || selectedFilePath" class="file-panel-content-header">
         <div class="file-panel-content-header-left">
-          <button
-            v-if="treeCollapsed"
-            type="button"
-            class="file-panel-tree-toggle-btn"
-            title="展开目录"
-            aria-label="展开目录"
-            @click="treeCollapsed = false"
-          >
+          <button v-if="treeCollapsed" type="button" class="file-panel-tree-toggle-btn" title="展开目录" aria-label="展开目录" @click="treeCollapsed = false">
             <el-icon><DArrowRight /></el-icon>
           </button>
           <span v-if="selectedFilePath" class="file-panel-content-path">{{ selectedFilePath }}</span>
@@ -276,13 +265,7 @@ onUnmounted(() => {
       <div v-else-if="contentError" class="file-panel-content-empty file-panel-content-empty--error">
         {{ contentError }}
       </div>
-      <FileEditor
-        v-else-if="selectedFilePath"
-        v-model="editorContent"
-        class="file-panel-editor"
-        :file-path="selectedFilePath"
-        :read-only="isCurrentFileReadOnly"
-      />
+      <FileEditor v-else-if="selectedFilePath" v-model="editorContent" class="file-panel-editor" :file-path="selectedFilePath" :read-only="isCurrentFileReadOnly" />
       <div v-else class="file-panel-content-empty">
         {{ treeCollapsed ? '点击左上角按钮展开目录并选择文件' : '请选择左侧文件查看内容' }}
       </div>
@@ -471,9 +454,7 @@ onUnmounted(() => {
   font-size: 0.875rem;
   text-align: center;
   background-color: #17191d;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 

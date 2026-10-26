@@ -4,9 +4,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { EChartsOption } from 'echarts'
-import { storeToRefs } from 'pinia'
 import VChart from 'vue-echarts'
-import { useThemeStore } from '@/stores/theme'
 
 defineOptions({ name: 'AdminChart' })
 
@@ -16,12 +14,10 @@ defineProps<{
 }>()
 
 use([CanvasRenderer, BarChart, LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent])
-
-const { mode } = storeToRefs(useThemeStore())
 </script>
 
 <template>
-  <VChart :key="mode" class="admin-chart-canvas" :option="option" :theme="mode === 'dark' ? 'dark' : undefined" autoresize :aria-label="label" />
+  <VChart class="admin-chart-canvas" :option="option" theme="dark" autoresize :aria-label="label" />
 </template>
 
 <style scoped>

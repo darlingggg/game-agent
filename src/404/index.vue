@@ -28,14 +28,12 @@ function trackPointer(event: PointerEvent) {
     <header class="not-found-header">
       <RouterLink class="brand-lockup" to="/" aria-label="AI Agent 主页">
         <span class="brand-mark"><span class="brand-mark-svg" /></span>
-        <span class="brand-copy"><strong>AI Agent</strong><small>Project workspace</small></span>
+        <span class="brand-copy"><strong>AI Agent</strong><small>项目工作台</small></span>
       </RouterLink>
-      <div class="route-state"><span /> Route unresolved</div>
+      <div class="route-state"><span /> 页面未找到</div>
     </header>
 
     <section class="error-stage" aria-labelledby="not-found-title">
-      <div class="stage-rail stage-rail--top"><span>ERROR / ROUTE COORDINATE</span><span>HTTP 404</span></div>
-
       <div class="error-code" aria-label="404">
         <span class="error-digit">4</span>
         <span class="missing-node" aria-hidden="true">
@@ -52,7 +50,6 @@ function trackPointer(event: PointerEvent) {
 
       <div class="error-content">
         <div>
-          <p class="error-kicker">The requested node is outside this workspace.</p>
           <h1 id="not-found-title">这个页面没有被构建</h1>
         </div>
         <div class="error-action-copy">
@@ -70,7 +67,7 @@ function trackPointer(event: PointerEvent) {
       </div>
     </section>
 
-    <footer class="not-found-footer"><span>Workspace online</span><span>Recovery route available</span></footer>
+    <footer class="not-found-footer"><span>项目工作台</span><span>可返回项目主页</span></footer>
   </main>
 </template>
 
@@ -333,15 +330,6 @@ function trackPointer(event: PointerEvent) {
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.55fr);
   padding: 32px 0 40px;
   border-top: 1px solid var(--error-line);
-}
-
-.error-kicker {
-  margin-bottom: 10px;
-  color: var(--error-blue);
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
 }
 
 .error-content h1 {

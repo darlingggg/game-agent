@@ -5,13 +5,13 @@ import type { ImageGenerationTask, ImageGenerationStatus } from '@/http/imageGen
 
 defineOptions({ name: 'ChatImageTasks' })
 
-const props = defineProps<{ tasks: ImageGenerationTask[] }>()
+const props = defineProps<{ tasks: ImageGenerationTask[]; compact?: boolean }>()
 
 const STATUS_LABELS: Record<ImageGenerationStatus, string> = {
   queued: '等待生成',
   submitted: '任务已提交',
   generating: '正在生成',
-  storing: '正在保存到 COS',
+  storing: '正在保存图片',
   succeeded: '已生成',
   failed: '生成失败',
 }
@@ -22,10 +22,6 @@ function statusLabel(status: ImageGenerationStatus) {
   return STATUS_LABELS[status]
 }
 
-function isWorking(status: ImageGenerationStatus) {
-  return !['succeeded', 'failed'].includes(status)
-}
-
 function formatBytes(value: number | null) {
   if (!value) return ''
   if (value < 1024 * 1024) return Math.round(value / 1024) + ' KB'
@@ -34,17 +30,24 @@ function formatBytes(value: number | null) {
 </script>
 
 <template>
-  <div class="chat-image-tasks" aria-label="AI 生图任务">
-    <article v-for="task in tasks" :key="task.taskId" class="chat-image-task" :class="'is-' + task.status">
+  <div class="chat-image-tasks" :class="{ 'chat-image-tasks--compact': compact }" aria-label="AI 生图任务">
+    <article v-for="task in tasks" :key="task.taskId" class="chat-image-task">
       <div class="chat-image-task__preview">
-        <el-image v-if="task.status === 'succeeded' && task.url" :src="task.url" :preview-src-list="previewUrls"
-          fit="contain" crossorigin="anonymous" preview-teleported hide-on-click-modal />
-        <div v-else-if="task.status === 'failed'" class="chat-image-task__state is-error">
+        <el-image
+          v-if="task.status === 'succeeded' && task.url"
+          :src="task.url"
+          :preview-src-list="previewUrls"
+          fit="contain"
+          crossorigin="anonymous"
+          preview-teleported
+          hide-on-click-modal
+        />
+        <div v-else-if="task.status === 'failed' || task.observationError" class="chat-image-task__state is-error">
           <el-icon>
             <Warning />
           </el-icon>
-          <strong>图片生成失败</strong>
-          <span>{{ task.errorMessage || '服务暂时不可用，请稍后重试' }}</span>
+          <strong>{{ task.observationError ? '暂无法获取任务进度' : '图片生成失败' }}</strong>
+          <span>{{ task.observationError || task.errorMessage || '服务暂时不可用，请稍后重试' }}</span>
         </div>
         <div v-else class="chat-image-task__state">
           <span class="chat-image-task__scanner" />
@@ -52,11 +55,8 @@ function formatBytes(value: number | null) {
             <Picture />
           </el-icon>
           <strong>{{ statusLabel(task.status) }}</strong>
-          <span>完成 COS 保存后显示</span>
+          <span>完成后可点击查看</span>
         </div>
-        <span class="chat-image-task__status" :class="{ 'is-working': isWorking(task.status) }">
-          <i />{{ statusLabel(task.status) }}
-        </span>
       </div>
       <div class="chat-image-task__meta">
         <p>{{ task.prompt }}</p>
@@ -70,6 +70,37 @@ function formatBytes(value: number | null) {
 </template>
 
 <style scoped>
+.chat-image-tasks--compact .chat-image-task {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  width: 100%;
+  max-width: 100%;
+}
+.chat-image-tasks--compact .chat-image-task__preview {
+  height: 120px;
+  min-height: 0;
+  max-height: 120px;
+  aspect-ratio: auto;
+}
+.chat-image-tasks--compact .chat-image-task__scanner {
+  display: none;
+}
+.chat-image-tasks--compact .chat-image-task__state {
+  padding: 6px;
+  gap: 4px;
+}
+.chat-image-tasks--compact .chat-image-task__state strong,
+.chat-image-tasks--compact .chat-image-task__state span {
+  font-size: 11px;
+}
+@media (max-width: 480px) {
+  .chat-image-tasks--compact .chat-image-task {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+  .chat-image-tasks--compact .chat-image-task__preview {
+    height: 100px;
+  }
+}
 .chat-image-tasks {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 20rem));
@@ -153,39 +184,6 @@ function formatBytes(value: number | null) {
   animation: image-task-scan 2.4s ease-in-out infinite;
 }
 
-.chat-image-task__status {
-  position: absolute;
-  top: 0.625rem;
-  left: 0.625rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  min-height: 1.625rem;
-  padding: 0 0.5rem;
-  border: 1px solid var(--app-border);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--app-surface) 88%, transparent);
-  color: var(--app-text-primary);
-  font-size: 0.6875rem;
-  font-weight: 700;
-  backdrop-filter: blur(8px);
-}
-
-.chat-image-task__status i {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: #22c55e;
-}
-
-.chat-image-task__status.is-working i {
-  animation: image-task-pulse 1.2s ease-in-out infinite;
-}
-
-.is-failed .chat-image-task__status i {
-  background: #dc2626;
-}
-
 .chat-image-task__meta {
   display: flex;
   flex-wrap: wrap;
@@ -213,7 +211,6 @@ function formatBytes(value: number | null) {
 }
 
 @keyframes image-task-scan {
-
   0%,
   100% {
     top: 0;
@@ -226,17 +223,8 @@ function formatBytes(value: number | null) {
   }
 }
 
-@keyframes image-task-pulse {
-  50% {
-    opacity: 0.25;
-    transform: scale(0.75);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-
-  .chat-image-task__scanner,
-  .chat-image-task__status.is-working i {
+  .chat-image-task__scanner {
     animation: none;
   }
 }

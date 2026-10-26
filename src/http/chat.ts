@@ -8,6 +8,8 @@ export interface ChatBody {
   conversationId?: number
   title?: string
   imageUrls?: string[]
+  model?: string
+  reasoningEffort?: string | null
 }
 
 /** 后端 SSE 事件结构 */
@@ -45,8 +47,10 @@ async function consumeChatSseResponse(response: Response, onEvent?: (event: Chat
  * @param options 请求参数与事件回调
  */
 export async function chatWithAI(options: ChatSseOptions) {
-  const { prompt, projectId, conversationId, title, imageUrls, onEvent, signal } = options
+  const { prompt, projectId, conversationId, title, imageUrls, model, reasoningEffort, onEvent, signal } = options
   const body: ChatBody = { prompt, projectId }
+  if (model) body.model = model
+  if (reasoningEffort !== undefined) body.reasoningEffort = reasoningEffort
   if (conversationId) {
     body.conversationId = conversationId
   }

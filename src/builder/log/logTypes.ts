@@ -27,6 +27,7 @@ export interface AiLogEntry extends BaseLogEntry {
 
 /** 工具调用日志 */
 export interface ToolLogEntry extends BaseLogEntry {
+  toolCallId?: string
   prefix: 'tool'
   /** 工具名称 */
   toolName: string

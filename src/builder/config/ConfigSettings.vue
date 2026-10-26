@@ -58,7 +58,12 @@ onMounted(async () => {
   void tokenUsage.refreshProject(projectStore.currentProject?.id ?? 0)
 })
 
-watch(() => projectStore.currentProject?.id, (id) => { if (id) void tokenUsage.refreshProject(id) })
+watch(
+  () => projectStore.currentProject?.id,
+  (id) => {
+    if (id) void tokenUsage.refreshProject(id)
+  },
+)
 
 watch(backgroundColor, (color) => {
   pickerColor.value = color || null
@@ -132,8 +137,12 @@ async function handleSaveProject() {
           <p class="config-section-desc">来自后端累计统计，包含所有会话与工具调用</p>
         </div>
         <div class="config-usage-body">
-          <strong>{{ (tokenUsage.project?.totalTokens ?? 0).toLocaleString() }}</strong><span>tokens</span>
-          <div class="config-usage-meta"><span>输入 {{ (tokenUsage.project?.promptTokens ?? 0).toLocaleString() }}</span><span>输出 {{ (tokenUsage.project?.completionTokens ?? 0).toLocaleString() }}</span></div>
+          <strong>{{ (tokenUsage.project?.totalTokens ?? 0).toLocaleString() }}</strong
+          ><span>Token</span>
+          <div class="config-usage-meta">
+            <span>输入 {{ (tokenUsage.project?.promptTokens ?? 0).toLocaleString() }}</span
+            ><span>输出 {{ (tokenUsage.project?.completionTokens ?? 0).toLocaleString() }}</span>
+          </div>
         </div>
       </div>
     </section>
@@ -150,13 +159,7 @@ async function handleSaveProject() {
             <el-input v-model="projectForm.name" placeholder="请输入项目名称" clearable />
           </el-form-item>
           <el-form-item label="项目描述">
-            <el-input
-              v-model="projectForm.description"
-              type="textarea"
-              :rows="3"
-              placeholder="请输入项目描述（选填）"
-              resize="none"
-            />
+            <el-input v-model="projectForm.description" type="textarea" :rows="3" placeholder="请输入项目描述（选填）" resize="none" />
           </el-form-item>
           <div class="config-form-footer">
             <button
@@ -200,25 +203,9 @@ async function handleSaveProject() {
 
           <el-form-item label="背景色">
             <div class="config-color-row">
-              <span
-                class="config-color-preview"
-                :style="{ backgroundColor: effectiveBackgroundColor }"
-                :title="effectiveBackgroundColor"
-                aria-hidden="true"
-              />
-              <el-input
-                v-model="backgroundColor"
-                class="config-color-input"
-                placeholder="不填则使用当前主题默认背景"
-                clearable
-                @clear="clearBackgroundColor"
-              />
-              <el-color-picker
-                v-model="pickerColor"
-                class="config-color-picker"
-                show-alpha
-                @change="handleColorChange"
-              />
+              <span class="config-color-preview" :style="{ backgroundColor: effectiveBackgroundColor }" :title="effectiveBackgroundColor" aria-hidden="true" />
+              <el-input v-model="backgroundColor" class="config-color-input" placeholder="不填则使用当前主题默认背景" clearable @clear="clearBackgroundColor" />
+              <el-color-picker v-model="pickerColor" class="config-color-picker" show-alpha @change="handleColorChange" />
             </div>
             <p class="config-field-hint">留空时跟随主题默认背景色</p>
           </el-form-item>
@@ -263,10 +250,26 @@ async function handleSaveProject() {
   line-height: 1.45;
 }
 
-.config-usage-body { padding: 1rem 0.875rem; }
-.config-usage-body strong { font-size: 1.5rem; letter-spacing: 0; color: var(--config-accent-text); }
-.config-usage-body > span { margin-left: 0.4rem; color: var(--app-text-secondary); font-size: 0.75rem; }
-.config-usage-meta { display: flex; gap: 1rem; margin-top: 0.45rem; color: var(--app-text-secondary); font-size: 0.75rem; }
+.config-usage-body {
+  padding: 1rem 0.875rem;
+}
+.config-usage-body strong {
+  font-size: 1.5rem;
+  letter-spacing: 0;
+  color: var(--config-accent-text);
+}
+.config-usage-body > span {
+  margin-left: 0.4rem;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+}
+.config-usage-meta {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.45rem;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+}
 
 .config-form {
   padding: 0.875rem;

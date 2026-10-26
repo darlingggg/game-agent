@@ -1,29 +1,30 @@
 :root {
   /* Shared AI Agent visual language */
-  --brand-canvas: #f2f4f7;
+  --brand-canvas: #f7f8fa;
   --brand-panel: #ffffff;
-  --brand-panel-muted: #f7f8fa;
-  --brand-ink: #1d222a;
-  --brand-muted: #66707e;
-  --brand-line: #dce1e7;
-  --brand-line-strong: #c7ced7;
+  --brand-panel-muted: #f0f2f6;
+  --brand-ink: #171b24;
+  --brand-muted: #657080;
+  --brand-line: #e2e5eb;
+  --brand-line-strong: #cdd3dd;
   --brand-border: var(--brand-line);
   --brand-blue: #3d68e8;
   --brand-blue-strong: #3157c8;
   --brand-blue-soft: #edf2ff;
+  --brand-on-blue: #ffffff;
   --brand-stage: #101318;
   --brand-stage-panel: #171b22;
   --brand-coral: #e75b4f;
   --brand-success: #19845f;
   --brand-grid: rgba(29, 34, 42, 0.032);
-  --brand-shadow-soft: 0 8px 24px rgba(19, 27, 38, 0.07);
+  --brand-shadow-soft: 0 12px 32px rgba(19, 27, 38, 0.06);
   --brand-shadow-float: 0 18px 48px rgba(13, 18, 26, 0.16);
   --brand-font-display: 'Segoe UI Variable Display', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   --brand-font-body: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   --brand-font-mono: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
-  --brand-radius-xs: 4px;
-  --brand-radius-sm: 6px;
-  --brand-radius-md: 8px;
+  --brand-radius-xs: 6px;
+  --brand-radius-sm: 8px;
+  --brand-radius-md: 12px;
   --brand-control-height: 36px;
 
   /* Wiki 布局侧栏*/
@@ -47,7 +48,7 @@
   --app-border-strong: var(--brand-line-strong);
   --app-text-primary: var(--brand-ink);
   --app-text-secondary: #596474;
-  --app-text-muted: #87919e;
+  --app-text-muted: #6d7787;
   --app-accent: var(--brand-blue);
   --app-accent-soft: var(--brand-blue-soft);
   --app-icon-fill: #2c2c2c;
@@ -85,27 +86,28 @@
   --el-fill-color-light: #f4f6f8;
   --el-fill-color-lighter: #f8f9fb;
   --el-mask-color: rgba(8, 11, 17, 0.52);
-  --el-border-radius-base: 6px;
-  --el-border-radius-small: 4px;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
   --el-font-family: var(--brand-font-body);
 
   color-scheme: light;
 }
 
 html.dark {
-  --brand-canvas: #0f1217;
-  --brand-panel: #181c23;
-  --brand-panel-muted: #14181e;
-  --brand-ink: #f0f2f5;
-  --brand-muted: #9ba5b2;
-  --brand-line: #2a3039;
-  --brand-line-strong: #3a424e;
+  --brand-canvas: #101114;
+  --brand-panel: #191b20;
+  --brand-panel-muted: #15171c;
+  --brand-ink: #edf0f5;
+  --brand-muted: #9ca5b4;
+  --brand-line: #2b2e36;
+  --brand-line-strong: #3a3e48;
   --brand-border: var(--brand-line);
-  --brand-blue: #7598ff;
-  --brand-blue-strong: #91acff;
-  --brand-blue-soft: #202b48;
-  --brand-stage: #0b0e12;
-  --brand-stage-panel: #151a21;
+  --brand-blue: #86a7ff;
+  --brand-blue-strong: #a0baff;
+  --brand-blue-soft: #202d49;
+  --brand-on-blue: #111b35;
+  --brand-stage: #101114;
+  --brand-stage-panel: #191b20;
   --brand-coral: #ff8175;
   --brand-success: #55c99b;
   --brand-grid: rgba(240, 242, 245, 0.026);
@@ -119,15 +121,15 @@ html.dark {
   --app-bg: var(--brand-canvas);
   --app-bg-gradient-start: #12151c;
   --app-bg-gradient-end: #0f1115;
-  --app-bg-subtle: #151a20;
-  --app-bg-muted: #13171d;
+  --app-bg-subtle: #15171c;
+  --app-bg-muted: #13151a;
   --app-surface: var(--brand-panel);
-  --app-surface-hover: #20262e;
+  --app-surface-hover: #23262d;
   --app-border: var(--brand-line);
   --app-border-strong: var(--brand-line-strong);
   --app-text-primary: var(--brand-ink);
   --app-text-secondary: #b2bac5;
-  --app-text-muted: #818b98;
+  --app-text-muted: #939dac;
   --app-accent: var(--brand-blue);
   --app-accent-soft: var(--brand-blue-soft);
   --app-icon-fill: #e8eaed;
@@ -145,23 +147,23 @@ html.dark {
   --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 
   /* Element Plus 主色暗色适配（与 accent 保持一致，保证按钮等组件可读） */
-  --el-color-primary: #7598ff;
-  --el-color-primary-rgb: 117, 152, 255;
+  --el-color-primary: #86a7ff;
+  --el-color-primary-rgb: 134, 167, 255;
   --el-color-primary-light-3: #7fa3ff;
   --el-color-primary-light-5: #a3bfff;
   --el-color-primary-light-7: #c7daff;
   --el-color-primary-light-8: #d9e6ff;
   --el-color-primary-light-9: #1e2a45;
   --el-color-primary-dark-2: #4a78e8;
-  --el-bg-color: #181c23;
-  --el-bg-color-overlay: #1c2129;
-  --el-fill-color-blank: #181c23;
-  --el-fill-color-light: #20252d;
-  --el-fill-color-lighter: #1b2027;
-  --el-border-color: #39414c;
-  --el-border-color-light: #303741;
-  --el-border-color-lighter: #282f38;
-  --el-text-color-primary: #f0f2f5;
+  --el-bg-color: #191b20;
+  --el-bg-color-overlay: #1f2229;
+  --el-fill-color-blank: #191b20;
+  --el-fill-color-light: #23262d;
+  --el-fill-color-lighter: #1d2026;
+  --el-border-color: #3a3e48;
+  --el-border-color-light: #30333c;
+  --el-border-color-lighter: #2b2e36;
+  --el-text-color-primary: #edf0f5;
   --el-text-color-regular: #c5cbd4;
   --el-text-color-secondary: #98a2af;
   --el-mask-color: rgba(4, 6, 9, 0.68);
