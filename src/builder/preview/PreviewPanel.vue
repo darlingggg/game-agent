@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { Clock, Connection, Download, FolderOpened, Monitor, RefreshRight, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Clock, Connection, CopyDocument, Download, FolderOpened, Monitor, RefreshRight, TopRight, WarningFilled } from '@element-plus/icons-vue'
 import { showRequestError } from '@/ajax'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useBuildContext } from '@/builder/build/buildContext'
@@ -10,9 +10,11 @@ import { useProjectStore } from '@/stores/project'
 import { INDEX_HTML_PATH, parseProjectHtmlConfig } from '../config/projectHtmlConfig'
 import { fetchProjectTempFileContent } from '../file/projectTempFiles'
 import { PROJECT_FILES_CHANGED_EVENT } from '../snapshot/snapshotRestore'
-import { PreviewBootTimeoutError, refreshProjectTempPreview, previewIframeReloadSignal, stopProjectTempPreview, startProjectTempPreview, type PreviewPhase } from './webcontainer'
+import { refreshProjectTempPreview, previewIframeReloadSignal, stopProjectTempPreview, startProjectTempPreview, type PreviewPhase } from './webcontainer'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { claimPreviewOwner, releasePreviewOwner } from './previewOwner'
+import { useCompatiblePreview } from './useCompatiblePreview'
+import { notifyPreviewChange } from './previewEvents'
 
 defineOptions({
   name: 'PreviewPanel',
@@ -83,9 +85,23 @@ const statusIcon = computed(
 
 /** 错误信息 */
 const errorText = ref('')
+const compatibility = useCompatiblePreview(previewUrl, iframeKey)
+const { enabled: compatiblePreview, description: remoteDescription, updatedAt: remoteUpdatedAt, isStale: remoteIsStale, frame: previewFrame, frameError } = compatibility
+const previewError = computed(() => (compatiblePreview.value ? compatibility.error.value : errorText.value))
+const previewStatus = computed(() => (compatiblePreview.value ? remoteDescription.value : statusText.value))
+const remoteStatus = computed(() => {
+  if (previewError.value || frameError.value) return 'error'
+  if (compatibility.busy.value) return 'working'
+  return remoteIsStale.value ? 'stale' : 'ready'
+})
+const remoteStatusLabel = computed(() => ({ error: '更新异常', working: '更新中', stale: '待更新', ready: '已更新' })[remoteStatus.value])
 
-/** 初始化超时后需重载页面以清除 WebContainer SDK 内部的等待状态 */
-const bootTimedOut = ref(false)
+async function startCompatiblePreview(loadToken: number) {
+  if (loadToken !== previewLoadToken) return
+  stopProjectTempPreview()
+  errorText.value = ''
+  await compatibility.start()
+}
 
 /** 刷新进行中 */
 const refreshing = ref(false)
@@ -116,15 +132,20 @@ async function loadProjectTitle() {
  */
 async function loadPreview() {
   const loadToken = ++previewLoadToken
+  compatibility.stop()
 
   previewUrl.value = ''
   errorText.value = ''
-  bootTimedOut.value = false
   statusText.value = '正在准备预览...'
   statusPhase.value = 'preparing'
   iframeKey.value += 1
 
   stopProjectTempPreview()
+
+  if (compatibility.remembered()) {
+    await startCompatiblePreview(loadToken)
+    return
+  }
 
   try {
     const url = await startProjectTempPreview((status, phase) => {
@@ -142,12 +163,8 @@ async function loadPreview() {
     if (loadToken !== previewLoadToken) return
     if (error instanceof Error && error.message === '预览已取消') return
 
-    statusText.value = ''
-    const message = error instanceof Error ? error.message : ''
-    const needsReload = /only a single webcontainer instance/i.test(message)
-    bootTimedOut.value = error instanceof PreviewBootTimeoutError || needsReload
-    errorText.value = needsReload ? '预览运行环境需要重置，请重新加载页面' : /[\u4e00-\u9fff]/.test(message) ? message : '预览启动失败，请重试'
-    if (message && !/[\u4e00-\u9fff]/.test(message)) console.error('[项目预览]', error)
+    console.warn('[项目预览] 本地启动失败，切换兼容预览', error)
+    await startCompatiblePreview(loadToken)
   }
 }
 
@@ -191,7 +208,7 @@ async function refreshSnapshotVersionCount() {
 
 /** AI 写入文件后防抖重载 iframe，使 Tailwind 样式生效 */
 watch(previewIframeReloadSignal, () => {
-  if (previewUrl.value) {
+  if (previewUrl.value && !compatiblePreview.value) {
     iframeKey.value += 1
   }
 })
@@ -211,6 +228,10 @@ async function handleProjectFilesChanged(event: Event) {
   const loadToken = previewLoadToken
   void loadProjectTitle()
   const detail = event instanceof CustomEvent ? (event.detail as { previewAlreadySynced?: boolean } | undefined) : undefined
+  if (compatiblePreview.value) {
+    if (!detail?.previewAlreadySynced) notifyPreviewChange(projectStore.currentProject?.id)
+    return
+  }
   if (!previewUrl.value || detail?.previewAlreadySynced) return
 
   try {
@@ -231,9 +252,8 @@ onMounted(() => {
  */
 async function handleRefresh() {
   if (refreshing.value || remounting.value) return
-
-  if (bootTimedOut.value) {
-    window.location.reload()
+  if (compatiblePreview.value) {
+    await compatibility.refresh()
     return
   }
 
@@ -268,8 +288,8 @@ async function handleRefresh() {
   } catch (error) {
     if (loadToken !== previewLoadToken) return
     statusText.value = ''
-    bootTimedOut.value = error instanceof PreviewBootTimeoutError
     errorText.value = error instanceof Error ? error.message : '预览刷新失败'
+    await startCompatiblePreview(loadToken)
   } finally {
     refreshing.value = false
   }
@@ -278,11 +298,10 @@ async function handleRefresh() {
 /** 清理旧项目文件并重新挂载、安装依赖 */
 async function handleRemount() {
   if (remounting.value || refreshing.value) return
-  if (bootTimedOut.value) {
-    window.location.reload()
+  if (compatiblePreview.value) {
+    compatibility.retryRealtime()
     return
   }
-
   remounting.value = true
   try {
     await loadPreview()
@@ -329,14 +348,6 @@ async function handleBuild() {
     return
   }
 
-  let dir = ''
-  try {
-    dir = projectStore.requireProjectDirPath()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '项目目录未就绪')
-    return
-  }
-
   building.value = true
   buildContext.openForBuild()
   buildAbortController?.abort()
@@ -344,7 +355,6 @@ async function handleBuild() {
 
   try {
     await buildProjectStream({
-      dir,
       projectId: currentProject.id,
       signal: buildAbortController.signal,
       onEvent: (event) => {
@@ -383,75 +393,125 @@ async function handleBuild() {
     <div class="phone-container">
       <div class="phone-frame">
         <div v-if="device === 'mobile'" class="phone-notch" aria-hidden="true" />
+        <div v-if="compatiblePreview" class="preview-status" role="status" aria-live="polite">
+          <el-popover trigger="click" placement="bottom" :width="280" :show-arrow="false" popper-class="preview-status-popover">
+            <template #reference>
+              <button type="button" class="preview-status-tag" :class="`preview-status--${remoteStatus}`" :aria-label="`兼容预览，${remoteDescription}，查看详情`">
+                <span class="preview-status-dot" aria-hidden="true" />
+                <span class="preview-status-name">兼容预览</span>
+                <span class="preview-status-label">{{ remoteStatusLabel }}</span>
+                <el-icon class="preview-status-chevron" aria-hidden="true"><ArrowDown /></el-icon>
+              </button>
+            </template>
+            <div class="preview-status-details" :class="`preview-status--${remoteStatus}`">
+              <strong class="preview-status-heading"><span class="preview-status-dot" aria-hidden="true" />{{ remoteStatusLabel }}</strong>
+              <p class="preview-status-description">{{ remoteDescription }}</p>
+              <p v-if="remoteUpdatedAt" class="preview-status-time">{{ remoteIsStale ? '当前显示较早版本 · ' : '更新于 ' }}{{ remoteUpdatedAt }}</p>
+            </div>
+          </el-popover>
+        </div>
         <div class="phone-screen">
+          <header v-if="previewUrl || compatiblePreview" class="preview-app-header" :class="{ 'preview-app-header--compatible': compatiblePreview && device === 'desktop' }">
+            <h3 class="preview-app-title" :title="projectTitle || projectStore.currentProject?.title">{{ projectTitle || projectStore.currentProject?.title || '项目预览' }}</h3>
+          </header>
           <template v-if="previewUrl">
-            <header class="preview-app-header">
-              <h3 class="preview-app-title">{{ projectTitle }}</h3>
-            </header>
-            <iframe :key="iframeKey" class="preview-iframe" :src="previewUrl" title="项目预览" />
+            <iframe ref="previewFrame" :key="iframeKey" class="preview-iframe" :src="previewUrl" title="项目预览" />
           </template>
-          <div v-else-if="errorText" class="preview-placeholder preview-placeholder--error" role="alert">
+          <div v-else-if="previewError" class="preview-placeholder preview-placeholder--error" role="alert">
             <el-icon class="preview-placeholder-icon" aria-hidden="true"><WarningFilled /></el-icon>
-            <span class="preview-placeholder-text">{{ errorText }}</span>
+            <span class="preview-placeholder-text">{{ previewError }}</span>
             <button type="button" class="preview-placeholder-retry" @click="handleRefresh">
               <el-icon aria-hidden="true"><RefreshRight /></el-icon>
-              <span>{{ bootTimedOut ? '重新加载' : '重试' }}</span>
+              <span>重试</span>
             </button>
           </div>
           <div v-else class="preview-placeholder" role="status" aria-live="polite">
             <el-icon class="preview-placeholder-icon" :class="`preview-placeholder-icon--${statusPhase}`" aria-hidden="true">
               <component :is="statusIcon" />
             </el-icon>
-            <span class="preview-placeholder-text">{{ statusText }}</span>
+            <span class="preview-placeholder-text">{{ previewStatus }}</span>
           </div>
         </div>
       </div>
     </div>
-    <div class="preview-dock" role="toolbar" aria-label="预览操作">
-      <div class="preview-dock-glass">
-        <el-tooltip :content="buildTooltip" placement="top" :show-after="200">
-          <span class="preview-dock-tooltip-trigger">
-            <button type="button" class="preview-dock-btn preview-dock-btn--build" :disabled="isBuildDisabled" title="构建部署" aria-label="构建部署" @click="handleBuildClick">
-              <span class="preview-dock-build-wrap" :class="{ 'preview-dock-build-wrap--building': isBuildAnimating }">
-                <SvgIcon name="build-wireframe" class="preview-dock-build-icon preview-dock-build-wireframe" />
-                <SvgIcon name="build-face" class="preview-dock-build-icon preview-dock-build-face" />
+    <div class="preview-controls">
+      <div class="preview-dock" role="toolbar" aria-label="预览操作">
+        <div class="preview-dock-glass">
+          <el-tooltip :content="buildTooltip" placement="top" :show-after="200">
+            <span class="preview-dock-tooltip-trigger">
+              <button type="button" class="preview-dock-btn preview-dock-btn--build" :disabled="isBuildDisabled" title="构建部署" aria-label="构建部署" @click="handleBuildClick">
+                <span class="preview-dock-build-wrap" :class="{ 'preview-dock-build-wrap--building': isBuildAnimating }">
+                  <SvgIcon name="build-wireframe" class="preview-dock-build-icon preview-dock-build-wireframe" />
+                  <SvgIcon name="build-face" class="preview-dock-build-icon preview-dock-build-face" />
+                </span>
+              </button>
+            </span>
+          </el-tooltip>
+          <el-tooltip :content="canCopyDeployLink ? '复制部署链接' : '暂无部署链接'" placement="top" :show-after="200">
+            <span class="preview-dock-tooltip-trigger">
+              <button type="button" class="preview-dock-btn" :disabled="!canCopyDeployLink" title="复制部署链接" aria-label="复制部署链接" @click="handleShare">
+                <SvgIcon name="link" class="preview-dock-icon" />
+              </button>
+            </span>
+          </el-tooltip>
+          <template v-if="compatiblePreview">
+            <span class="preview-dock-divider" aria-hidden="true" />
+            <el-tooltip content="打开预览" placement="top" :show-after="200">
+              <span class="preview-dock-tooltip-trigger">
+                <a
+                  class="preview-dock-btn"
+                  :class="{ 'is-disabled': !previewUrl }"
+                  :href="previewUrl || undefined"
+                  :aria-disabled="!previewUrl"
+                  :tabindex="previewUrl ? 0 : -1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="打开预览"
+                  aria-label="打开预览"
+                >
+                  <el-icon class="preview-dock-icon"><TopRight /></el-icon>
+                </a>
               </span>
+            </el-tooltip>
+            <el-tooltip content="复制预览链接" placement="top" :show-after="200">
+              <span class="preview-dock-tooltip-trigger">
+                <button type="button" class="preview-dock-btn" :disabled="!previewUrl" title="复制预览链接" aria-label="复制预览链接" @click="compatibility.copyLink">
+                  <el-icon class="preview-dock-icon"><CopyDocument /></el-icon>
+                </button>
+              </span>
+            </el-tooltip>
+          </template>
+          <el-tooltip :content="compatiblePreview ? '重试实时预览' : '重新挂载项目并安装依赖'" placement="top" :show-after="200">
+            <button
+              type="button"
+              class="preview-dock-btn"
+              :class="{ 'preview-dock-btn--remounting': remounting }"
+              :disabled="remounting || refreshing || (!previewUrl && !previewError)"
+              :title="compatiblePreview ? '重试实时预览' : '重新挂载项目并安装依赖'"
+              :aria-label="compatiblePreview ? '重试实时预览' : '重新挂载项目并安装依赖'"
+              @click="handleRemount"
+            >
+              <span v-if="compatiblePreview" class="preview-realtime-icon" aria-hidden="true">
+                <el-icon class="preview-realtime-monitor"><Monitor /></el-icon>
+                <el-icon class="preview-realtime-retry"><RefreshRight /></el-icon>
+              </span>
+              <el-icon v-else class="preview-dock-icon"><FolderOpened /></el-icon>
             </button>
-          </span>
-        </el-tooltip>
-        <el-tooltip :content="canCopyDeployLink ? '复制部署链接' : '暂无部署链接'" placement="top" :show-after="200">
-          <span class="preview-dock-tooltip-trigger">
-            <button type="button" class="preview-dock-btn" :disabled="!canCopyDeployLink" title="复制部署链接" aria-label="复制部署链接" @click="handleShare">
-              <SvgIcon name="link" class="preview-dock-icon" />
+          </el-tooltip>
+          <el-tooltip content="刷新预览" placement="top" :show-after="200">
+            <button
+              type="button"
+              class="preview-dock-btn"
+              :class="{ 'preview-dock-btn--loading': refreshing }"
+              :disabled="refreshing || remounting"
+              title="刷新预览"
+              aria-label="刷新预览"
+              @click="handleRefresh"
+            >
+              <SvgIcon name="refresh" class="preview-dock-icon" />
             </button>
-          </span>
-        </el-tooltip>
-        <el-tooltip content="重新挂载项目并安装依赖" placement="top" :show-after="200">
-          <button
-            type="button"
-            class="preview-dock-btn"
-            :class="{ 'preview-dock-btn--remounting': remounting }"
-            :disabled="remounting || refreshing || (!previewUrl && !errorText)"
-            title="重新挂载项目并安装依赖"
-            aria-label="重新挂载项目并安装依赖"
-            @click="handleRemount"
-          >
-            <el-icon class="preview-dock-icon"><FolderOpened /></el-icon>
-          </button>
-        </el-tooltip>
-        <el-tooltip content="刷新预览" placement="top" :show-after="200">
-          <button
-            type="button"
-            class="preview-dock-btn"
-            :class="{ 'preview-dock-btn--loading': refreshing }"
-            :disabled="refreshing || remounting"
-            title="刷新预览"
-            aria-label="刷新预览"
-            @click="handleRefresh"
-          >
-            <SvgIcon name="refresh" class="preview-dock-icon" />
-          </button>
-        </el-tooltip>
+          </el-tooltip>
+        </div>
       </div>
     </div>
   </div>
@@ -459,6 +519,7 @@ async function handleBuild() {
 
 <style scoped>
 .preview-panel {
+  container: project-preview / inline-size;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -472,7 +533,151 @@ async function handleBuild() {
   flex-shrink: 0;
   display: flex;
   justify-content: center;
-  padding: 0.25rem 1rem max(1rem, env(safe-area-inset-bottom));
+  padding: 0;
+}
+
+.preview-controls {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
+  padding: 6px 16px max(12px, env(safe-area-inset-bottom));
+}
+
+.preview-status-tag,
+.preview-status-details {
+  --preview-status-color: var(--app-accent);
+}
+
+.preview-status {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 12px;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.preview-status--ready {
+  --preview-status-color: var(--brand-success);
+}
+.preview-status--error {
+  --preview-status-color: var(--app-error);
+}
+.preview-status--stale {
+  --preview-status-color: light-dark(#9a6700, #e5b96a);
+}
+
+.preview-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--preview-status-color) 24%, var(--app-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--preview-status-color) 5%, var(--app-surface));
+  color: var(--app-text-primary);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.preview-status-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-status-tag:hover {
+  border-color: var(--preview-status-color);
+}
+.preview-status-tag:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 3px;
+}
+.preview-status-label {
+  color: var(--preview-status-color);
+  font-size: 11px;
+}
+.preview-status-chevron {
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+.preview-status-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--preview-status-color);
+}
+.preview-status--working .preview-status-dot {
+  animation: preview-status-pulse 1.5s ease-in-out infinite;
+}
+
+:global(.preview-status-popover.el-popper) {
+  max-width: calc(100vw - 24px);
+  padding: 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-surface);
+  color: var(--app-text-primary);
+  box-shadow: var(--brand-shadow-float);
+}
+
+.preview-status-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--app-text-primary);
+  font-size: 13px;
+}
+.preview-status-description {
+  margin: 10px 0 0;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.preview-status-time {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--app-border);
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+.preview-dock-divider {
+  z-index: 1;
+  height: 18px;
+  width: 1px;
+  margin: 0 3px;
+  background: var(--app-border-strong);
+}
+
+.preview-realtime-icon {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+
+.preview-realtime-monitor {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  font-size: 19px;
+}
+
+.preview-realtime-retry {
+  position: absolute;
+  right: -1px;
+  bottom: 0;
+  border-radius: 50%;
+  background: var(--app-surface);
+  box-shadow: 0 0 0 2px var(--app-surface);
+  font-size: 12px;
 }
 
 .preview-dock-glass {
@@ -483,9 +688,9 @@ async function handleBuild() {
   gap: 0.25rem;
   max-width: 100%;
   padding: 0.375rem;
-  border: 1px solid rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--app-border);
   border-radius: 999px;
-  background: rgba(226, 235, 248, 0.76);
+  background: color-mix(in srgb, var(--app-surface) 88%, transparent);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.7),
     inset 0 -1px 0 rgba(255, 255, 255, 0.14),
@@ -523,7 +728,7 @@ async function handleBuild() {
   border: 1px solid transparent;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.06);
-  color: #26364e;
+  color: var(--app-text-secondary);
   cursor: pointer;
   transition:
     transform 0.2s ease,
@@ -555,6 +760,11 @@ async function handleBuild() {
   opacity: 0.38;
 }
 
+.preview-dock-btn.is-disabled {
+  pointer-events: none;
+  opacity: 0.38;
+}
+
 .preview-dock-build-wrap {
   position: relative;
   display: inline-flex;
@@ -563,9 +773,9 @@ async function handleBuild() {
   align-items: center;
   justify-content: center;
   transform-origin: center center;
-  --build-icon-wireframe: #26364e;
-  --build-icon-face-idle: #ecf3ff;
-  --build-icon-face-dark: #26364e;
+  --build-icon-wireframe: var(--app-text-primary);
+  --build-icon-face-idle: var(--app-surface);
+  --build-icon-face-dark: var(--app-text-primary);
 }
 
 .preview-dock-build-wrap--building {
@@ -635,8 +845,12 @@ async function handleBuild() {
 }
 
 @media (max-width: 767px) {
-  .preview-dock {
-    padding-bottom: max(56px, env(safe-area-inset-bottom));
+  .preview-controls {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+  .preview-status-tag {
+    min-height: 28px;
   }
 }
 
@@ -660,13 +874,14 @@ async function handleBuild() {
 }
 
 .phone-frame {
+  position: relative;
   height: 100%;
   width: auto;
   max-width: 100%;
   aspect-ratio: 8 / 16;
   display: flex;
   flex-direction: column;
-  background-color: #fff;
+  background-color: var(--app-surface);
   border: 2px solid #1a1a1a;
   border-radius: 2.5rem;
   overflow: hidden;
@@ -682,8 +897,8 @@ async function handleBuild() {
 
 .phone-notch::before {
   content: '';
-  width: 6.5rem;
-  height: 1.625rem;
+  width: 86px;
+  height: 22px;
   background-color: #000;
   border-radius: 999px;
 }
@@ -691,7 +906,7 @@ async function handleBuild() {
 .phone-screen {
   flex: 1;
   min-height: 0;
-  background-color: #fff;
+  background-color: var(--app-surface);
   overflow: hidden;
   position: relative;
   display: flex;
@@ -703,16 +918,68 @@ async function handleBuild() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.625rem 0.75rem;
-  border-bottom: 1px solid #f0f0f0;
-  background-color: #fff;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--app-border);
+  background-color: var(--app-surface);
+}
+
+/* 两侧对称留位，标题始终相对整个 PC 标题栏居中。 */
+.preview-app-header--compatible {
+  padding-inline: 152px;
+}
+
+.preview-panel--mobile .preview-status {
+  top: 9px;
+  right: 10px;
+  max-width: calc((100% - 86px) / 2 - 16px);
+}
+
+.preview-panel--mobile .preview-status-tag {
+  max-width: 100%;
+  min-height: 22px;
+  gap: 4px;
+  padding: 3px 10px;
+  margin-right: 8px;
+  margin-top: -2px;
+  font-size: 11px;
+}
+
+.preview-panel--mobile .preview-status-dot {
+  width: 5px;
+  height: 5px;
+}
+
+.preview-panel--mobile .preview-status-label,
+.preview-panel--mobile .preview-status-chevron {
+  display: none;
+}
+
+@container project-preview (max-width: 440px) {
+  .preview-app-header--compatible {
+    padding-inline: 88px;
+  }
+
+  .preview-panel--desktop .preview-status-tag {
+    gap: 4px;
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+
+  .preview-panel--desktop .preview-status-label,
+  .preview-panel--desktop .preview-status-chevron {
+    display: none;
+  }
 }
 
 .preview-app-title {
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0;
   font-size: 0.9375rem;
   font-weight: 700;
-  color: #1a1c1e;
+  color: var(--app-text-primary);
   text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -737,7 +1004,7 @@ async function handleBuild() {
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem;
-  color: #1a1c1e;
+  color: var(--app-text-secondary);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -793,8 +1060,8 @@ async function handleBuild() {
   padding: 0 0.75rem;
   border: 1px solid var(--app-border-strong);
   border-radius: 6px;
-  background: #fff;
-  color: #1a1c1e;
+  background: var(--app-surface);
+  color: var(--app-text-primary);
   font: inherit;
   cursor: pointer;
 }
@@ -806,6 +1073,9 @@ async function handleBuild() {
 
 @media (prefers-reduced-motion: reduce) {
   .preview-placeholder-icon {
+    animation: none;
+  }
+  .preview-status-dot {
     animation: none;
   }
 }

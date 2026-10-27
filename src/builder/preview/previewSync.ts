@@ -1,6 +1,9 @@
 import { fetchProjectTempFileContent, fetchProjectTempFileContents, normalizeRelativePath } from '../file/projectTempFiles'
 import type { SnapshotRestorePlan } from '../snapshot/snapshotRestore'
-import { previewIframeReloadSignal, refreshProjectTempPreview, removePreviewFile, requestPreviewIframeReloadDebounced, syncPreviewFile } from './webcontainer'
+import { hasProjectTempPreview, previewIframeReloadSignal, refreshProjectTempPreview, removePreviewFile, requestPreviewIframeReloadDebounced, syncPreviewFile } from './webcontainer'
+import { notifyPreviewChange } from './previewEvents'
+import { pinia } from '@/stores'
+import { useProjectStore } from '@/stores/project'
 
 /** write_file_content 工具参数结构 */
 interface WriteFileContentParams {
@@ -127,7 +130,7 @@ export async function syncWriteFileContentToPreview(paramsJson: string): Promise
     }
   }
 
-  await syncPreviewFile(relativePath, content)
+  await syncPreviewFile(relativePath, content, 'ai')
 }
 
 /**
@@ -142,7 +145,7 @@ export async function syncUpsertFileToPreview(resultJson: string): Promise<void>
   for (const relativePath of relativePaths) {
     try {
       const content = await fetchProjectTempFileContent(relativePath)
-      await syncPreviewFile(relativePath, content)
+      await syncPreviewFile(relativePath, content, 'ai')
     } catch (error) {
       console.warn('[Preview] upsert_file 同步失败', relativePath, error)
     }
@@ -158,7 +161,7 @@ export async function syncDownloadedFileToPreview(resultJson: string): Promise<v
   if (!relativePath) return
 
   const contents = await fetchProjectTempFileContents(relativePath)
-  await syncPreviewFile(relativePath, contents)
+  await syncPreviewFile(relativePath, contents, 'ai')
   requestPreviewIframeReloadDebounced()
   window.dispatchEvent(new CustomEvent('project-files-changed', {
     detail: { previewAlreadySynced: true },
@@ -173,7 +176,7 @@ export async function syncDeleteFileToPreview(paramsJson: string): Promise<void>
   const relativePath = parseFileToolPath(paramsJson)
   if (!relativePath) return
 
-  await removePreviewFile(relativePath)
+  await removePreviewFile(relativePath, 'ai')
   requestPreviewIframeReloadDebounced()
 }
 
@@ -200,6 +203,8 @@ export async function syncSnapshotRestoreToPreview(plan: SnapshotRestorePlan): P
  * 模板升级完成后，重新挂载 projectTemp 文件并刷新预览 iframe
  */
 export async function syncTemplateUpgradeToPreview(): Promise<void> {
+  notifyPreviewChange(useProjectStore(pinia).currentProject?.id)
+  if (!hasProjectTempPreview()) return
   await refreshProjectTempPreview()
   previewIframeReloadSignal.value += 1
 }

@@ -24,6 +24,7 @@ import { getMessageTools } from '@/http/toolCalls'
 import { appendMessageText, restoreMessageTools, settleTools, upsertTool } from './toolInvocations'
 import type { ToolInvocation } from './types'
 import { parseToolStart, parseToolEnd } from '@/builder/log/logParser'
+import { notifyPreviewChange } from '@/builder/preview/previewEvents'
 defineOptions({
   name: 'ChatPanel',
 })
@@ -962,11 +963,13 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
     const message = findMessageById(assistantId)
     if (message) settleTools(message, 'succeeded')
     tokenUsage.generationStatus = 'completed'
+    notifyPreviewChange(currentProjectId, 'round')
   }
   if (event.event === 'cancelled') {
     const message = findMessageById(assistantId)
     if (message) settleTools(message, 'cancelled')
     tokenUsage.generationStatus = 'cancelled'
+    notifyPreviewChange(currentProjectId, 'round')
   }
   if (event.event === 'error') {
     const message = findMessageById(assistantId)
