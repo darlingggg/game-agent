@@ -2,7 +2,7 @@ import type { RemotePreviewState } from '../../http/preview'
 
 interface PreviewApi {
   get: (projectId: number) => Promise<RemotePreviewState>
-  update: (projectId: number) => Promise<RemotePreviewState>
+  update: (projectId: number, force?: boolean) => Promise<RemotePreviewState>
 }
 
 /** 每个面板独立管理请求和计时器，避免过期响应更新其他项目的预览。 */
@@ -12,6 +12,7 @@ export class RemotePreviewController {
   private timer: ReturnType<typeof setTimeout> | undefined
   private submission: Promise<void> | null = null
   private pendingUpdate = false
+  private pendingForce = false
   private version = 0
   private api: PreviewApi
   private onState: (state: RemotePreviewState) => void
@@ -30,6 +31,7 @@ export class RemotePreviewController {
     this.epoch++
     this.projectId = 0
     this.pendingUpdate = false
+    this.pendingForce = false
     this.submission = null
     clearTimeout(this.timer)
   }
@@ -47,9 +49,10 @@ export class RemotePreviewController {
     }
   }
 
-  update() {
+  update(force = false) {
     if (!this.projectId) return Promise.resolve()
     this.pendingUpdate = true
+    this.pendingForce ||= force
     this.version++
     clearTimeout(this.timer)
     if (!this.submission) {
@@ -59,7 +62,7 @@ export class RemotePreviewController {
       void pending.finally(() => {
         if (this.submission !== pending) return
         this.submission = null
-        if (this.pendingUpdate) void this.update()
+        if (this.pendingUpdate) void this.update(this.pendingForce)
       })
     }
     return this.submission
@@ -68,8 +71,10 @@ export class RemotePreviewController {
   private async submit(epoch: number) {
     while (this.pendingUpdate && epoch === this.epoch) {
       this.pendingUpdate = false
+      const force = this.pendingForce
+      this.pendingForce = false
       try {
-        const state = await this.api.update(this.projectId)
+        const state = await this.api.update(this.projectId, force)
         if (epoch === this.epoch) this.apply(state)
       } catch (error) {
         if (epoch === this.epoch && !this.pendingUpdate) this.onError(error)

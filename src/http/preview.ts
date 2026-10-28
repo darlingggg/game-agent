@@ -21,13 +21,13 @@ export interface RemotePreviewState {
   latest: PreviewTask | null
 }
 
-async function requestPreviewState(projectId: number, method: 'GET' | 'POST'): Promise<RemotePreviewState> {
+async function requestPreviewState(projectId: number, method: 'GET' | 'POST', force = false): Promise<RemotePreviewState> {
   const url = `${import.meta.env.VITE_API_URL}/project/preview${method === 'GET' ? `?projectId=${projectId}` : ''}`
   const response = await fetchWithAuth(url, {
     method,
     signal: AbortSignal.timeout(10_000),
     headers: { 'Content-Type': 'application/json' },
-    ...(method === 'POST' ? { body: JSON.stringify({ projectId }) } : {}),
+    ...(method === 'POST' ? { body: JSON.stringify({ projectId, force }) } : {}),
   })
   if (!response.ok) throw new Error(`兼容预览请求失败（HTTP ${response.status}）`)
   const payload = await response.json() as { status: number; message: string; data: RemotePreviewState }
@@ -36,4 +36,4 @@ async function requestPreviewState(projectId: number, method: 'GET' | 'POST'): P
 }
 
 export const getRemotePreview = (projectId: number) => requestPreviewState(projectId, 'GET')
-export const updateRemotePreview = (projectId: number) => requestPreviewState(projectId, 'POST')
+export const updateRemotePreview = (projectId: number, force = false) => requestPreviewState(projectId, 'POST', force)

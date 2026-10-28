@@ -48,6 +48,26 @@ test('updates received while submitting merge into one next submission', async (
   assert.equal(calls, 2)
 })
 
+test('an explicit retry arriving during another submission retains force intent', async () => {
+  const first = deferred()
+  const requests = []
+  const controller = new RemotePreviewController({
+    get: async () => state('initial'),
+    update: (_id, force) => {
+      requests.push(force)
+      return requests.length === 1 ? first.promise : Promise.resolve(state('retried'))
+    },
+  }, () => {}, assert.fail)
+  await controller.start(1)
+  const pending = controller.update()
+  void controller.update(true)
+  void controller.update()
+  first.resolve(state('first'))
+  await pending
+  controller.stop()
+  assert.deepEqual(requests, [false, true])
+})
+
 test('polls only while work exists and stops polling after completion', async () => {
   let calls = 0
   const applied = []

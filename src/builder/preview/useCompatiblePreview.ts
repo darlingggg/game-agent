@@ -118,10 +118,6 @@ export function useCompatiblePreview(url: Ref<string>, iframeKey: Ref<number>) {
     const { projectId, source } = (event as CustomEvent<PreviewChange>).detail
     if (!enabled.value || projectId !== projects.currentProject?.id || source === 'ai') return
     clearTimeout(updateTimer)
-    if (source === 'round') {
-      void controller.update()
-      return
-    }
     updateTimer = setTimeout(() => { if (!generating()) void controller.update() }, 2000)
   }
 
@@ -131,7 +127,7 @@ export function useCompatiblePreview(url: Ref<string>, iframeKey: Ref<number>) {
       iframeKey.value++
       waitForFrame()
     }
-    await controller.update()
+    await controller.update(true)
   }
 
   function retryRealtime() {
