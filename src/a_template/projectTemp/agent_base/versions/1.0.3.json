@@ -1,0 +1,9 @@
+{
+  "version": "1.0.3",
+  "description": "修复 Tailwind CSS v4 全局重置覆盖间距工具类，恢复卡片和按钮间距",
+  "createdAt": "2026-10-28 08:54:24",
+  "files": [
+    { "path": "styles/index.css", "description": "将全局重置移入 base 层，恢复 Tailwind 内外边距工具类", "action": "update" },
+    { "path": "agent_base/version.json", "description": "更新模板版本", "action": "update" }
+  ]
+}
