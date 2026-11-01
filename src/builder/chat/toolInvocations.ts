@@ -8,6 +8,7 @@ export const TOOL_PRESENTATION: Record<string, { label: string; finished: string
   delete_file: { label: '删除文件', finished: '已删除文件', icon: 'tool-delete' },
   download_file: { label: '下载文件', finished: '已下载文件', icon: 'tool-download' },
   generate_image: { label: '生成图片', finished: '已生成图片', icon: 'tool-image' },
+  view_image: { label: '查看图片', finished: '已查看图片', icon: 'tool-vision' },
   search_web: { label: '搜索网页', finished: '已搜索网页', icon: 'tool-list' },
   fetch_page: { label: '读取网页', finished: '已读取网页', icon: 'tool-read' },
 }

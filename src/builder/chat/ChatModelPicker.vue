@@ -173,7 +173,7 @@ watch(
             :aria-pressed="item.modelKey === model"
             @click="selectModel(item)"
           >
-            <span>{{ item.modelName }}</span>
+            <span>{{ item.modelName }}<small>{{ Array.isArray(item.capabilities?.inputModalities) && item.capabilities.inputModalities.includes('image') ? '原生图像理解' : '外接图像理解' }}</small></span>
             <svg v-if="item.modelKey === model" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="m3 8 3 3 7-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
             </svg>

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import ChatImageTasks from './ChatImageTasks.vue'
+import MarkdownContent from './MarkdownContent.vue'
 import { TOOL_PRESENTATION } from './toolInvocations'
 import type { ToolInvocation } from './types'
 
@@ -9,8 +10,27 @@ const props = defineProps<{ tool: ToolInvocation; compact?: boolean }>()
 const emit = defineEmits<{ expandedChange: [expanded: boolean] }>()
 const fullContent = ref(false)
 const presentation = computed(() => TOOL_PRESENTATION[props.tool.name] ?? { label: props.tool.name, finished: props.tool.name, icon: 'project-tool' })
+const visionResult = computed(() => {
+  if (props.tool.name !== 'view_image') return null
+  let value = props.tool.result
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  return (
+    (value as { success?: boolean; message?: string; data?: { mode?: string; analysis?: string; question?: string; images?: { imageId: string; path?: string }[] } } | undefined) ??
+    null
+  )
+})
 const label = computed(() => {
   const title = props.tool.status === 'succeeded' ? presentation.value.finished : presentation.value.label
+  if (props.tool.name === 'view_image') {
+    const finished = props.tool.status === 'succeeded' ? (visionResult.value?.data?.mode === 'native' ? '图片已加载供模型查看' : '图片分析完成') : title
+    return typeof props.tool.args.question === 'string' ? `${finished} · ${props.tool.args.question}` : finished
+  }
   if (props.tool.name === 'generate_image') {
     const prompt = props.tool.imageTasks?.[0]?.prompt || props.tool.args.prompt
     if (typeof prompt === 'string') return `${title} · ${prompt}`
@@ -49,6 +69,13 @@ function toggle() {
       <pre>{{ argsText }}</pre>
       <div class="chat-tool-detail-heading">调用结果</div>
       <ChatImageTasks v-if="tool.imageTasks?.length" :tasks="tool.imageTasks" compact />
+      <div v-else-if="visionResult?.success && visionResult.data" class="chat-tool-vision-result">
+        <p>{{ visionResult.data.mode === 'native' ? '图片已加载，将由当前模型直接理解。' : '图像理解结果' }}</p>
+        <ul v-if="visionResult.data.images?.length">
+          <li v-for="image in visionResult.data.images" :key="image.imageId">{{ image.path || image.imageId }}</li>
+        </ul>
+        <MarkdownContent v-if="visionResult.data.analysis" :content="visionResult.data.analysis" />
+      </div>
       <pre v-else-if="resultText">{{ resultText }}</pre>
       <p v-else>{{ tool.error || (tool.status === 'running' ? '等待工具返回结果…' : statusLabel) }}</p>
       <p v-if="tool.error && resultText" class="chat-tool-error">{{ tool.error }}</p>
@@ -56,9 +83,11 @@ function toggle() {
         {{ fullContent ? '收起完整内容' : '查看完整内容' }}
       </button>
       <div class="chat-tool-detail-meta">
-        <span
-          >{{ statusLabel }}<template v-if="compact && tool.durationMs != null"> · {{ (tool.durationMs / 1000).toFixed(1) }} 秒</template></span
-        ><span>{{ tool.toolCallId }}</span>
+        <span>
+          {{ statusLabel }}
+          <template v-if="compact && tool.durationMs != null"> · {{ (tool.durationMs / 1000).toFixed(1) }} 秒</template>
+        </span>
+        <span>{{ tool.toolCallId }}</span>
       </div>
     </div>
   </div>

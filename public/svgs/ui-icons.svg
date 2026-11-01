@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="tool-vision" viewBox="0 0 24 24"><path d="M3 8V4h4m10 0h4v4M3 16v4h4m10 0h4v-4M3 12s3.5-5 9-5 9 5 9 5-3.5 5-9 5-9-5-9-5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /><circle cx="12" cy="12" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6" /></symbol>
   <symbol id="tool-list" viewBox="0 0 24 24"><path d="M4 3v15h5M4 7h5M4 12h5M11 5h9v4h-9zM11 11h9v4h-9zM11 17h9v4h-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></symbol>
   <symbol id="tool-read" viewBox="0 0 24 24"><path d="M14 21H4V3h10l5 5v5M14 3v5h5m-1 12 4 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /><circle cx="16" cy="17" r="4" fill="none" stroke="currentColor" stroke-width="1.6" /></symbol>
   <symbol id="tool-write" viewBox="0 0 24 24"><path d="M14 21H4V3h10l5 5v5M14 3v5h5M18 15v7m-3.5-3.5h7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></symbol>
