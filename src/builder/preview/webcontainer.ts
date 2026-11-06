@@ -5,6 +5,7 @@ import { pinia } from '@/stores'
 import { useProjectStore } from '@/stores/project'
 import type { ProjectTempFileContents } from '../file/projectTempFiles'
 import { buildProjectTempFileTree } from './projectTempFiles'
+import { notifyPreviewChange, type PreviewChangeSource } from './previewEvents'
 
 /** WebContainer 单例实例 */
 let webcontainerInstance: WebContainer | null = null
@@ -13,7 +14,21 @@ let webcontainerInstance: WebContainer | null = null
 let bootPromise: Promise<WebContainer> | null = null
 
 /** WebContainer 的隐藏 iframe 加载失败时不会自行拒绝启动 Promise */
-const BOOT_TIMEOUT_MS = 30_000
+const BOOT_TIMEOUT_MS = 20_000
+
+async function withPreviewTimeout<T>(task: Promise<T>, timeout: number, message: string, stop: () => void): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([task, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(message))
+        stop()
+      }, timeout)
+    })])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 export class PreviewBootTimeoutError extends Error {
   constructor() {
@@ -176,6 +191,10 @@ export function stopProjectTempPreview(): void {
   processStopPromise = Promise.all([processStopPromise, ...processes.map((process) => process.exit)]).then(() => {})
 }
 
+export function hasProjectTempPreview(): boolean {
+  return !!cachedPreviewUrl && mountedProjectId === useProjectStore(pinia).currentProject?.id
+}
+
 function queuePreviewTask<T>(task: () => Promise<T>): Promise<T> {
   const result = previewTaskQueue.then(task)
   previewTaskQueue = result.then(() => {}, () => {})
@@ -238,10 +257,10 @@ async function startDevServer(
       if (devProcess === spawned) devProcess = null
       return { kind: 'exit' as const, code }
     })
-    const result = await Promise.race([
+    const result = await withPreviewTimeout(Promise.race([
       ready.then((url) => ({ kind: 'ready' as const, url })),
       exited,
-    ])
+    ]), 20_000, '开发服务器启动超时', () => spawned.kill())
     assertCurrent()
     if (result.kind === 'exit') {
       throw new Error(`开发服务器启动失败（退出码 ${result.code}），请检查 package.json 的 scripts.dev（当前: ${devScript}）`)
@@ -304,7 +323,7 @@ async function bootProjectTempPreview(
   pipeProcessOutput(installing, 'pnpm install')
   let installExitCode: number
   try {
-    installExitCode = await installing.exit
+    installExitCode = await withPreviewTimeout(installing.exit, 60_000, '预览依赖安装超时', () => installing.kill())
   } finally {
     if (installProcess === installing) installProcess = null
   }
@@ -334,7 +353,10 @@ export async function startProjectTempPreview(onStatus?: PreviewStatusCallback):
   const signal = previewAbortController.signal
 
   if (!previewStartPromise) {
-    const task = queuePreviewTask(() => bootProjectTempPreview(onStatus, sessionId, projectId, signal))
+    const task = queuePreviewTask(() => withPreviewTimeout(
+      bootProjectTempPreview(onStatus, sessionId, projectId, signal), 90_000,
+      '本地预览启动超时', stopProjectTempPreview,
+    ))
     previewStartPromise = task
     void task.catch(() => {
       if (previewStartPromise === task) previewStartPromise = null
@@ -394,7 +416,8 @@ function shouldSyncPreviewFile(relativePath: string): boolean {
  * 从 WebContainer 中删除文件
  * @param relativePath 相对 projectTemp 根目录的路径
  */
-export async function removePreviewFile(relativePath: string): Promise<void> {
+export async function removePreviewFile(relativePath: string, source: PreviewChangeSource = 'manual'): Promise<void> {
+  if (shouldSyncPreviewFile(relativePath)) notifyPreviewChange(useProjectStore(pinia).currentProject?.id, source)
   if (!webcontainerInstance || mountedProjectId !== useProjectStore(pinia).currentProject?.id || !shouldSyncPreviewFile(relativePath)) {
     return
   }
@@ -413,7 +436,8 @@ export async function removePreviewFile(relativePath: string): Promise<void> {
  * @param relativePath 相对 projectTemp 根目录的路径
  * @param content 文件内容
  */
-export async function syncPreviewFile(relativePath: string, content: ProjectTempFileContents): Promise<void> {
+export async function syncPreviewFile(relativePath: string, content: ProjectTempFileContents, source: PreviewChangeSource = 'manual'): Promise<void> {
+  if (shouldSyncPreviewFile(relativePath)) notifyPreviewChange(useProjectStore(pinia).currentProject?.id, source)
   if (!webcontainerInstance || mountedProjectId !== useProjectStore(pinia).currentProject?.id || !shouldSyncPreviewFile(relativePath)) {
     return
   }

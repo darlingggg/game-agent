@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "3d游戏构建器的基座(禁止用户修改基座)",
   "sourceDir": "gameTemp3d/agent_base",
   "versionsDir": "gameTemp3d/agent_base/versions",

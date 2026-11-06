@@ -59,8 +59,6 @@ export type BuildProjectResult = BuildDoneResult
 
 /** 流式构建参数 */
 export interface BuildProjectStreamOptions {
-  /** 项目根目录 */
-  dir: string
   /** 项目 id */
   projectId: number
   /** 每解析到一个 SSE 事件时回调 */
@@ -74,19 +72,26 @@ export interface BuildProjectStreamOptions {
  * @param options 请求参数与事件回调
  */
 export async function buildProjectStream(options: BuildProjectStreamOptions): Promise<void> {
-  const { dir, projectId, onEvent, signal } = options
+  const { projectId, onEvent, signal } = options
 
   const response = await fetchWithAuth(`${import.meta.env.VITE_API_URL}/project/build`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ dir, projectId }),
+    body: JSON.stringify({ projectId }),
     signal,
   })
 
   if (!response.ok) {
     const message = `构建请求失败（${response.status}）`
+    showRequestError(message)
+    throw new Error(message)
+  }
+
+  if (!response.headers.get('Content-Type')?.includes('text/event-stream')) {
+    const payload = await response.json() as { message?: string }
+    const message = payload.message || '无法创建发布任务'
     showRequestError(message)
     throw new Error(message)
   }

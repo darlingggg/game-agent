@@ -14,9 +14,7 @@ applyThemeMode(getStoredThemeMode())
 // 设置rem
 function setRem() {
   const deviceWidth = document.documentElement.clientWidth
-  const deviceHeight = document.documentElement.clientHeight
-  if (deviceWidth > deviceHeight) document.documentElement.style.fontSize = deviceWidth / 100 + 'px'
-  else document.documentElement.style.fontSize = deviceHeight / 100 + 'px'
+  document.documentElement.style.fontSize = Math.max(16, deviceWidth / 100) + 'px'
 }
 
 const app = createApp(App)

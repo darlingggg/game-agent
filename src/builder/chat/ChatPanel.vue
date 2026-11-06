@@ -8,6 +8,8 @@ import { useProjectStore } from '@/stores/project'
 import { PENDING_CONVERSATION_ID, useSessionContext } from '@/builder/session/sessionContext'
 import ChatMessageItem from './ChatMessageItem.vue'
 import ChatModelPicker from './ChatModelPicker.vue'
+import ChatWebSearchToggle from './ChatWebSearchToggle.vue'
+import { createWebSearchPreferences, webSearchPreferenceKey } from './webSearchPreference'
 import ConversationRail from './ConversationRail.vue'
 import type { ChatMessage } from './types'
 import { chatWithAI, reconnectChatStream, type ChatSseEvent } from '@/http/chat'
@@ -19,9 +21,10 @@ import { useTokenUsageStore } from '@/stores/tokenUsage'
 import { cancelChatMessage } from '@/http/tokenUsage'
 import { reconnectImageGenerationTask, type ImageGenerationSseEvent, type ImageGenerationTask } from '@/http/imageGeneration'
 import { getMessageTools } from '@/http/toolCalls'
-import { settleTools, upsertTool } from './toolInvocations'
+import { appendMessageText, restoreMessageTools, settleTools, upsertTool } from './toolInvocations'
 import type { ToolInvocation } from './types'
 import { parseToolStart, parseToolEnd } from '@/builder/log/logParser'
+import { notifyPreviewChange } from '@/builder/preview/previewEvents'
 defineOptions({
   name: 'ChatPanel',
 })
@@ -168,6 +171,21 @@ let messageIdSeed = 0
 const CHAT_API_ENABLED = true
 /** 当前项目 ID */
 const projectId = () => projectStore.currentProject?.id ?? 0
+const webSearchPreferences = createWebSearchPreferences(() => window.localStorage)
+const webSearchEnabled = ref(false)
+const webSearchKey = computed(() => webSearchPreferenceKey(userAccount.value, projectId(), sessionContext.activeConversationId.value))
+watch(
+  webSearchKey,
+  (key) => {
+    webSearchEnabled.value = webSearchPreferences.get(key)
+  },
+  { immediate: true, flush: 'sync' },
+)
+function setWebSearchEnabled(enabled: boolean) {
+  if (isStreaming.value || !webSearchKey.value) return
+  webSearchEnabled.value = enabled
+  webSearchPreferences.set(webSearchKey.value, enabled)
+}
 /** 当前会话标题（同一会话下的消息共用，与后端 title 字段对应） */
 const sessionTitle = ref('')
 /** 当前会话后端 title 字段，用于 chat/stream 等接口 */
@@ -242,6 +260,7 @@ function mapSessionItemToMessage(item: sessionItem): ChatMessage | null {
     id: String(item.id),
     role: 'assistant',
     content,
+    parts: content ? [{ id: 'text-0', start: 0, text: content }] : [],
     messageId: item.messageId,
     sessionId: item.id,
     streaming: item.status === 'streaming',
@@ -310,23 +329,38 @@ function reconnectAssistantImageTask(message: ChatMessage, task: ImageGeneration
       if (imageTaskControllers.get(task.taskId) === controller) imageTaskControllers.delete(task.taskId)
     })
 }
-async function loadMessageTools(message: ChatMessage) {
-  if (!message.messageId || message.toolsLoading) return
-  const conversationId = sessionContext.activeConversationId.value
+const toolLoadQueue: Array<{ message: ChatMessage; epoch: number }> = []
+let activeToolLoads = 0
+function loadMessageTools(message: ChatMessage) {
+  if (!message.messageId || message.toolsLoading || message.toolsLoaded || message.streaming) return
   message.toolsLoading = true
   message.toolsError = ''
+  toolLoadQueue.push({ message, epoch: sessionViewEpoch })
+  drainToolLoads()
+}
+function drainToolLoads() {
+  while (activeToolLoads < 4 && toolLoadQueue.length) {
+    const task = toolLoadQueue.shift()!
+    activeToolLoads += 1
+    void readMessageTools(task.message, task.epoch).finally(() => {
+      activeToolLoads -= 1
+      drainToolLoads()
+    })
+  }
+}
+async function readMessageTools(message: ChatMessage, epoch: number) {
   try {
-    const result = await getMessageTools(message.messageId)
-    if (disposed || conversationId !== sessionContext.activeConversationId.value || !messages.value.includes(message)) return
-    for (const tool of result.tools) {
-      upsertTool(message, tool)
+    if (disposed || epoch !== sessionViewEpoch || !messages.value.includes(message)) return
+    const result = await getMessageTools(message.messageId!)
+    if (disposed || epoch !== sessionViewEpoch || !messages.value.includes(message)) return
+    restoreMessageTools(message, result.tools)
+    for (const tool of message.tools ?? []) {
       for (const task of tool.imageTasks ?? []) {
         mergeImageTask(message, task)
         reconnectAssistantImageTask(message, task)
       }
     }
     message.toolSummary = result.summary
-    message.toolsLoaded = true
   } catch {
     if (messages.value.includes(message)) message.toolsError = '工具过程加载失败'
   } finally {
@@ -418,7 +452,7 @@ async function loadSessionMessages() {
     messagesHasMore.value = result.pagination.hasMore
     messagesNextCursor.value = result.pagination.nextCursor
     await scrollToBottom()
-    const lastItem = sessionMessages[sessionMessages.length - 1]
+    const lastItem = messages.value[messages.value.length - 1]
     if (lastItem?.messageId && lastItem.streaming) {
       void reconnectStreamingAssistant(lastItem)
     }
@@ -440,6 +474,10 @@ watch(
       return
     }
     const prevConversationId = oldValue?.[0]
+    if (oldValue && sessionContext.isPendingNewSession.value) {
+      webSearchEnabled.value = false
+      webSearchPreferences.set(webSearchKey.value, false)
+    }
     sessionViewEpoch += 1
     if (prevConversationId && nextConversationId !== prevConversationId) {
       stopStreaming()
@@ -737,7 +775,7 @@ function stopStreaming(shouldCancel = false) {
 function appendTextToMessage(assistantId: string, text: string) {
   const assistantMessage = findMessageById(assistantId)
   if (!assistantMessage) return
-  assistantMessage.content += text
+  appendMessageText(assistantMessage, text)
 }
 function ensureVisionMessage(assistantId: string) {
   const assistantMessage = findMessageById(assistantId)
@@ -772,6 +810,8 @@ function updateAssistantBackendIds(assistantId: string, data: unknown) {
   // 待创建，或无选中会话时直接首聊：绑定返回的会话 id，避免后续消息反复新建
   const hasNoConversation = !sessionContext.activeConversationId.value || sessionContext.activeConversationId.value === PENDING_CONVERSATION_ID
   if (Number.isFinite(conversationId) && (sessionContext.isPendingNewSession.value || hasNoConversation)) {
+    const nextKey = webSearchPreferenceKey(userAccount.value, projectId(), conversationId)
+    webSearchPreferences.move(webSearchKey.value, nextKey, webSearchEnabled.value)
     skipNextSessionLoad = true
     sessionContext.isPendingNewSession.value = false
     sessionContext.activeConversationId.value = conversationId
@@ -876,7 +916,7 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
   if (event.event === 'tool_snapshot' && event.data && typeof event.data === 'object') {
     const message = findMessageById(assistantId)
     const tools = event.data.tools
-    if (message && Array.isArray(tools)) for (const tool of tools) upsertTool(message, tool as ToolInvocation)
+    if (message && Array.isArray(tools)) restoreMessageTools(message, tools as ToolInvocation[])
     return
   }
   if (['tool_start', 'tool_end', 'tool_error'].includes(event.event)) {
@@ -923,11 +963,13 @@ function handleSseEvent(assistantId: string, event: ChatSseEvent) {
     const message = findMessageById(assistantId)
     if (message) settleTools(message, 'succeeded')
     tokenUsage.generationStatus = 'completed'
+    notifyPreviewChange(currentProjectId, 'round')
   }
   if (event.event === 'cancelled') {
     const message = findMessageById(assistantId)
     if (message) settleTools(message, 'cancelled')
     tokenUsage.generationStatus = 'cancelled'
+    notifyPreviewChange(currentProjectId, 'round')
   }
   if (event.event === 'error') {
     const message = findMessageById(assistantId)
@@ -962,7 +1004,7 @@ async function reconnectStreamingAssistant(message: ChatMessage) {
     tokenUsage.generationStatus = 'failed'
     settleTools(message, 'failed')
     if (!message.content) {
-      message.content = '回复失败，请重试'
+      appendMessageText(message, '回复失败，请重试')
     }
   } finally {
     await finalizeLocalStream(message.id, currentProjectId, streamEpoch)
@@ -981,6 +1023,7 @@ async function handleSend() {
     ElMessage.warning(modelsLoading.value ? '正在加载模型列表' : '请选择可用模型，或联系管理员同步模型')
     return
   }
+  const requestWebSearchEnabled = webSearchEnabled.value
   const isPending = sessionContext.isPendingNewSession.value
   const activeConversationId = sessionContext.activeConversationId.value
   const hasNoConversation = !activeConversationId || activeConversationId === PENDING_CONVERSATION_ID
@@ -998,6 +1041,7 @@ async function handleSend() {
     id: assistantId,
     role: 'assistant',
     content: '',
+    parts: [],
     streaming: true,
     createdAt: new Date().toISOString(),
   })
@@ -1032,6 +1076,7 @@ async function handleSend() {
     await chatWithAI({
       model: selectedModel.value,
       reasoningEffort: selectedEffort.value,
+      webSearchEnabled: requestWebSearchEnabled,
       prompt: content,
       projectId: currentProjectId,
       conversationId: needsNewBackendSession ? undefined : activeConversationId,
@@ -1051,7 +1096,7 @@ async function handleSend() {
     const assistantMessage = findMessageById(assistantId)
     if (assistantMessage) settleTools(assistantMessage, 'failed')
     if (assistantMessage && !assistantMessage.content) {
-      assistantMessage.content = '回复失败，请重试'
+      appendMessageText(assistantMessage, '回复失败，请重试')
     }
   } finally {
     await finalizeLocalStream(assistantId, currentProjectId, streamEpoch)
@@ -1170,18 +1215,21 @@ function handleActionClick() {
             @paste="handleInputPaste"
           />
           <div class="chat-panel-input-footer">
-            <button
-              type="button"
-              class="chat-panel-upload-btn"
-              :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
-              title="上传图片（可多选）"
-              aria-label="上传图片（可多选）"
-              :disabled="isStreaming"
-              @click="handleUploadClick"
-            >
-              <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
-              <SvgIcon v-else name="upload-image" />
-            </button>
+            <div class="chat-panel-input-tools">
+              <button
+                type="button"
+                class="chat-panel-upload-btn"
+                :class="{ 'chat-panel-upload-btn--loading': hasUploadingImage }"
+                title="上传图片（可多选）"
+                aria-label="上传图片（可多选）"
+                :disabled="isStreaming"
+                @click="handleUploadClick"
+              >
+                <span v-if="hasUploadingImage" class="chat-panel-upload-spinner" aria-label="上传中" />
+                <SvgIcon v-else name="upload-image" />
+              </button>
+              <ChatWebSearchToggle :model-value="webSearchEnabled" :disabled="isStreaming || !webSearchKey" @update:model-value="setWebSearchEnabled" />
+            </div>
             <div class="chat-panel-submit-actions">
               <div class="chat-context-wrap">
                 <button
@@ -1251,6 +1299,18 @@ function handleActionClick() {
   border-radius: 4px;
   overflow: hidden;
   background-color: var(--app-surface);
+}
+.chat-panel-input-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.chat-panel-input-footer {
+  flex-wrap: wrap;
+}
+.chat-panel-submit-actions {
+  margin-left: auto;
 }
 .chat-panel-messages {
   flex: 1;
@@ -1750,9 +1810,7 @@ html.dark .chat-panel {
   --chat-input-shell-border: var(--app-border-strong);
 }
 html.dark .chat-panel-messages {
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(91, 140, 255, 0.1) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(138, 180, 248, 0.05) 0%, transparent 50%), linear-gradient(180deg, #12151c 0%, #0f1115 100%);
+  background: var(--app-bg);
 }
 @media (max-width: 600px) {
   .chat-panel-input-footer {

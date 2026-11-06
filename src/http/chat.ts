@@ -10,6 +10,7 @@ export interface ChatBody {
   imageUrls?: string[]
   model?: string
   reasoningEffort?: string | null
+  webSearchEnabled?: boolean
 }
 
 /** 后端 SSE 事件结构 */
@@ -47,8 +48,8 @@ async function consumeChatSseResponse(response: Response, onEvent?: (event: Chat
  * @param options 请求参数与事件回调
  */
 export async function chatWithAI(options: ChatSseOptions) {
-  const { prompt, projectId, conversationId, title, imageUrls, model, reasoningEffort, onEvent, signal } = options
-  const body: ChatBody = { prompt, projectId }
+  const { prompt, projectId, conversationId, title, imageUrls, model, reasoningEffort, webSearchEnabled, onEvent, signal } = options
+  const body: ChatBody = { prompt, projectId, webSearchEnabled: webSearchEnabled === true }
   if (model) body.model = model
   if (reasoningEffort !== undefined) body.reasoningEffort = reasoningEffort
   if (conversationId) {

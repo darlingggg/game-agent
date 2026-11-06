@@ -6,10 +6,13 @@
   --van-border-radius-lg: 8px;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* 基础重置放入 base 层，避免覆盖 Tailwind v4 的间距工具类。 */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 }
 
 html,

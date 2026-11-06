@@ -27,6 +27,14 @@ export interface ToolInvocation {
   expanded?: boolean
 }
 
+/** 前端维护的展示片段；文本记录起点，工具组引用原始工具记录。 */
+export interface ChatMessagePart {
+  id: string
+  text?: string
+  start?: number
+  tools?: ToolInvocation[]
+}
+
 /** 图像识别流式内容 */
 export interface ChatVisionResult {
   /** 图像思考过程 */
@@ -45,6 +53,7 @@ export interface ChatMessage {
   role: ChatRole
   /** 消息正文 */
   content: string
+  parts?: ChatMessagePart[]
   /** 后端 messages 表 id，用于刷新后 SSE 重连 */
   messageId?: number
   /** 后端 sessions.id，用于关联工具任务 */

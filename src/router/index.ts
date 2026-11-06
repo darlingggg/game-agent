@@ -13,8 +13,6 @@ const router = createRouter({
     { path: '/register', component: () => import('@/login/index.vue') },
     { path: '/', component: () => import('@/home/index.vue') },
     { path: '/builder', component: () => import('@/builder/index.vue') },
-    { path: '/agent', component: () => import('@/agent/index.vue') },
-    { path: '/mine', component: () => import('@/mine/index.vue') },
     { path: '/admin', component: () => import('@/admin/index.vue'), meta: { requiresAdmin: true } },
     { path: '/:pathMatch(.*)*', component: () => import('@/404/index.vue') },
   ],

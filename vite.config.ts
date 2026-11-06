@@ -59,6 +59,12 @@ export default defineConfig({
   },
   server: {
     headers: crossOriginIsolationHeaders,
+    proxy: {
+      '/api': {
+        target: 'https://www.darling.xin',
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     headers: crossOriginIsolationHeaders,

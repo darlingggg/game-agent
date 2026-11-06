@@ -2,15 +2,35 @@
 import { computed, ref } from 'vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import ChatImageTasks from './ChatImageTasks.vue'
+import MarkdownContent from './MarkdownContent.vue'
 import { TOOL_PRESENTATION } from './toolInvocations'
 import type { ToolInvocation } from './types'
 
-const props = defineProps<{ tool: ToolInvocation }>()
+const props = defineProps<{ tool: ToolInvocation; compact?: boolean }>()
 const emit = defineEmits<{ expandedChange: [expanded: boolean] }>()
 const fullContent = ref(false)
 const presentation = computed(() => TOOL_PRESENTATION[props.tool.name] ?? { label: props.tool.name, finished: props.tool.name, icon: 'project-tool' })
+const visionResult = computed(() => {
+  if (props.tool.name !== 'view_image') return null
+  let value = props.tool.result
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  return (
+    (value as { success?: boolean; message?: string; data?: { mode?: string; analysis?: string; question?: string; images?: { imageId: string; path?: string }[] } } | undefined) ??
+    null
+  )
+})
 const label = computed(() => {
   const title = props.tool.status === 'succeeded' ? presentation.value.finished : presentation.value.label
+  if (props.tool.name === 'view_image') {
+    const finished = props.tool.status === 'succeeded' ? (visionResult.value?.data?.mode === 'native' ? '图片已加载供模型查看' : '图片分析完成') : title
+    return typeof props.tool.args.question === 'string' ? `${finished} · ${props.tool.args.question}` : finished
+  }
   if (props.tool.name === 'generate_image') {
     const prompt = props.tool.imageTasks?.[0]?.prompt || props.tool.args.prompt
     if (typeof prompt === 'string') return `${title} · ${prompt}`
@@ -19,8 +39,8 @@ const label = computed(() => {
     const data = (props.tool.result as { data?: unknown } | undefined)?.data
     if (Array.isArray(data)) return `${title} · ${data.length} 项`
   }
-  const path = props.tool.args.path
-  return typeof path === 'string' ? `${title} · ${path}` : title
+  const target = props.tool.args.path ?? props.tool.args.query ?? props.tool.args.url
+  return typeof target === 'string' ? `${title} · ${target}` : title
 })
 const statusLabel = computed(() => ({ running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已停止' })[props.tool.status])
 const result = computed(() => (typeof props.tool.result === 'string' ? props.tool.result : JSON.stringify(props.tool.result, null, 2)))
@@ -34,7 +54,7 @@ function toggle() {
 </script>
 
 <template>
-  <div class="chat-tool-invocation" :class="`is-${tool.status}`">
+  <div class="chat-tool-invocation" :class="[`is-${tool.status}`, { 'is-compact': compact }]">
     <button type="button" class="chat-tool-invocation-row" :aria-expanded="!!tool.expanded" @click="toggle">
       <SvgIcon :name="presentation.icon" class="chat-tool-icon" />
       <span class="chat-tool-label" :title="label">{{ label }}</span>
@@ -49,6 +69,13 @@ function toggle() {
       <pre>{{ argsText }}</pre>
       <div class="chat-tool-detail-heading">调用结果</div>
       <ChatImageTasks v-if="tool.imageTasks?.length" :tasks="tool.imageTasks" compact />
+      <div v-else-if="visionResult?.success && visionResult.data" class="chat-tool-vision-result">
+        <p>{{ visionResult.data.mode === 'native' ? '图片已加载，将由当前模型直接理解。' : '图像理解结果' }}</p>
+        <ul v-if="visionResult.data.images?.length">
+          <li v-for="image in visionResult.data.images" :key="image.imageId">{{ image.path || image.imageId }}</li>
+        </ul>
+        <MarkdownContent v-if="visionResult.data.analysis" :content="visionResult.data.analysis" />
+      </div>
       <pre v-else-if="resultText">{{ resultText }}</pre>
       <p v-else>{{ tool.error || (tool.status === 'running' ? '等待工具返回结果…' : statusLabel) }}</p>
       <p v-if="tool.error && resultText" class="chat-tool-error">{{ tool.error }}</p>
@@ -56,8 +83,11 @@ function toggle() {
         {{ fullContent ? '收起完整内容' : '查看完整内容' }}
       </button>
       <div class="chat-tool-detail-meta">
-        <span>{{ statusLabel }}</span
-        ><span>{{ tool.toolCallId }}</span>
+        <span>
+          {{ statusLabel }}
+          <template v-if="compact && tool.durationMs != null"> · {{ (tool.durationMs / 1000).toFixed(1) }} 秒</template>
+        </span>
+        <span>{{ tool.toolCallId }}</span>
       </div>
     </div>
   </div>
@@ -80,7 +110,7 @@ function toggle() {
   color: var(--app-text-secondary);
   cursor: pointer;
   text-align: left;
-  font-size: 12px;
+  font-size: 13px;
 }
 .chat-tool-icon,
 .chat-tool-arrow {
@@ -91,6 +121,7 @@ function toggle() {
 .chat-tool-label {
   min-width: 0;
   flex: 1;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -117,6 +148,31 @@ function toggle() {
 .chat-tool-invocation-row:hover {
   color: var(--app-text-primary);
 }
+.chat-tool-invocation-row:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.is-compact {
+  margin: 0;
+}
+.is-compact .chat-tool-invocation-row {
+  min-height: 26px;
+  padding: 3px 0;
+  gap: 7px;
+  color: var(--app-text-secondary);
+}
+.is-compact .chat-tool-invocation-row:hover,
+.is-compact .chat-tool-invocation-row:focus-visible {
+  color: var(--app-text-primary);
+}
+.is-compact .chat-tool-duration {
+  display: none;
+}
+.is-compact .chat-tool-icon {
+  width: 14px;
+  height: 14px;
+}
 .is-failed .chat-tool-status,
 .chat-tool-error {
   color: var(--app-danger);
@@ -131,7 +187,7 @@ function toggle() {
   animation: tool-spin 0.8s linear infinite;
 }
 .chat-tool-details {
-  margin: 5px 0 14px 23px;
+  margin: 5px 0 14px 0px;
   padding: 12px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -188,7 +244,8 @@ function toggle() {
   .chat-tool-arrow {
     opacity: 1;
   }
-  .chat-tool-invocation-row {
+  .chat-tool-invocation-row,
+  .is-compact .chat-tool-invocation-row {
     min-height: 44px;
   }
 }

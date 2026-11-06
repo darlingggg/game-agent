@@ -94,23 +94,24 @@
 }
 
 html.dark {
-  --brand-canvas: #101114;
-  --brand-panel: #191b20;
-  --brand-panel-muted: #15171c;
-  --brand-ink: #edf0f5;
-  --brand-muted: #9ca5b4;
-  --brand-line: #2b2e36;
-  --brand-line-strong: #3a3e48;
+  /* 中性黑灰底色；正文、次级文字、辅助信息使用独立的灰度层级。 */
+  --brand-canvas: #111111;
+  --brand-panel: #1e1e1e;
+  --brand-panel-muted: #181818;
+  --brand-ink: #ededed;
+  --brand-muted: #b0b0b0;
+  --brand-line: #2b2b2b;
+  --brand-line-strong: #404040;
   --brand-border: var(--brand-line);
-  --brand-blue: #86a7ff;
-  --brand-blue-strong: #a0baff;
-  --brand-blue-soft: #202d49;
-  --brand-on-blue: #111b35;
-  --brand-stage: #101114;
-  --brand-stage-panel: #191b20;
+  --brand-blue: #7ab8ef;
+  --brand-blue-strong: #9ccbf2;
+  --brand-blue-soft: #1c2b37;
+  --brand-on-blue: #111111;
+  --brand-stage: #111111;
+  --brand-stage-panel: #1e1e1e;
   --brand-coral: #ff8175;
   --brand-success: #55c99b;
-  --brand-grid: rgba(240, 242, 245, 0.026);
+  --brand-grid: rgba(255, 255, 255, 0.026);
   --brand-shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.24);
   --brand-shadow-float: 0 20px 56px rgba(0, 0, 0, 0.42);
 
@@ -119,20 +120,20 @@ html.dark {
 
   /* 应用主题变量（深色） */
   --app-bg: var(--brand-canvas);
-  --app-bg-gradient-start: #12151c;
-  --app-bg-gradient-end: #0f1115;
-  --app-bg-subtle: #15171c;
-  --app-bg-muted: #13151a;
+  --app-bg-gradient-start: #161616;
+  --app-bg-gradient-end: #111111;
+  --app-bg-subtle: var(--brand-panel-muted);
+  --app-bg-muted: #151515;
   --app-surface: var(--brand-panel);
-  --app-surface-hover: #23262d;
+  --app-surface-hover: #282828;
   --app-border: var(--brand-line);
   --app-border-strong: var(--brand-line-strong);
   --app-text-primary: var(--brand-ink);
-  --app-text-secondary: #b2bac5;
-  --app-text-muted: #939dac;
+  --app-text-secondary: var(--brand-muted);
+  --app-text-muted: #969696;
   --app-accent: var(--brand-blue);
   --app-accent-soft: var(--brand-blue-soft);
-  --app-icon-fill: #e8eaed;
+  --app-icon-fill: #ededed;
   /** 用户头像立方体填充色 */
   --app-avatar-cube-fill: #ffffff;
   --app-shadow: rgba(0, 0, 0, 0.35);
@@ -147,26 +148,26 @@ html.dark {
   --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 
   /* Element Plus 主色暗色适配（与 accent 保持一致，保证按钮等组件可读） */
-  --el-color-primary: #86a7ff;
-  --el-color-primary-rgb: 134, 167, 255;
-  --el-color-primary-light-3: #7fa3ff;
-  --el-color-primary-light-5: #a3bfff;
-  --el-color-primary-light-7: #c7daff;
-  --el-color-primary-light-8: #d9e6ff;
-  --el-color-primary-light-9: #1e2a45;
-  --el-color-primary-dark-2: #4a78e8;
-  --el-bg-color: #191b20;
-  --el-bg-color-overlay: #1f2229;
-  --el-fill-color-blank: #191b20;
-  --el-fill-color-light: #23262d;
-  --el-fill-color-lighter: #1d2026;
-  --el-border-color: #3a3e48;
-  --el-border-color-light: #30333c;
-  --el-border-color-lighter: #2b2e36;
-  --el-text-color-primary: #edf0f5;
-  --el-text-color-regular: #c5cbd4;
-  --el-text-color-secondary: #98a2af;
-  --el-mask-color: rgba(4, 6, 9, 0.68);
+  --el-color-primary: var(--brand-blue);
+  --el-color-primary-rgb: 122, 184, 239;
+  --el-color-primary-light-3: #8ac2f1;
+  --el-color-primary-light-5: #a7d1f5;
+  --el-color-primary-light-7: #c4e0f9;
+  --el-color-primary-light-8: #d8eafb;
+  --el-color-primary-light-9: var(--brand-blue-soft);
+  --el-color-primary-dark-2: #5b9dd3;
+  --el-bg-color: var(--brand-panel);
+  --el-bg-color-overlay: #242424;
+  --el-fill-color-blank: var(--brand-panel);
+  --el-fill-color-light: #282828;
+  --el-fill-color-lighter: #222222;
+  --el-border-color: var(--brand-line-strong);
+  --el-border-color-light: #343434;
+  --el-border-color-lighter: var(--brand-line);
+  --el-text-color-primary: var(--brand-ink);
+  --el-text-color-regular: #cccccc;
+  --el-text-color-secondary: var(--brand-muted);
+  --el-mask-color: rgba(0, 0, 0, 0.68);
 
   color-scheme: dark;
 }

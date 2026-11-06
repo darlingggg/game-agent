@@ -647,6 +647,10 @@ onBeforeUnmount(() => {
     padding: 46px 24px 24px;
   }
 
+  .auth-panel-inner {
+    max-width: 100%;
+  }
+
   .auth-panel-heading h2 {
     margin-top: 8px;
     font-size: 28px;

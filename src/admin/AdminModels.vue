@@ -307,14 +307,26 @@ defineExpose({ refresh })
 .model-sync-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 36px;
+  gap: 6px;
+  padding: 0 12px;
   border: 1px solid #389cff;
   border-radius: 9px;
   background: #1686ee;
   color: white;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
   cursor: pointer;
   white-space: nowrap;
+}
+.model-sync-button .el-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
 }
 .models-toolbar {
   display: flex;
@@ -328,17 +340,31 @@ defineExpose({ refresh })
 }
 .models-filters {
   display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 36px;
   padding: 3px;
   gap: 3px;
   border: 1px solid var(--app-border);
   border-radius: 9px;
 }
 .models-filters button {
-  padding: 6px 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 48px;
+  height: 28px;
+  padding: 0 10px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
   cursor: pointer;
 }
 .models-filters button.active {
@@ -512,6 +538,10 @@ button:disabled {
   }
   .models-toolbar {
     padding-inline: 16px;
+  }
+  .models-toolbar .el-input {
+    max-width: none;
+    flex-basis: 100%;
   }
 }
 </style>

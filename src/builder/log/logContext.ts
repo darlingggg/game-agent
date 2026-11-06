@@ -13,6 +13,8 @@ import {
 import { buildToolLogContent, parseToolEnd, parseToolStart } from './logParser'
 import { parsePersistedLogLine } from './parsePersistedLog'
 import type { DisplayLogEntry, LiveLogEntry, ToolLogEntry } from './logTypes'
+import { pinia } from '@/stores'
+import { useProjectStore } from '@/stores/project'
 
 /** 日志上下文 */
 export interface LogContext {
@@ -263,7 +265,7 @@ export function createLogContext(): LogContext {
     await persistLog(logContent, projectId)
 
     // 文件写入/删除类工具成功后同步到 WebContainer 预览
-    if (parsed.success) {
+    if (parsed.success && useProjectStore(pinia).currentProject?.id === projectId) {
       if (parsed.toolName === WRITE_FILE_CONTENT_TOOL) {
         await syncWriteFileContentToPreview(targetEntry.params)
       } else if (parsed.toolName === UPSERT_FILE_TOOL) {

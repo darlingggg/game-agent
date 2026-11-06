@@ -42,6 +42,7 @@ export interface BuildDeployInfo {
 
 /** 构建部署完成结果（SSE done 事件） */
 export interface BuildDoneResult {
+  taskId?: string
   success: boolean
   code: number
   summary?: string
